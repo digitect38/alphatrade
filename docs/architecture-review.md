@@ -185,6 +185,8 @@ except Exception as e:
 | 9 | Grafana 대시보드 | ✅ 완료 | 비즈니스 메트릭 패널 5개 추가 |
 | 10 | DB 제약/인덱스 | ✅ 완료 | CHECK 제약 8개, 인덱스 2개 추가 |
 | 11 | 종목 검색 | ✅ 완료 | /market/search API + StockSearch 자동완성 컴포넌트 |
+| 12 | 전 종목 적재 | ✅ 완료 | KRX KOSPI 837 + KOSDAQ 1,782 = 2,619종목, /collect/stocks 매일 자동 업데이트 |
+| 13 | 시장 변동 알림 | ✅ 완료 | /alert/scan — 가격급변/뉴스급증/주요공시 감지 → 카카오톡+텔레그램 알림 |
 
 ---
 

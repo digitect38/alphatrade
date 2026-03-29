@@ -22,6 +22,7 @@ from app.routes.scanner import router as scanner_router
 from app.routes.strategy import router as strategy_router
 from app.routes.trading import router as trading_router
 from app.routes.webhook import router as webhook_router
+from app.routes.alert import router as alert_router
 from app.services.dart_api import DARTClient
 from app.services.kis_api import KISClient
 from app.services.naver_news import NaverNewsClient
@@ -88,6 +89,7 @@ app.include_router(webhook_router, prefix="/webhook", tags=["webhook"])
 app.include_router(order_router, prefix="/order", tags=["order"])
 app.include_router(portfolio_router, prefix="/portfolio", tags=["portfolio"])
 app.include_router(scanner_router, prefix="/scanner", tags=["scanner"])
+app.include_router(alert_router, prefix="/alert", tags=["alert"])
 app.include_router(market_router, prefix="/market", tags=["market"])
 app.include_router(index_router, prefix="/index", tags=["index"])
 app.include_router(trading_router, prefix="/trading", tags=["trading"])

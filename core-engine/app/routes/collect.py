@@ -1,7 +1,9 @@
+import io
 import logging
 from datetime import datetime, timezone
 
 import asyncpg
+import httpx
 import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends
 
@@ -200,3 +202,87 @@ async def collect_ohlcv(
         inserted=inserted, duplicates=duplicates, errors=errors,
         collected_at=now, redis_published=redis_published,
     )
+
+
+async def _fetch_krx_stocks(market_type: str, market_name: str) -> list[tuple[str, str, str, str | None]]:
+    """Fetch stock list from KRX KIND for a given market."""
+    url = "https://kind.krx.co.kr/corpgeneral/corpList.do"
+    headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.get(url, params={"method": "download", "marketType": market_type}, headers=headers)
+
+    # KRX returns EUC-KR HTML with a table
+    import pandas as pd
+    html = resp.content.decode("euc-kr", errors="replace")
+    tables = pd.read_html(io.StringIO(html))
+    if not tables:
+        return []
+
+    df = tables[0]
+    stocks = []
+    for _, row in df.iterrows():
+        raw_code = str(row["종목코드"]).strip()
+        if not raw_code.isdigit():
+            continue
+        code = raw_code.zfill(6)
+        name = str(row["회사명"]).strip()
+        sector = str(row["업종"]).strip() if pd.notna(row.get("업종")) else None
+        stocks.append((code, name, market_name, sector))
+    return stocks
+
+
+@router.post("/stocks")
+async def collect_stocks(pool: asyncpg.Pool = Depends(get_db)):
+    """Update all KOSPI + KOSDAQ stocks from KRX.
+
+    Fetches the latest stock list from Korea Exchange and upserts into DB.
+    Should be called daily before market open (e.g., 08:30 KST).
+    """
+    now = datetime.now(timezone.utc)
+    inserted = 0
+    updated = 0
+    errors = []
+
+    try:
+        all_stocks = []
+        for mkt_type, mkt_name in [("stockMkt", "KOSPI"), ("kosdaqMkt", "KOSDAQ")]:
+            stocks = await _fetch_krx_stocks(mkt_type, mkt_name)
+            all_stocks.extend(stocks)
+            logger.info("KRX %s: %d stocks fetched", mkt_name, len(stocks))
+
+        async with pool.acquire() as conn:
+            for code, name, market, sector in all_stocks:
+                try:
+                    result = await conn.execute(
+                        """
+                        INSERT INTO stocks (stock_code, stock_name, market, sector, is_active)
+                        VALUES ($1, $2, $3, $4, TRUE)
+                        ON CONFLICT (stock_code) DO UPDATE SET
+                            stock_name = EXCLUDED.stock_name,
+                            market = EXCLUDED.market,
+                            sector = COALESCE(EXCLUDED.sector, stocks.sector),
+                            is_active = TRUE,
+                            updated_at = NOW()
+                        """,
+                        code, name, market, sector,
+                    )
+                    if "INSERT" in result:
+                        inserted += 1
+                    else:
+                        updated += 1
+                except Exception as e:
+                    errors.append(f"{code}: {e}")
+
+    except Exception as e:
+        errors.append(f"KRX fetch failed: {e}")
+        logger.error("Stock collection error: %s", e)
+
+    return {
+        "status": _collection_status(errors, inserted + updated),
+        "collected_at": now.isoformat(),
+        "inserted": inserted,
+        "updated": updated,
+        "total": inserted + updated,
+        "errors": errors[:10],
+    }
