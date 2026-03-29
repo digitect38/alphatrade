@@ -1,0 +1,131 @@
+{
+  "dashboard": {
+    "id": null,
+    "uid": "alphatrade-trading",
+    "title": "AlphaTrade Trading Performance",
+    "tags": ["alphatrade", "trading"],
+    "timezone": "Asia/Seoul",
+    "refresh": "1m",
+    "time": { "from": "now-7d", "to": "now" },
+    "panels": [
+      {
+        "id": 1,
+        "title": "Portfolio Value",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+        "datasource": "TimescaleDB",
+        "targets": [
+          {
+            "rawSql": "SELECT time, total_value FROM portfolio_snapshots ORDER BY time",
+            "format": "time_series"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": { "unit": "currencyKRW" }
+        }
+      },
+      {
+        "id": 2,
+        "title": "Daily P&L",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+        "datasource": "TimescaleDB",
+        "targets": [
+          {
+            "rawSql": "SELECT time, daily_pnl FROM portfolio_snapshots ORDER BY time",
+            "format": "time_series"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": { "unit": "currencyKRW", "color": { "mode": "continuous-GrYlRd" } }
+        }
+      },
+      {
+        "id": 3,
+        "title": "Cumulative Return %",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+        "datasource": "TimescaleDB",
+        "targets": [
+          {
+            "rawSql": "SELECT time, cumulative_return * 100 as return_pct FROM portfolio_snapshots ORDER BY time",
+            "format": "time_series"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": { "unit": "percent" }
+        }
+      },
+      {
+        "id": 4,
+        "title": "Maximum Drawdown %",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+        "datasource": "TimescaleDB",
+        "targets": [
+          {
+            "rawSql": "SELECT time, mdd * 100 as mdd_pct FROM portfolio_snapshots ORDER BY time",
+            "format": "time_series"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": { "unit": "percent", "color": { "fixedColor": "red", "mode": "fixed" } }
+        }
+      },
+      {
+        "id": 5,
+        "title": "Orders (Last 7 Days)",
+        "type": "table",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+        "datasource": "TimescaleDB",
+        "targets": [
+          {
+            "rawSql": "SELECT time, stock_code, side, quantity, filled_price, status FROM orders WHERE time > NOW() - INTERVAL '7 days' ORDER BY time DESC LIMIT 50",
+            "format": "table"
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "title": "Strategy Signals Distribution",
+        "type": "piechart",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+        "datasource": "TimescaleDB",
+        "targets": [
+          {
+            "rawSql": "SELECT signal, count(*) as count FROM strategy_signals WHERE time > NOW() - INTERVAL '7 days' GROUP BY signal",
+            "format": "table"
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "title": "Positions Count",
+        "type": "stat",
+        "gridPos": { "h": 4, "w": 6, "x": 0, "y": 24 },
+        "datasource": "TimescaleDB",
+        "targets": [
+          {
+            "rawSql": "SELECT count(*) as positions FROM portfolio_positions WHERE quantity > 0",
+            "format": "table"
+          }
+        ]
+      },
+      {
+        "id": 8,
+        "title": "Total Orders Today",
+        "type": "stat",
+        "gridPos": { "h": 4, "w": 6, "x": 6, "y": 24 },
+        "datasource": "TimescaleDB",
+        "targets": [
+          {
+            "rawSql": "SELECT count(*) as orders FROM orders WHERE time > CURRENT_DATE",
+            "format": "table"
+          }
+        ]
+      }
+    ],
+    "schemaVersion": 39
+  },
+  "overwrite": true
+}

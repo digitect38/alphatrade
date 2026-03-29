@@ -1,0 +1,53 @@
+{
+  "id": "1",
+  "name": "Trading Cycle",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "schedule-1",
+      "name": "Every 1 Minute",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://core-engine:8000/trading/run-cycle",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "http-1",
+      "name": "Run Trading Cycle",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [220, 0]
+    }
+  ],
+  "connections": {
+    "Every 1 Minute": {
+      "main": [
+        [
+          {
+            "node": "Run Trading Cycle",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

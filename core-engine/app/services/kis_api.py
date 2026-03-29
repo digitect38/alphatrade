@@ -1,0 +1,173 @@
+import logging
+from datetime import datetime, timezone
+from decimal import Decimal
+
+import httpx
+import redis.asyncio as aioredis
+
+from app.config import settings
+from app.models.ohlcv import OHLCVRecord
+
+logger = logging.getLogger(__name__)
+
+TOKEN_REDIS_KEY = "kis:access_token"
+
+
+class KISClient:
+    def __init__(self):
+        self.client = httpx.AsyncClient(timeout=settings.http_timeout_default)
+        self._redis: aioredis.Redis | None = None
+        self._token: str | None = None
+
+    async def initialize(self, redis_client: aioredis.Redis):
+        self._redis = redis_client
+        cached = await self._redis.get(TOKEN_REDIS_KEY)
+        if cached:
+            self._token = cached
+            logger.info("KIS token loaded from Redis cache")
+
+    async def close(self):
+        await self.client.aclose()
+
+    async def _ensure_token(self) -> str:
+        """Get or refresh the OAuth access token."""
+        if self._token:
+            return self._token
+
+        if not settings.kis_app_key or not settings.kis_app_secret:
+            raise ValueError("KIS_APP_KEY and KIS_APP_SECRET must be configured")
+
+        resp = await self.client.post(
+            f"{settings.kis_base_url}/oauth2/tokenP",
+            json={
+                "grant_type": "client_credentials",
+                "appkey": settings.kis_app_key,
+                "appsecret": settings.kis_app_secret,
+            },
+        )
+        data = resp.json()
+
+        if "access_token" not in data:
+            raise RuntimeError(f"KIS token request failed: {data}")
+
+        self._token = data["access_token"]
+
+        if self._redis:
+            await self._redis.setex(TOKEN_REDIS_KEY, settings.cache_kis_token_ttl, self._token)
+
+        logger.info("KIS access token refreshed")
+        return self._token
+
+    def _auth_headers(self, token: str, tr_id: str) -> dict:
+        return {
+            "authorization": f"Bearer {token}",
+            "appkey": settings.kis_app_key,
+            "appsecret": settings.kis_app_secret,
+            "tr_id": tr_id,
+            "content-type": "application/json; charset=utf-8",
+        }
+
+    async def _request_with_retry(self, method: str, url: str, tr_id: str, **kwargs) -> dict:
+        """Make an authenticated request with retry on 401 and transient network errors."""
+        from app.utils.retry import retry_async
+
+        async def _do_request():
+            token = await self._ensure_token()
+            headers = self._auth_headers(token, tr_id)
+            resp = await self.client.request(method, url, headers=headers, **kwargs)
+
+            if resp.status_code == 401:
+                self._token = None
+                token = await self._ensure_token()
+                headers = self._auth_headers(token, tr_id)
+                resp = await self.client.request(method, url, headers=headers, **kwargs)
+
+            resp.raise_for_status()
+            return resp.json()
+
+        return await retry_async(_do_request, max_retries=3, base_delay=1.0)
+
+    async def get_current_price(self, stock_code: str) -> OHLCVRecord | None:
+        """Get current price for a stock (주식현재가 시세)."""
+        try:
+            # 모의투자: FHKST01010100, 실전: FHKST01010100
+            data = await self._request_with_retry(
+                "GET",
+                f"{settings.kis_base_url}/uapi/domestic-stock/v1/quotations/inquire-price",
+                tr_id="FHKST01010100",
+                params={
+                    "fid_cond_mrkt_div_code": "J",
+                    "fid_input_iscd": stock_code,
+                },
+            )
+
+            output = data.get("output", {})
+            if not output:
+                return None
+
+            now = datetime.now(timezone.utc)
+            return OHLCVRecord(
+                time=now,
+                stock_code=stock_code,
+                open=Decimal(output.get("stck_oprc", "0")),
+                high=Decimal(output.get("stck_hgpr", "0")),
+                low=Decimal(output.get("stck_lwpr", "0")),
+                close=Decimal(output.get("stck_prpr", "0")),
+                volume=int(output.get("acml_vol", "0")),
+                value=int(output.get("acml_tr_pbmn", "0")),
+                interval="1d",
+            )
+        except Exception as e:
+            from app.exceptions import ExternalAPIError
+            logger.error("KIS get_current_price failed for %s: %s", stock_code, e)
+            raise ExternalAPIError(f"KIS API error for {stock_code}: {e}", retryable=True) from e
+
+    async def get_daily_chart(
+        self,
+        stock_code: str,
+        start_date: str,
+        end_date: str,
+    ) -> list[OHLCVRecord]:
+        """Get daily OHLCV chart data (주식현재가 일자별)."""
+        records = []
+        try:
+            data = await self._request_with_retry(
+                "GET",
+                f"{settings.kis_base_url}/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice",
+                tr_id="FHKST03010100",
+                params={
+                    "fid_cond_mrkt_div_code": "J",
+                    "fid_input_iscd": stock_code,
+                    "fid_input_date_1": start_date,
+                    "fid_input_date_2": end_date,
+                    "fid_period_div_code": "D",
+                    "fid_org_adj_prc": "0",
+                },
+            )
+
+            for item in data.get("output2", []):
+                date_str = item.get("stck_bsop_date", "")
+                if not date_str:
+                    continue
+                try:
+                    time = datetime.strptime(date_str, "%Y%m%d").replace(tzinfo=timezone.utc)
+                except ValueError:
+                    continue
+
+                records.append(
+                    OHLCVRecord(
+                        time=time,
+                        stock_code=stock_code,
+                        open=Decimal(item.get("stck_oprc", "0")),
+                        high=Decimal(item.get("stck_hgpr", "0")),
+                        low=Decimal(item.get("stck_lwpr", "0")),
+                        close=Decimal(item.get("stck_clpr", "0")),
+                        volume=int(item.get("acml_vol", "0")),
+                        value=int(item.get("acml_tr_pbmn", "0")),
+                        interval="1d",
+                    )
+                )
+        except Exception as e:
+            logger.error("KIS get_daily_chart failed for %s: %s", stock_code, e)
+
+        return records

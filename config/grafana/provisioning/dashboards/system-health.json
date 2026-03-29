@@ -1,0 +1,138 @@
+{
+  "dashboard": {
+    "id": null,
+    "uid": "alphatrade-system",
+    "title": "AlphaTrade System Health",
+    "tags": ["alphatrade"],
+    "timezone": "Asia/Seoul",
+    "refresh": "30s",
+    "time": { "from": "now-1h", "to": "now" },
+    "panels": [
+      {
+        "id": 1,
+        "title": "HTTP Request Rate",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+        "datasource": "Prometheus",
+        "targets": [
+          {
+            "expr": "rate(http_requests_total[5m])",
+            "legendFormat": "{{method}} {{endpoint}} {{status}}"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Request Latency (p95)",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+        "datasource": "Prometheus",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))",
+            "legendFormat": "p95 latency"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": { "unit": "s" }
+        }
+      },
+      {
+        "id": 3,
+        "title": "Core Engine Up",
+        "type": "stat",
+        "gridPos": { "h": 4, "w": 4, "x": 0, "y": 8 },
+        "datasource": "Prometheus",
+        "targets": [
+          { "expr": "up{job=\"core-engine\"}", "legendFormat": "Core Engine" }
+        ],
+        "options": { "colorMode": "background", "graphMode": "none" }
+      },
+      {
+        "id": 4,
+        "title": "n8n Up",
+        "type": "stat",
+        "gridPos": { "h": 4, "w": 4, "x": 4, "y": 8 },
+        "datasource": "Prometheus",
+        "targets": [
+          { "expr": "up{job=\"n8n\"}", "legendFormat": "n8n" }
+        ],
+        "options": { "colorMode": "background", "graphMode": "none" }
+      },
+      {
+        "id": 5,
+        "title": "HTTP Error Rate",
+        "type": "timeseries",
+        "gridPos": { "h": 4, "w": 8, "x": 8, "y": 8 },
+        "datasource": "Prometheus",
+        "targets": [
+          {
+            "expr": "rate(http_requests_total{status=~\"4..|5..\"}[5m])",
+            "legendFormat": "{{status}} {{endpoint}}"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": { "color": { "fixedColor": "red", "mode": "fixed" } }
+        }
+      },
+      {
+        "id": 10,
+        "title": "Orders Total (by side & status)",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+        "datasource": "Prometheus",
+        "targets": [
+          {
+            "expr": "increase(orders_total[1h])",
+            "legendFormat": "{{side}} {{status}}"
+          }
+        ]
+      },
+      {
+        "id": 11,
+        "title": "Strategy Signals (by type)",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+        "datasource": "Prometheus",
+        "targets": [
+          {
+            "expr": "increase(signals_total[1h])",
+            "legendFormat": "{{signal}}"
+          }
+        ]
+      },
+      {
+        "id": 12,
+        "title": "Portfolio Value (KRW)",
+        "type": "stat",
+        "gridPos": { "h": 4, "w": 8, "x": 0, "y": 20 },
+        "datasource": "Prometheus",
+        "targets": [
+          {
+            "expr": "portfolio_value_krw",
+            "legendFormat": "Portfolio"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": { "unit": "currencyKRW" }
+        },
+        "options": { "colorMode": "value", "graphMode": "area" }
+      },
+      {
+        "id": 13,
+        "title": "Data Collection Ops",
+        "type": "timeseries",
+        "gridPos": { "h": 4, "w": 8, "x": 8, "y": 20 },
+        "datasource": "Prometheus",
+        "targets": [
+          {
+            "expr": "increase(data_collection_total[1h])",
+            "legendFormat": "{{source}} {{status}}"
+          }
+        ]
+      }
+    ],
+    "schemaVersion": 39
+  },
+  "overwrite": true
+}

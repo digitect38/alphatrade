@@ -1,0 +1,32 @@
+# Cloudflare Tunnel Configuration for AlphaTrade
+# Domain: alphatrade.visualfactory.ai
+#
+# Setup steps:
+# 1. brew install cloudflared
+# 2. cloudflared tunnel login
+# 3. cloudflared tunnel create alphatrade
+# 4. Copy the tunnel ID and update this file
+# 5. cloudflared tunnel route dns alphatrade alphatrade.visualfactory.ai
+# 6. cloudflared tunnel run alphatrade
+#
+# Or run via Docker (recommended):
+# docker-compose --profile tunnel up -d
+
+tunnel: TUNNEL_ID_HERE  # Replace with actual tunnel ID
+credentials-file: /etc/cloudflared/credentials.json
+
+ingress:
+  # Dashboard (React)
+  - hostname: alphatrade.visualfactory.ai
+    service: http://dashboard:80
+
+  # API (FastAPI) — /api/ prefix
+  - hostname: api.alphatrade.visualfactory.ai
+    service: http://core-engine:8000
+
+  # Grafana monitoring
+  - hostname: grafana.alphatrade.visualfactory.ai
+    service: http://grafana:3000
+
+  # Catch-all
+  - service: http_status:404

@@ -1,0 +1,247 @@
+services:
+  # ===========================================
+  # Data Layer
+  # ===========================================
+
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    container_name: alphatrade-timescaledb
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./data/timescaledb:/var/lib/postgresql/data
+      - ./config/timescaledb/init.sql:/docker-entrypoint-initdb.d/01-init.sql
+      - ./config/timescaledb/init-n8n-db.sh:/docker-entrypoint-initdb.d/02-init-n8n-db.sh
+    mem_limit: 2560m
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - alphatrade-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: alphatrade-redis
+    restart: always
+    command: redis-server --requirepass ${REDIS_PASSWORD} --maxmemory 256mb --maxmemory-policy allkeys-lru --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./data/redis:/data
+    mem_limit: 307m
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - alphatrade-net
+
+  # ===========================================
+  # Application Layer
+  # ===========================================
+
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: alphatrade-n8n
+    restart: always
+    environment:
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=timescaledb
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=n8n
+      - DB_POSTGRESDB_USER=${POSTGRES_USER}
+      - DB_POSTGRESDB_PASSWORD=${POSTGRES_PASSWORD}
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=${N8N_BASIC_AUTH_USER}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_BASIC_AUTH_PASSWORD}
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+      - GENERIC_TIMEZONE=Asia/Seoul
+      - TZ=Asia/Seoul
+    ports:
+      - "5678:5678"
+    volumes:
+      - ./data/n8n:/home/node/.n8n
+    mem_limit: 1536m
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:5678/healthz || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - alphatrade-net
+
+  core-engine:
+    build:
+      context: ./core-engine
+      dockerfile: Dockerfile
+    container_name: alphatrade-core-engine
+    restart: always
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_HOST=timescaledb
+      - POSTGRES_PORT=5432
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - KIS_APP_KEY=${KIS_APP_KEY}
+      - KIS_APP_SECRET=${KIS_APP_SECRET}
+      - KIS_ACCOUNT_NO=${KIS_ACCOUNT_NO}
+      - KIS_CANO=${KIS_CANO}
+      - KIS_ACNT_PRDT_CD=${KIS_ACNT_PRDT_CD}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
+      - TRADINGVIEW_WEBHOOK_SECRET=${TRADINGVIEW_WEBHOOK_SECRET}
+      - KAKAO_ACCESS_TOKEN=${KAKAO_ACCESS_TOKEN}
+      - API_AUTH_KEY=${API_AUTH_KEY}
+      - RATE_LIMIT_MAX=${RATE_LIMIT_MAX:-60}
+      - RATE_LIMIT_WINDOW=${RATE_LIMIT_WINDOW:-60}
+    ports:
+      - "8000:8000"
+    mem_limit: 2048m
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    networks:
+      - alphatrade-net
+
+  dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    container_name: alphatrade-dashboard
+    restart: always
+    ports:
+      - "3000:80"
+    mem_limit: 102m
+    depends_on:
+      core-engine:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - alphatrade-net
+
+  # ===========================================
+  # Monitoring Layer
+  # ===========================================
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: alphatrade-prometheus
+    restart: always
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+      - "--web.enable-lifecycle"
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./config/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./data/prometheus:/prometheus
+    mem_limit: 512m
+    depends_on:
+      core-engine:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9090/-/healthy || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - alphatrade-net
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: alphatrade-grafana
+    restart: always
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GF_SECURITY_ADMIN_USER}
+      - GF_SECURITY_ADMIN_PASSWORD=${GF_SECURITY_ADMIN_PASSWORD}
+      - GF_DATASOURCE_POSTGRES_USER=${POSTGRES_USER}
+      - GF_DATASOURCE_POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    ports:
+      - "3001:3000"
+    volumes:
+      - ./data/grafana:/var/lib/grafana
+      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+    mem_limit: 204m
+    depends_on:
+      prometheus:
+        condition: service_healthy
+      timescaledb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    networks:
+      - alphatrade-net
+
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: alphatrade-portainer
+    restart: always
+    ports:
+      - "9000:9000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./data/portainer:/data
+    mem_limit: 256m
+    networks:
+      - alphatrade-net
+
+  # ===========================================
+  # Cloudflare Tunnel (optional)
+  # ===========================================
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: alphatrade-cloudflared
+    restart: always
+    command: tunnel run
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
+    profiles:
+      - tunnel
+    depends_on:
+      - dashboard
+      - core-engine
+      - grafana
+    networks:
+      - alphatrade-net
+
+networks:
+  alphatrade-net:
+    driver: bridge
