@@ -77,7 +77,7 @@ class TestRetryAsync:
 class MockConn:
     def __init__(self):
         self._fetchrow = None
-        self._fetchval = 0
+        self._fetchval = None  # None = not found (for idempotency check)
 
     async def fetch(self, *a, **kw):
         return []
@@ -123,7 +123,8 @@ class MockAcquire:
 
 
 class MockRedis:
-    _store: dict = {}
+    def __init__(self):
+        self._store = {}
 
     async def publish(self, *a, **kw):
         return 0

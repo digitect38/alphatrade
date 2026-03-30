@@ -9,6 +9,7 @@ import redis.asyncio as aioredis
 
 from app.config import settings
 from app.execution.broker import BrokerClient
+from app.execution.order_fsm import OrderState, generate_idempotency_key, check_duplicate_order, transition_order_state
 from app.metrics import ORDERS_TOTAL
 from app.services.audit import log_event
 from app.execution.risk_manager import RiskManager
@@ -59,6 +60,11 @@ async def execute_order(
     now = datetime.now(timezone.utc)
     order_id = f"ORD-{uuid.uuid4().hex[:12].upper()}"
 
+    # -1. Idempotency check (v1.31 16.5.2)
+    idem_key = generate_idempotency_key(request.signal_id, request.stock_code, request.side)
+    if await check_duplicate_order(pool, idem_key):
+        return _build_result(order_id, request, now, status="FAILED", message=f"중복 주문 차단 (idempotency_key={idem_key})")
+
     # 0. Trading guard (kill switch, session, stale data, broker circuit breaker)
     if request.side == "BUY":  # Guards apply to new entries only
         guard = TradingGuard(pool=pool, redis=redis)
@@ -66,7 +72,7 @@ async def execute_order(
         guard_ok, guard_violations = await guard.pre_trade_check(request.stock_code, price_est * request.quantity)
         if not guard_ok:
             msg = f"거래 안전 차단: {'; '.join(guard_violations)}"
-            await _store_order(now, order_id, request, status="BLOCKED", message=msg, pool=pool)
+            await _store_order(now, order_id, request, status="BLOCKED", message=msg, pool=pool, idempotency_key=idem_key)
             return _build_result(order_id, request, now, status="BLOCKED", message=msg, risk_checks=guard_violations)
 
     portfolio_value, cash = await _get_portfolio_state(pool=pool)
@@ -81,7 +87,7 @@ async def execute_order(
     )
     if not risk_result.allowed:
         msg = f"리스크 체크 실패: {'; '.join(risk_result.violations)}"
-        await _store_order(now, order_id, request, status="FAILED", message=msg, pool=pool)
+        await _store_order(now, order_id, request, status="FAILED", message=msg, pool=pool, idempotency_key=idem_key)
         return _build_result(order_id, request, now, status="FAILED", message=msg, risk_checks=risk_result.violations)
 
     # 2. Submit to broker
@@ -93,7 +99,7 @@ async def execute_order(
         # Record broker failure for circuit breaker
         guard = TradingGuard(pool=pool, redis=redis)
         await guard.record_broker_failure()
-        await _store_order(now, order_id, request, status="FAILED", message=broker_resp.message, pool=pool)
+        await _store_order(now, order_id, request, status="FAILED", message=broker_resp.message, pool=pool, idempotency_key=idem_key)
         return _build_result(order_id, request, now, status="FAILED", message=broker_resp.message, risk_checks=risk_result.warnings)
 
     # 3. Store filled order & update positions (atomic transaction)
@@ -101,7 +107,7 @@ async def execute_order(
     filled_price = broker_resp.filled_price or request.price
     async with pool.acquire() as conn:
         async with conn.transaction():
-            await _store_order_conn(conn, now, order_id, request, status=status, filled_qty=broker_resp.filled_qty, filled_price=filled_price, message=broker_resp.message)
+            await _store_order_conn(conn, now, order_id, request, status=status, filled_qty=broker_resp.filled_qty, filled_price=filled_price, message=broker_resp.message, idempotency_key=idem_key)
             await _update_position_conn(conn, request.stock_code, request.side, broker_resp.filled_qty, filled_price or 0)
 
     # 4. Publish event
@@ -144,8 +150,12 @@ async def _get_portfolio_state(*, pool: asyncpg.Pool) -> tuple[float, float]:
 async def _store_order_conn(
     conn, time: datetime, order_id: str, request: OrderRequest, status: str,
     filled_qty: int = 0, filled_price: float | None = None, message: str = "",
+    idempotency_key: str | None = None,
 ):
     """Insert order record using an existing connection."""
+    metadata = {"message": message}
+    if idempotency_key:
+        metadata["idempotency_key"] = idempotency_key
     await conn.execute(
         """INSERT INTO orders (time, order_id, stock_code, side, order_type, quantity,
             price, filled_qty, filled_price, status, signal_id, metadata)
@@ -153,18 +163,18 @@ async def _store_order_conn(
         time, order_id, request.stock_code, request.side, request.order_type,
         request.quantity, Decimal(str(request.price)) if request.price else None,
         filled_qty, Decimal(str(filled_price)) if filled_price else None,
-        status, request.signal_id, json.dumps({"message": message}),
+        status, request.signal_id, json.dumps(metadata),
     )
 
 
 async def _store_order(
     time: datetime, order_id: str, request: OrderRequest, status: str,
     filled_qty: int = 0, filled_price: float | None = None, message: str = "",
-    *, pool: asyncpg.Pool,
+    *, pool: asyncpg.Pool, idempotency_key: str | None = None,
 ):
     """Insert order record (acquires its own connection)."""
     async with pool.acquire() as conn:
-        await _store_order_conn(conn, time, order_id, request, status, filled_qty, filled_price, message)
+        await _store_order_conn(conn, time, order_id, request, status, filled_qty, filled_price, message, idempotency_key)
 
 
 async def _update_position_conn(conn, stock_code: str, side: str, quantity: int, price: float):

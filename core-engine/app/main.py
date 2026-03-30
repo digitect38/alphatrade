@@ -49,6 +49,17 @@ async def lifespan(app: FastAPI):
     app.state.broker_client = BrokerClient(kis_client=kis)
     app.state.risk_manager = RiskManager()
 
+    # Recover inflight orders from previous run (v1.31 16.5.2)
+    try:
+        from app.execution.order_fsm import recover_inflight_orders
+        inflight = await recover_inflight_orders(db_pool)
+        if inflight:
+            import logging
+            logging.getLogger(__name__).warning("Found %d inflight orders on startup", len(inflight))
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error("Inflight order recovery failed: %s", e)
+
     yield
 
     # Shutdown
