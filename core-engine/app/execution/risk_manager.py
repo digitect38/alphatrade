@@ -5,6 +5,7 @@ import asyncpg
 
 from app.config import settings
 from app.models.execution import RiskCheckRequest, RiskCheckResult
+from app.services.audit import log_event
 
 logger = logging.getLogger(__name__)
 
@@ -65,10 +66,21 @@ class RiskManager:
             available = min(cash, portfolio_value * self.MAX_POSITION_RATIO) if portfolio_value > 0 else cash
             max_qty = int(available / price)
 
-        return RiskCheckResult(
+        result = RiskCheckResult(
             allowed=len(violations) == 0,
             violations=violations, warnings=warnings, max_quantity=max_qty,
         )
+
+        # Audit log for risk decisions (v1.31 A-6)
+        if not result.allowed:
+            await log_event(
+                pool, source="risk", event_type="risk_rejected",
+                symbol=request.stock_code,
+                payload={"side": request.side, "qty": request.quantity,
+                         "violations": violations, "warnings": warnings},
+            )
+
+        return result
 
     async def _check_buy_limits(self, request, order_cost, portfolio_value, cash, pool, violations, warnings):
         """BUY-side risk checks: per-stock, total capital, cash, concentration, invested ratio."""

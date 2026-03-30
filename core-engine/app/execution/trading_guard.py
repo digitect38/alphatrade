@@ -11,6 +11,7 @@ import asyncpg
 import redis.asyncio as aioredis
 
 from app.config import settings
+from app.services.audit import log_event
 
 logger = logging.getLogger(__name__)
 
@@ -32,15 +33,23 @@ class TradingGuard:
         val = await self.redis.get(KILL_SWITCH_KEY)
         return val == "active"
 
-    async def activate_kill_switch(self, reason: str):
+    async def activate_kill_switch(self, reason: str, operator: str = "system"):
         """Activate kill switch — blocks ALL new orders."""
         await self.redis.set(KILL_SWITCH_KEY, "active")
-        logger.critical("KILL SWITCH ACTIVATED: %s", reason)
+        logger.critical("KILL SWITCH ACTIVATED: %s (by %s)", reason, operator)
+        await log_event(
+            self.pool, source="kill_switch", event_type="activated",
+            operator_id=operator, payload={"reason": reason},
+        )
 
-    async def deactivate_kill_switch(self):
+    async def deactivate_kill_switch(self, operator: str = "operator"):
         """Deactivate kill switch — requires manual operator action."""
         await self.redis.delete(KILL_SWITCH_KEY)
-        logger.warning("Kill switch deactivated by operator")
+        logger.warning("Kill switch deactivated by %s", operator)
+        await log_event(
+            self.pool, source="kill_switch", event_type="deactivated",
+            operator_id=operator, payload={"action": "deactivated"},
+        )
 
     # === Daily Loss Auto Kill ===
 
@@ -167,9 +176,67 @@ class TradingGuard:
 
         return True, ""
 
+    # === Symbol Validation ===
+
+    async def check_symbol_exists(self, stock_code: str) -> tuple[bool, str]:
+        """Verify stock_code exists in stocks table."""
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT stock_code, stock_name FROM stocks WHERE stock_code = $1 AND is_active = TRUE",
+                stock_code,
+            )
+        if not row:
+            return False, f"종목 '{stock_code}' 미등록 또는 비활성"
+        return True, ""
+
+    # === Outlier Price Detection ===
+
+    async def check_price_sanity(self, stock_code: str, order_price: float) -> tuple[bool, str]:
+        """Detect outlier prices (>2x or <0.5x vs previous close)."""
+        if order_price <= 0:
+            return True, ""  # Skip if no price (market order)
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT close FROM ohlcv WHERE stock_code = $1 AND interval = '1d' ORDER BY time DESC LIMIT 1",
+                stock_code,
+            )
+        if not row or not row["close"]:
+            return True, ""  # No prev data to compare
+        prev_close = float(row["close"])
+        if prev_close <= 0:
+            return True, ""
+        ratio = order_price / prev_close
+        if ratio > 2.0 or ratio < 0.5:
+            return False, f"이상 가격: {order_price:,.0f} (전일 종가 {prev_close:,.0f} 대비 {ratio:.1f}배)"
+        return True, ""
+
+    # === Participation Rate ===
+
+    async def check_participation_rate(self, stock_code: str, order_value: float) -> tuple[bool, str]:
+        """Check order size vs 20-day average daily trading value."""
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                SELECT AVG(value) as avg_value
+                FROM ohlcv
+                WHERE stock_code = $1 AND interval = '1d'
+                  AND time > NOW() - INTERVAL '30 days'
+                """,
+                stock_code,
+            )
+        if not row or not row["avg_value"]:
+            return True, ""  # No data to check
+        avg_value = float(row["avg_value"])
+        if avg_value <= 0:
+            return True, ""
+        participation = order_value / avg_value
+        if participation > settings.risk_max_participation_rate:
+            return False, f"참여율 초과: {participation:.2%} > {settings.risk_max_participation_rate:.0%} (20일 평균 거래대금 {avg_value:,.0f})"
+        return True, ""
+
     # === Combined Pre-Trade Check ===
 
-    async def pre_trade_check(self, stock_code: str, order_value: float = 0) -> tuple[bool, list[str]]:
+    async def pre_trade_check(self, stock_code: str, order_value: float = 0, order_price: float = 0) -> tuple[bool, list[str]]:
         """Run ALL pre-trade safety checks. Returns (allowed, violations)."""
         violations = []
 
@@ -178,30 +245,56 @@ class TradingGuard:
             violations.append("킬 스위치 활성 상태 — 모든 신규 주문 차단")
             return False, violations
 
-        # 2. Daily loss
+        # 2. Symbol validation
+        ok, msg = await self.check_symbol_exists(stock_code)
+        if not ok:
+            violations.append(msg)
+            return False, violations
+
+        # 3. Daily loss
         ok, loss_pct = await self.check_daily_loss()
         if not ok:
             violations.append(f"일간 손실 한도 초과: {loss_pct:.2%}")
 
-        # 3. Session guard
+        # 4. Session guard
         ok, reason = self.is_trading_session()
         if not ok:
             violations.append(f"거래 시간 외: {reason}")
 
-        # 4. Stale data
+        # 5. Stale data
         ok, age = await self.check_price_freshness(stock_code)
         if not ok:
             violations.append(f"시세 데이터 오래됨: {age:.0f}초 (한도: {settings.risk_stale_price_seconds}초)")
 
-        # 5. Broker circuit breaker
+        # 6. Outlier price
+        if order_price > 0:
+            ok, msg = await self.check_price_sanity(stock_code, order_price)
+            if not ok:
+                violations.append(msg)
+
+        # 7. Broker circuit breaker
         failures = await self.get_broker_failure_count()
         if failures >= settings.risk_broker_max_failures:
             violations.append(f"브로커 연속 실패 {failures}회 — 신규 주문 차단")
 
-        # 6. Sector concentration
+        # 8. Sector concentration
         if order_value > 0:
             ok, msg = await self.check_sector_concentration(stock_code, order_value)
             if not ok:
                 violations.append(msg)
+
+        # 9. Participation rate
+        if order_value > 0:
+            ok, msg = await self.check_participation_rate(stock_code, order_value)
+            if not ok:
+                violations.append(msg)
+
+        # Log guard result to audit
+        if violations:
+            await log_event(
+                self.pool, source="trading_guard", event_type="pre_trade_blocked",
+                symbol=stock_code,
+                payload={"violations": violations, "order_value": order_value},
+            )
 
         return len(violations) == 0, violations

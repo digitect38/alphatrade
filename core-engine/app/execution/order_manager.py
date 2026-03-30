@@ -69,7 +69,7 @@ async def execute_order(
     if request.side == "BUY":  # Guards apply to new entries only
         guard = TradingGuard(pool=pool, redis=redis)
         price_est = request.price or 0
-        guard_ok, guard_violations = await guard.pre_trade_check(request.stock_code, price_est * request.quantity)
+        guard_ok, guard_violations = await guard.pre_trade_check(request.stock_code, price_est * request.quantity, price_est)
         if not guard_ok:
             msg = f"거래 안전 차단: {'; '.join(guard_violations)}"
             await _store_order(now, order_id, request, status="BLOCKED", message=msg, pool=pool, idempotency_key=idem_key)

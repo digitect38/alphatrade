@@ -117,3 +117,83 @@ async def api_kill_switch_status(guard: TradingGuard = Depends(get_trading_guard
         "broker_failures": broker_failures,
         "broker_limit": settings.risk_broker_max_failures,
     }
+
+
+@router.post("/reconcile")
+async def api_eod_reconcile(
+    pool: asyncpg.Pool = Depends(get_db),
+    notifier: NotificationService = Depends(get_notifier),
+):
+    """End-of-day broker reconciliation (v1.31 A-3).
+
+    Compares internal positions/orders with expected state.
+    Should be called daily after market close (via n8n WF or manually).
+    """
+    from app.services.audit import log_event
+
+    mismatches = []
+    async with pool.acquire() as conn:
+        # 1. Check for orphaned orders (SUBMITTED/ACKED but not resolved)
+        orphaned = await conn.fetch(
+            """
+            SELECT order_id, stock_code, side, quantity, status
+            FROM orders
+            WHERE status IN ('SUBMITTED', 'ACKED', 'PARTIALLY_FILLED', 'UNKNOWN')
+              AND time > CURRENT_DATE - INTERVAL '1 day'
+            """
+        )
+        for o in orphaned:
+            mismatches.append({
+                "type": "orphaned_order",
+                "order_id": o["order_id"],
+                "stock_code": o["stock_code"],
+                "status": o["status"],
+            })
+
+        # 2. Check positions with zero or negative quantity
+        bad_positions = await conn.fetch(
+            "SELECT stock_code, quantity, avg_price FROM portfolio_positions WHERE quantity <= 0"
+        )
+        for p in bad_positions:
+            mismatches.append({
+                "type": "invalid_position",
+                "stock_code": p["stock_code"],
+                "quantity": p["quantity"],
+            })
+
+        # 3. Check cash consistency (snapshot vs computed)
+        snapshot = await conn.fetchrow(
+            "SELECT total_value, cash, invested FROM portfolio_snapshots ORDER BY time DESC LIMIT 1"
+        )
+        positions = await conn.fetch(
+            "SELECT SUM(quantity * avg_price) as total_invested FROM portfolio_positions WHERE quantity > 0"
+        )
+        if snapshot and positions:
+            snap_invested = float(snapshot["invested"])
+            actual_invested = float(positions[0]["total_invested"] or 0)
+            diff = abs(snap_invested - actual_invested)
+            if diff > 1000:  # 1000원 이상 차이
+                mismatches.append({
+                    "type": "cash_mismatch",
+                    "snapshot_invested": snap_invested,
+                    "actual_invested": actual_invested,
+                    "diff": diff,
+                })
+
+    # Log reconciliation result
+    await log_event(
+        pool, source="reconciliation", event_type="eod_reconcile",
+        payload={"mismatches": len(mismatches), "details": mismatches},
+    )
+
+    if mismatches:
+        alert_msg = f"⚠️ [EOD 조정] {len(mismatches)}건 불일치 발견\n"
+        for m in mismatches[:5]:
+            alert_msg += f"  • {m['type']}: {m.get('stock_code', '')} {m.get('status', '')}\n"
+        await notifier.alert(alert_msg)
+
+    return {
+        "status": "completed",
+        "mismatches": len(mismatches),
+        "details": mismatches,
+    }

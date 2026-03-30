@@ -8,6 +8,7 @@ import redis.asyncio as aioredis
 
 from app.analysis.sentiment import analyze_stock_sentiment
 from app.metrics import SIGNALS_TOTAL
+from app.services.audit import log_event
 from app.analysis.technical import compute_technical
 from app.analysis.volume import analyze_volume
 from app.models.strategy import StrategyComponent, StrategySignalResult
@@ -124,5 +125,14 @@ async def generate_signal(
         )
     except Exception:
         pass
+
+    # Audit log for strategy decisions (v1.31 A-6)
+    if signal != "HOLD":
+        await log_event(
+            pool, source="strategy", event_type=f"signal_{signal.lower()}",
+            symbol=stock_code, strategy_id="ensemble",
+            payload={"signal": signal, "strength": strength, "score": ensemble_score,
+                     "components": {c.name: c.score for c in components}},
+        )
 
     return result
