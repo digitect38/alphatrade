@@ -12,6 +12,12 @@ import redis.asyncio as aioredis
 
 from app.config import settings
 from app.services.audit import log_event
+from app.utils.market_calendar import (
+    KST,
+    MarketSession,
+    get_current_session,
+    is_trading_day,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -78,27 +84,83 @@ class TradingGuard:
 
     # === Session Guard ===
 
-    def is_trading_session(self) -> tuple[bool, str]:
+    def is_trading_session(self) -> tuple[bool, str, dict]:
         """Check if current time is within allowed trading session.
-        KST 09:05 ~ 15:10 (장 개시 5분 후 ~ 마감 20분 전)
+
+        Uses full KOSPI/KOSDAQ market calendar with holiday awareness.
+        - New entries allowed only during REGULAR session window:
+          09:00 + open_delay ~ 15:20 - close_buffer
+        - PRE_MARKET / AFTER_HOURS: monitoring only, no new entries.
+
+        Returns:
+            (allowed, reason, session_info)
         """
-        now_kst = datetime.now(timezone(timedelta(hours=9)))
+        now_kst = datetime.now(KST)
+        session, description = get_current_session(now_kst)
         current_time = now_kst.time()
-        weekday = now_kst.weekday()
 
-        # Weekend
-        if weekday >= 5:
-            return False, "주말 (장 휴무)"
+        session_info = {
+            "session": session.value,
+            "description": description,
+            "kst_time": now_kst.strftime("%H:%M:%S"),
+            "is_trading_day": is_trading_day(now_kst.date()),
+        }
 
-        open_time = time(9, settings.risk_session_open_delay_min)
-        close_time = time(15, 30 - settings.risk_session_close_buffer_min)
+        # Non-trading day or CLOSED
+        if session == MarketSession.CLOSED:
+            return False, description, session_info
 
-        if current_time < open_time:
-            return False, f"장 개시 대기 (09:{settings.risk_session_open_delay_min:02d} 이후 허용)"
-        if current_time > close_time:
-            return False, f"장 마감 임박 (15:{30 - settings.risk_session_close_buffer_min:02d} 이전까지 허용)"
+        # PRE_MARKET / OPENING_AUCTION: block new entries, allow monitoring
+        if session in (MarketSession.PRE_MARKET, MarketSession.OPENING_AUCTION):
+            return (
+                False,
+                f"{description} — 신규 진입 불가 (모니터링만 허용)",
+                session_info,
+            )
 
-        return True, "정상 거래 시간"
+        # REGULAR session: apply open delay and close buffer
+        if session == MarketSession.REGULAR:
+            open_with_delay = time(9, settings.risk_session_open_delay_min)
+            # close_buffer minutes before regular close (15:20)
+            close_buffer_hour = 15
+            close_buffer_min = 20 - settings.risk_session_close_buffer_min
+            if close_buffer_min < 0:
+                close_buffer_hour = 14
+                close_buffer_min = 60 + close_buffer_min
+            close_with_buffer = time(close_buffer_hour, close_buffer_min)
+
+            if current_time < open_with_delay:
+                return (
+                    False,
+                    f"장 개시 후 안정화 대기 (09:{settings.risk_session_open_delay_min:02d} 이후 허용)",
+                    session_info,
+                )
+            if current_time >= close_with_buffer:
+                return (
+                    False,
+                    f"장 마감 임박 — 신규 진입 차단 ({close_buffer_hour}:{close_buffer_min:02d} 이전까지 허용)",
+                    session_info,
+                )
+
+            return True, "정규장 거래 허용", session_info
+
+        # CLOSING_AUCTION: block new entries
+        if session == MarketSession.CLOSING_AUCTION:
+            return (
+                False,
+                f"{description} — 신규 진입 불가",
+                session_info,
+            )
+
+        # AFTER_HOURS: block new entries, allow monitoring
+        if session == MarketSession.AFTER_HOURS:
+            return (
+                False,
+                f"{description} — 신규 진입 불가 (모니터링만 허용)",
+                session_info,
+            )
+
+        return False, "알 수 없는 세션 상태", session_info
 
     # === Stale Data Gate ===
 
@@ -257,7 +319,7 @@ class TradingGuard:
             violations.append(f"일간 손실 한도 초과: {loss_pct:.2%}")
 
         # 4. Session guard
-        ok, reason = self.is_trading_session()
+        ok, reason, _session_info = self.is_trading_session()
         if not ok:
             violations.append(f"거래 시간 외: {reason}")
 

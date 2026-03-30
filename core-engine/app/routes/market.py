@@ -11,6 +11,12 @@ import redis.asyncio as aioredis
 from app.deps import get_db, get_redis, get_kis_client
 from app.services.kis_api import KISClient
 from app.services.market_state import MarketStateCache
+from app.utils.market_calendar import (
+    KST,
+    get_current_session,
+    get_session_times,
+    next_session_open,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -229,3 +235,23 @@ async def api_market_movers(
             m["sector"] = info.get("sector", "")
 
     return {"count": len(movers), "movers": movers}
+
+
+@router.get("/session")
+async def api_market_session():
+    """Get current market session, next open time, and today's full schedule.
+
+    No DB or Redis required — pure calendar/clock logic.
+    """
+    now = datetime.now(KST)
+    session, description = get_current_session(now)
+    next_open = next_session_open(now)
+    schedule = get_session_times(now.date())
+
+    return {
+        "current_session": session.value,
+        "description": description,
+        "kst_time": now.strftime("%Y-%m-%d %H:%M:%S"),
+        "next_open": next_open.isoformat(),
+        "today": schedule,
+    }

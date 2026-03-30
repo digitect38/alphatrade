@@ -276,6 +276,31 @@ KIS WebSocket (wss://) ──→ 백그라운드 태스크 ──→ Redis Pub/S
 | 5 | ���론트엔드 `useWebSocket` 훅 | 실시간 가격 반영 |
 | 6 | config 확장 | `KIS_WEBSOCKET_URL`, 구독 코드 추가 |
 
+### 6.4 장 운영시간 인식 (Market Session Awareness)
+
+KOSPI/KOSDAQ 장 운영시간은 시스템 전반에 걸쳐 매매 허용/차단, 스캐너 스케줄링, 데이터 수집 타이밍을 결정한다.
+
+#### 세션 구분 (KST 기준)
+
+| 세션 | 시간 | 설명 |
+|------|------|------|
+| 장전 시간외 (Pre-market) | 08:00 - 08:30 | 전일 종가 기준 ±10% 단일가 매매 |
+| 동시호가 (Opening auction) | 08:30 - 09:00 | 개장 단일가 결정 |
+| 정규장 (Regular) | 09:00 - 15:20 | 접속매매 (연속 매매) |
+| 장마감 동시호가 (Closing auction) | 15:20 - 15:30 | 종가 결정 단일가 |
+| 장후 시간외 (After-hours) | 15:40 - 16:00 | 당일 종가 기준 단일가 매매 |
+
+#### 시스템 활용 방식
+
+- **TradingGuard (세션 가드)**: 정규장 09:05 ~ 15:00 사이에만 신규 진입 허용 (장 개시 후 5분, 장 마감 전 20분 전 차단)
+- **Morning Scanner**: 08:30 ~ 09:00 동시호가 데이터를 기반으로 갭/거래량 급증 종목 탐색
+- **n8n 워크플로우 스케줄**: 정규장 시작(09:00) 전후로 데이터 수집 및 분석 워크플로우 트리거
+- **KIS WebSocket 구독**: 08:30 연결 시작, 16:00 이후 종료
+- **EOD 조정(Reconciliation)**: 15:30 장 마감 후 브로커 잔고 대조 실행
+- **API 엔드포인트**: `GET /market/session` — 현재 세션 상태 조회 (pre_market, opening_auction, regular, closing_auction, after_hours, closed)
+
+자세한 장 운영시간 및 한국 주식시장 휴장일은 `docs/market-calendar.md` 참조.
+
 ---
 
 ## 7. 잔여 과제 (우선순위)

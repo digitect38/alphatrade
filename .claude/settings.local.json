@@ -77,7 +77,8 @@
       "Bash(./scripts/backup.sh full:*)",
       "Bash(./scripts/backup.sh status:*)",
       "Bash(grep -v \"^$\")",
-      "Bash(make test:*)"
+      "Bash(make test:*)",
+      "Bash(ls:*)"
     ]
   }
 }

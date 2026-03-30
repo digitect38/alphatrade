@@ -69,6 +69,12 @@ class Settings(BaseSettings):
     risk_session_open_delay_min: int = 5  # 장 개시 후 진입 대기 (분)
     risk_session_close_buffer_min: int = 20  # 장 마감 전 진입 차단 (분)
 
+    # --- Market Hours ---
+    market_timezone: str = "Asia/Seoul"
+    market_open_time: str = "09:00"  # 정규장 시작
+    market_close_time: str = "15:30"  # 종가 동시호가 종료
+    market_regular_close: str = "15:20"  # 정규장 종료 (종가 동시호가 시작)
+
     # --- Strategy ---
     strategy_weight_momentum: float = 0.30
     strategy_weight_mean_reversion: float = 0.25

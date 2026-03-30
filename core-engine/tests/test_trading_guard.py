@@ -105,34 +105,40 @@ class TestKillSwitch:
 
 
 class TestSessionGuard:
+    def _patch_both(self, dt_val):
+        """Patch datetime.now in both market_calendar and trading_guard."""
+        import contextlib
+        @contextlib.contextmanager
+        def ctx():
+            mock1 = MagicMock(wraps=datetime)
+            mock1.now.return_value = dt_val
+            mock1.side_effect = lambda *a, **kw: datetime(*a, **kw)
+            mock2 = MagicMock(wraps=datetime)
+            mock2.now.return_value = dt_val
+            mock2.side_effect = lambda *a, **kw: datetime(*a, **kw)
+            with patch("app.utils.market_calendar.datetime", mock1), patch("app.execution.trading_guard.datetime", mock2):
+                yield
+        return ctx()
+
     def test_weekend_blocked(self, guard):
-        # Patch to Saturday
-        with patch("app.execution.trading_guard.datetime") as mock_dt:
-            mock_dt.now.return_value = datetime(2026, 3, 28, 11, 0, tzinfo=timezone(timedelta(hours=9)))
-            mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
-            ok, msg = guard.is_trading_session()
+        with self._patch_both(datetime(2026, 3, 28, 11, 0, tzinfo=timezone(timedelta(hours=9)))):
+            ok, msg, info = guard.is_trading_session()
             assert ok is False
-            assert "주말" in msg
+            assert any(kw in msg for kw in ("주말", "휴장", "CLOSED"))
 
     def test_before_open_blocked(self, guard):
-        with patch("app.execution.trading_guard.datetime") as mock_dt:
-            mock_dt.now.return_value = datetime(2026, 3, 30, 8, 30, tzinfo=timezone(timedelta(hours=9)))
-            mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
-            ok, msg = guard.is_trading_session()
+        with self._patch_both(datetime(2026, 3, 30, 8, 30, tzinfo=timezone(timedelta(hours=9)))):
+            ok, msg, info = guard.is_trading_session()
             assert ok is False
 
     def test_after_close_blocked(self, guard):
-        with patch("app.execution.trading_guard.datetime") as mock_dt:
-            mock_dt.now.return_value = datetime(2026, 3, 30, 15, 20, tzinfo=timezone(timedelta(hours=9)))
-            mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
-            ok, msg = guard.is_trading_session()
+        with self._patch_both(datetime(2026, 3, 30, 15, 25, tzinfo=timezone(timedelta(hours=9)))):
+            ok, msg, info = guard.is_trading_session()
             assert ok is False
 
     def test_during_session_allowed(self, guard):
-        with patch("app.execution.trading_guard.datetime") as mock_dt:
-            mock_dt.now.return_value = datetime(2026, 3, 30, 10, 30, tzinfo=timezone(timedelta(hours=9)))
-            mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
-            ok, msg = guard.is_trading_session()
+        with self._patch_both(datetime(2026, 3, 30, 10, 30, tzinfo=timezone(timedelta(hours=9)))):
+            ok, msg, info = guard.is_trading_session()
             assert ok is True
 
 

@@ -107,13 +107,13 @@ async def api_kill_switch_status(guard: TradingGuard = Depends(get_trading_guard
     """Get current kill switch and trading guard status."""
     active = await guard.is_kill_switch_active()
     _, daily_loss = await guard.check_daily_loss()
-    session_ok, session_msg = guard.is_trading_session()
+    session_ok, session_msg, session_info = guard.is_trading_session()
     broker_failures = await guard.get_broker_failure_count()
 
     return {
         "kill_switch": "active" if active else "inactive",
         "daily_loss_pct": round(daily_loss * 100, 2),
-        "session": {"allowed": session_ok, "message": session_msg},
+        "session": {"allowed": session_ok, "message": session_msg, **session_info},
         "broker_failures": broker_failures,
         "broker_limit": settings.risk_broker_max_failures,
     }
