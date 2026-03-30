@@ -45,14 +45,15 @@ export default function OrdersPage({ t: _t }: { t: (k: string) => string }) {
             value={stockCode}
             onChange={(code) => setStockCode(code)}
             placeholder={_t("common.placeholder.stockCode")}
+            t={_t}
           />
           <select
             value={side}
             onChange={(e) => setSide(e.target.value as "BUY" | "SELL")}
             className="select"
           >
-            <option value="BUY">BUY</option>
-            <option value="SELL">SELL</option>
+            <option value="BUY">{_t("signal.buy")}</option>
+            <option value="SELL">{_t("signal.sell")}</option>
           </select>
           <input
             type="number"
@@ -78,7 +79,7 @@ export default function OrdersPage({ t: _t }: { t: (k: string) => string }) {
         )}
       </div>
 
-      <OrderHistoryComponent orders={orders} />
+      <OrderHistoryComponent orders={orders} t={_t} />
     </div>
   );
 }

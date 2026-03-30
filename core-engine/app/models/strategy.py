@@ -57,6 +57,7 @@ class BacktestTrade(BaseModel):
     price: float
     quantity: int
     pnl: float | None = None
+    holding_bars: int | None = None
 
 
 class BacktestResult(BaseModel):
@@ -64,11 +65,17 @@ class BacktestResult(BaseModel):
     strategy: str
     initial_capital: float
     final_capital: float
+    period_bars: int = 0
     total_return: float  # %
+    benchmark_return: float | None = None
     annual_return: float | None = None
     max_drawdown: float  # %
     sharpe_ratio: float | None = None
     win_rate: float  # %
+    profit_factor: float | None = None
+    avg_trade_pnl: float | None = None
+    avg_holding_bars: float | None = None
+    max_consecutive_losses: int = 0
     total_trades: int
     trades: list[BacktestTrade] = []
     equity_curve: list[float] = []

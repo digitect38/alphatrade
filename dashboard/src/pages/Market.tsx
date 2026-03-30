@@ -136,7 +136,7 @@ export default function MarketPage({ t }: { t: (k: string) => string }) {
                     <td>
                       <span className="font-bold">{s.stock_name}</span>
                       <span className="text-secondary" style={{ fontSize: "11px", marginLeft: "6px" }}>{s.stock_code}</span>
-                      {s.stale && <span className="text-warning" style={{ fontSize: "10px", marginLeft: "4px" }}>stale</span>}
+                      {s.stale && <span className="text-warning" style={{ fontSize: "10px", marginLeft: "4px" }}>{t("market.stale")}</span>}
                     </td>
                     <td className="text-secondary" style={{ fontSize: "12px" }}>{s.sector}</td>
                     <td className="text-right font-bold">

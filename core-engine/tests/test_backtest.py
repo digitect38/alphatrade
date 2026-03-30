@@ -6,8 +6,10 @@
 import pytest
 import numpy as np
 import pandas as pd
+from datetime import datetime
 
-from app.strategy.backtest import _generate_backtest_signals, _simulate_trades
+from app.strategy.backtest import _generate_backtest_signals, _is_entry_bar_allowed, _simulate_trades
+from app.utils.market_calendar import KST
 
 
 def _make_df(n=60, base_price=60000, trend=0):
@@ -87,8 +89,9 @@ class TestSimulateTrades:
         signals = pd.Series(0, index=df.index)
         signals.iloc[0] = 1  # buy on first day
         trades, equity = _simulate_trades(df, signals, 10_000_000)
-        assert len(trades) == 1
+        assert len(trades) == 2
         assert trades[0].action == "BUY"
+        assert trades[1].action == "SELL"
         assert trades[0].quantity > 0
 
     def test_buy_then_sell(self):
@@ -141,3 +144,18 @@ class TestSimulateTrades:
         signals = _generate_backtest_signals(df, "ensemble")
         _, equity = _simulate_trades(df, signals, 10_000_000)
         assert all(e >= 0 for e in equity)
+
+    def test_intraday_entry_blocked_before_open_delay(self):
+        df = pd.DataFrame([
+            {"time": pd.Timestamp("2026-03-31 09:00:00", tz=KST), "open": 10000, "high": 10100, "low": 9900, "close": 10050, "volume": 100000},
+            {"time": pd.Timestamp("2026-03-31 09:01:00", tz=KST), "open": 10050, "high": 10150, "low": 10000, "close": 10100, "volume": 110000},
+            {"time": pd.Timestamp("2026-03-31 09:02:00", tz=KST), "open": 10100, "high": 10150, "low": 10050, "close": 10120, "volume": 120000},
+        ])
+        signals = pd.Series([1, 0, 0], index=df.index)
+        trades, _ = _simulate_trades(df, signals, 1_000_000, interval="1m")
+        assert len(trades) == 0
+
+    def test_entry_bar_allowed_during_regular_window(self):
+        assert _is_entry_bar_allowed(datetime(2026, 3, 31, 9, 10, tzinfo=KST), "1m") is True
+        assert _is_entry_bar_allowed(datetime(2026, 3, 31, 9, 2, tzinfo=KST), "1m") is False
+        assert _is_entry_bar_allowed(datetime(2026, 3, 31, 15, 5, tzinfo=KST), "1m") is False

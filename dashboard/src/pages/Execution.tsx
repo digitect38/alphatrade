@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { apiGet, apiPost } from "../hooks/useApi";
+import { orderStatusLabel } from "../lib/labels";
 
 interface Order {
   order_id: string;
@@ -71,10 +72,10 @@ export default function ExecutionPage({ t: _t }: { t: (k: string) => string }) {
       <div className="card flex gap-md items-center flex-wrap">
         <div className="flex gap-sm">
           {[
-            { key: "all", label: `All (${orders.length})` },
-            { key: "active", label: `Active (${activeCnt})` },
-            { key: "issues", label: `Issues (${issueCnt})` },
-            { key: "FILLED", label: "Filled" },
+            { key: "all", label: `${_t("exec.all")} (${orders.length})` },
+            { key: "active", label: `${_t("exec.active")} (${activeCnt})` },
+            { key: "issues", label: `${_t("exec.issues")} (${issueCnt})` },
+            { key: "FILLED", label: _t("exec.filled") },
           ].map((f) => (
             <button
               key={f.key}
@@ -86,9 +87,9 @@ export default function ExecutionPage({ t: _t }: { t: (k: string) => string }) {
             </button>
           ))}
         </div>
-        <button className="btn btn-sm btn-primary ml-auto" onClick={loadOrders}>Refresh</button>
+        <button className="btn btn-sm btn-primary ml-auto" onClick={loadOrders}>{_t("exec.refresh")}</button>
         <button className="btn btn-sm" style={{ background: "var(--color-accent-amber)", color: "#fff" }} onClick={runReconcile} disabled={reconciling}>
-          {reconciling ? "Reconciling..." : "EOD Reconcile"}
+          {reconciling ? _t("exec.reconciling") : _t("exec.eodReconcile")}
         </button>
       </div>
 
@@ -97,31 +98,31 @@ export default function ExecutionPage({ t: _t }: { t: (k: string) => string }) {
         <table className="data-table">
           <thead>
             <tr>
-              <th>Status</th>
-              <th>Order ID</th>
-              <th>Time</th>
-              <th>Code</th>
-              <th>Side</th>
-              <th className="text-right">Qty</th>
-              <th className="text-right">Filled</th>
-              <th className="text-right">Price</th>
-              <th className="text-right">Slippage</th>
+              <th>{_t("th.status")}</th>
+              <th>{_t("exec.orderId")}</th>
+              <th>{_t("th.time")}</th>
+              <th>{_t("th.code")}</th>
+              <th>{_t("th.side")}</th>
+              <th className="text-right">{_t("th.qty")}</th>
+              <th className="text-right">{_t("exec.filledQty")}</th>
+              <th className="text-right">{_t("th.price")}</th>
+              <th className="text-right">{_t("exec.slippage")}</th>
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 && (
-              <tr><td colSpan={9} className="text-center text-muted" style={{ padding: "20px" }}>No orders</td></tr>
+              <tr><td colSpan={9} className="text-center text-muted" style={{ padding: "20px" }}>{_t("exec.noOrders")}</td></tr>
             )}
             {filtered.map((o) => (
               <tr key={o.order_id}>
                 <td>
                   <span>{STATUS_BADGES[o.status] || "?"}</span>
-                  <span className={`font-heavy ${STATUS_COLORS[o.status] || ""}`} style={{ marginLeft: "4px" }}>{o.status}</span>
+                  <span className={`font-heavy ${STATUS_COLORS[o.status] || ""}`} style={{ marginLeft: "4px" }}>{orderStatusLabel(o.status, _t)}</span>
                 </td>
                 <td style={{ fontSize: "11px", fontFamily: "monospace" }}>{o.order_id}</td>
                 <td style={{ fontSize: "11px" }}>{new Date(o.time).toLocaleString("ko-KR")}</td>
                 <td className="font-bold">{o.stock_code}</td>
-                <td className={o.side === "BUY" ? "text-up font-heavy" : "text-down font-heavy"}>{o.side}</td>
+                <td className={o.side === "BUY" ? "text-up font-heavy" : "text-down font-heavy"}>{_t(o.side === "BUY" ? "signal.buy" : "signal.sell")}</td>
                 <td className="text-right">{o.quantity}</td>
                 <td className="text-right">{o.filled_qty}/{o.quantity}</td>
                 <td className="text-right">{o.filled_price ? o.filled_price.toLocaleString() : "-"}</td>
@@ -135,7 +136,7 @@ export default function ExecutionPage({ t: _t }: { t: (k: string) => string }) {
       {/* Reconciliation Result */}
       {reconcileResult && (
         <div className="card">
-          <h3 className="card-title">Reconciliation Result</h3>
+          <h3 className="card-title">{_t("exec.reconciliationResult")}</h3>
           <pre style={{ fontSize: "12px", overflow: "auto", maxHeight: "200px", background: "#f5f5f5", padding: "12px", borderRadius: "6px" }}>
             {JSON.stringify(reconcileResult, null, 2)}
           </pre>

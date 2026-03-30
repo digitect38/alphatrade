@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { apiGet, apiPost } from "../hooks/useApi";
+import { eventTypeLabel, orderStatusLabel } from "../lib/labels";
 import type { OrderHistoryItem } from "../types";
 
 interface TrendPoint {
@@ -246,12 +247,12 @@ export default function TrendPage({ t }: { t: (k: string) => string }) {
     const catalystSectors = sectorIntel.filter((sector) => sector.catalystCount > 0).length;
     const tradeable = sectorIntel.filter((sector) => sector.candidateCount > sector.blockedCount && sector.candidateCount > 0).length;
     return [
-      { title: "Active Sectors", value: active, detail: `${sectorIntel.length} total tracked`, tone: active > 0 ? "danger" : "neutral" },
-      { title: "Accelerating", value: accelerating, detail: "Strong cumulative follow-through", tone: accelerating > 0 ? "info" : "neutral" },
-      { title: "Catalyst Sectors", value: catalystSectors, detail: "Fresh event concentration", tone: catalystSectors > 0 ? "warning" : "neutral" },
-      { title: "Tradeable", value: tradeable, detail: "Contains eligible symbols", tone: tradeable > 0 ? "success" : "neutral" },
+      { title: t("trend.activeSectors"), value: active, detail: `${sectorIntel.length} ${t("trend.totalTracked")}`, tone: active > 0 ? "danger" : "neutral" },
+      { title: t("trend.accelerating"), value: accelerating, detail: t("trend.strongFollowThrough"), tone: accelerating > 0 ? "info" : "neutral" },
+      { title: t("trend.catalystSectors"), value: catalystSectors, detail: t("trend.freshEventConcentration"), tone: catalystSectors > 0 ? "warning" : "neutral" },
+      { title: t("trend.tradeableTitle"), value: tradeable, detail: t("trend.containsEligible"), tone: tradeable > 0 ? "success" : "neutral" },
     ];
-  }, [sectorIntel]);
+  }, [sectorIntel, t]);
 
   const breadthSummary = useMemo(() => {
     const positive = sectorIntel.filter((sector) => sector.breadthScore > 0).length;
@@ -263,7 +264,7 @@ export default function TrendPage({ t }: { t: (k: string) => string }) {
       negative,
       strongest: strongest?.sector || "-",
       weakest: weakest?.sector || "-",
-      tone: positive > negative + 3 ? "Risk-On" : negative > positive + 3 ? "Risk-Off" : "Mixed",
+      tone: positive > negative + 3 ? t("trend.riskOn") : negative > positive + 3 ? t("trend.riskOff") : t("trend.mixed"),
     };
   }, [sectorIntel]);
 
@@ -285,10 +286,10 @@ export default function TrendPage({ t }: { t: (k: string) => string }) {
         <div className="card trend-intel-panel">
           <div className="trend-intel-panel-header">
             <div>
-              <h3 className="card-title">Priority Sectors</h3>
-              <p className="trend-intel-panel-subtitle">Ranked by move strength, breadth, catalyst density, and candidate relevance.</p>
+              <h3 className="card-title">{t("trend.prioritySectorsTitle")}</h3>
+              <p className="trend-intel-panel-subtitle">{t("trend.prioritySectorsSub")}</p>
             </div>
-            <span className="text-secondary">{prioritySectors.length} promoted</span>
+            <span className="text-secondary">{prioritySectors.length} {t("trend.promoted")}</span>
           </div>
           <div className="trend-sector-card-list">
             {prioritySectors.map((sector, index) => (
@@ -308,7 +309,7 @@ export default function TrendPage({ t }: { t: (k: string) => string }) {
                 </div>
                 <div className="trend-sector-metrics">
                   <span>cum {formatSigned(sector.cumulativeReturn)}%</span>
-                  <span>{sector.stockCount} stocks</span>
+                  <span>{sector.stockCount} {t("common.stocks")}</span>
                   <span>{sector.positiveBreadth} up / {sector.negativeBreadth} down</span>
                 </div>
                 <div className="trend-sector-badges">
@@ -332,12 +333,12 @@ export default function TrendPage({ t }: { t: (k: string) => string }) {
         <div className="card trend-intel-panel">
           <div className="trend-intel-panel-header">
             <div>
-              <h3 className="card-title">Sector Alerts</h3>
-              <p className="trend-intel-panel-subtitle">Fresh catalysts, blocked setups, and sectors moving without usable structure.</p>
+              <h3 className="card-title">{t("trend.sectorAlertsTitle")}</h3>
+              <p className="trend-intel-panel-subtitle">{t("trend.sectorAlertsSub")}</p>
             </div>
           </div>
           <div className="trend-alert-list">
-            {sectorAlerts.length === 0 && <div className="trend-empty">No notable sector alerts.</div>}
+            {sectorAlerts.length === 0 && <div className="trend-empty">{t("trend.noSectorAlerts")}</div>}
             {sectorAlerts.map((alert) => (
               <div key={`${alert.title}-${alert.summary}`} className={`trend-alert-item tone-${alert.tone}`}>
                 <div className="trend-alert-title">{alert.title}</div>
@@ -350,23 +351,23 @@ export default function TrendPage({ t }: { t: (k: string) => string }) {
 
       <section className="card trend-breadth-strip">
         <div className="trend-breadth-item">
-          <span className="trend-breadth-label">Market Tone</span>
+          <span className="trend-breadth-label">{t("trend.marketTone")}</span>
           <span className="trend-breadth-value">{breadthSummary.tone}</span>
         </div>
         <div className="trend-breadth-item">
-          <span className="trend-breadth-label">Positive Sectors</span>
+          <span className="trend-breadth-label">{t("trend.positiveSectors")}</span>
           <span className="trend-breadth-value">{breadthSummary.positive}</span>
         </div>
         <div className="trend-breadth-item">
-          <span className="trend-breadth-label">Negative Sectors</span>
+          <span className="trend-breadth-label">{t("trend.negativeSectors")}</span>
           <span className="trend-breadth-value">{breadthSummary.negative}</span>
         </div>
         <div className="trend-breadth-item">
-          <span className="trend-breadth-label">Strongest Breadth</span>
+          <span className="trend-breadth-label">{t("trend.strongestBreadth")}</span>
           <span className="trend-breadth-value">{breadthSummary.strongest}</span>
         </div>
         <div className="trend-breadth-item">
-          <span className="trend-breadth-label">Weakest Breadth</span>
+          <span className="trend-breadth-label">{t("trend.weakestBreadth")}</span>
           <span className="trend-breadth-value">{breadthSummary.weakest}</span>
         </div>
       </section>
@@ -375,33 +376,33 @@ export default function TrendPage({ t }: { t: (k: string) => string }) {
         <div className="card trend-intel-panel">
           <div className="trend-intel-panel-header">
             <div>
-              <h3 className="card-title">Selected Sector Detail</h3>
-              <p className="trend-intel-panel-subtitle">Trend context and breadth for the sector you selected.</p>
+              <h3 className="card-title">{t("trend.selectedSectorDetail")}</h3>
+              <p className="trend-intel-panel-subtitle">{t("trend.selectedSectorDetailSub")}</p>
             </div>
             <span className="text-secondary">{selectedIntel?.sector || "-"}</span>
           </div>
-          {!selectedIntel && <div className="trend-empty">Select a sector to inspect.</div>}
+          {!selectedIntel && <div className="trend-empty">{t("trend.selectSector")}</div>}
           {selectedIntel && (
             <div className="trend-detail-layout">
               <div className="trend-detail-metrics">
                 <div className="trend-detail-card">
-                  <div className="trend-detail-label">Average Move</div>
+                  <div className="trend-detail-label">{t("trend.averageMove")}</div>
                   <div className={selectedIntel.avgChange >= 0 ? "trend-detail-value text-up" : "trend-detail-value text-down"}>
                     {formatSigned(selectedIntel.avgChange)}%
                   </div>
                 </div>
                 <div className="trend-detail-card">
-                  <div className="trend-detail-label">Cumulative</div>
+                  <div className="trend-detail-label">{t("trend.cumulative")}</div>
                   <div className={selectedIntel.cumulativeReturn >= 0 ? "trend-detail-value text-up" : "trend-detail-value text-down"}>
                     {formatSigned(selectedIntel.cumulativeReturn)}%
                   </div>
                 </div>
                 <div className="trend-detail-card">
-                  <div className="trend-detail-label">Breadth</div>
+                  <div className="trend-detail-label">{t("trend.breadth")}</div>
                   <div className="trend-detail-value">{selectedIntel.positiveBreadth}:{selectedIntel.negativeBreadth}</div>
                 </div>
                 <div className="trend-detail-card">
-                  <div className="trend-detail-label">Catalysts</div>
+                  <div className="trend-detail-label">{t("trend.catalysts")}</div>
                   <div className="trend-detail-value">{selectedIntel.catalystCount}</div>
                 </div>
               </div>
@@ -423,7 +424,7 @@ export default function TrendPage({ t }: { t: (k: string) => string }) {
                     </AreaChart>
                   </ResponsiveContainer>
                 ) : (
-                  <div className="trend-empty">No trend history available.</div>
+                  <div className="trend-empty">{t("trend.noHistory")}</div>
                 )}
               </div>
 
@@ -437,13 +438,13 @@ export default function TrendPage({ t }: { t: (k: string) => string }) {
         <div className="card trend-intel-panel">
           <div className="trend-intel-panel-header">
             <div>
-              <h3 className="card-title">Sector Candidates</h3>
-              <p className="trend-intel-panel-subtitle">Symbols in the selected sector, connected to catalysts and execution state.</p>
+              <h3 className="card-title">{t("trend.sectorCandidates")}</h3>
+              <p className="trend-intel-panel-subtitle">{t("trend.sectorCandidatesSub")}</p>
             </div>
-            <span className="text-secondary">{selectedStocks.length} visible</span>
+            <span className="text-secondary">{selectedStocks.length} {t("trend.visible")}</span>
           </div>
           <div className="trend-candidate-list">
-            {selectedStocks.length === 0 && <div className="trend-empty">No stocks available for this sector.</div>}
+            {selectedStocks.length === 0 && <div className="trend-empty">{t("trend.noStocksSector")}</div>}
             {selectedStocks.map((stock) => (
               <div key={stock.stock_code} className="trend-candidate-row">
                 <div className="trend-candidate-main">
@@ -460,14 +461,14 @@ export default function TrendPage({ t }: { t: (k: string) => string }) {
                   </div>
                 </div>
                 <div className="trend-candidate-state">
-                  <TrendBadge tone={stock.state === "eligible" ? "success" : stock.state === "blocked" ? "warning" : stock.state === "executed" ? "info" : "neutral"} label={stock.state} />
+                  <TrendBadge tone={stock.state === "eligible" ? "success" : stock.state === "blocked" ? "warning" : stock.state === "executed" ? "info" : "neutral"} label={t(`state.${stock.state}`)} />
                   {stock.stockCandidates[0] ? (
-                    <TrendBadge tone="info" label={stock.stockCandidates[0].event_type} />
+                    <TrendBadge tone="info" label={eventTypeLabel(stock.stockCandidates[0].event_type, t)} />
                   ) : (
-                    <TrendBadge tone="neutral" label="no catalyst" />
+                    <TrendBadge tone="neutral" label={t("state.noCatalyst")} />
                   )}
                   {stock.recentOrder ? (
-                    <TrendBadge tone={EXECUTION_ISSUE_STATUSES.has(stock.recentOrder.status) ? "danger" : "info"} label={stock.recentOrder.status} />
+                    <TrendBadge tone={EXECUTION_ISSUE_STATUSES.has(stock.recentOrder.status) ? "danger" : "info"} label={orderStatusLabel(stock.recentOrder.status, t)} />
                   ) : null}
                 </div>
               </div>
@@ -479,8 +480,8 @@ export default function TrendPage({ t }: { t: (k: string) => string }) {
       <section className="card trend-intel-panel">
         <div className="trend-intel-panel-header">
           <div>
-            <h3 className="card-title">Quiet Sectors</h3>
-            <p className="trend-intel-panel-subtitle">Secondary sectors collapsed out of the main attention path.</p>
+            <h3 className="card-title">{t("trend.quietSectors")}</h3>
+            <p className="trend-intel-panel-subtitle">{t("trend.quietSectorsSub")}</p>
           </div>
         </div>
         <div className="trend-quiet-grid">
@@ -490,7 +491,7 @@ export default function TrendPage({ t }: { t: (k: string) => string }) {
               <span className="text-secondary">{formatSigned(sector.avgChange)}%</span>
             </button>
           ))}
-          {quietSectors.length === 0 && <div className="trend-empty">No quiet sectors available.</div>}
+          {quietSectors.length === 0 && <div className="trend-empty">{t("trend.noQuietSectors")}</div>}
         </div>
       </section>
     </div>

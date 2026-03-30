@@ -6,6 +6,7 @@ from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from tests.conftest import *
+from app.utils.market_calendar import KST
 
 
 # Shared mock infrastructure
@@ -228,6 +229,8 @@ class TestMonitor:
 
 
 class TestMorningScanner:
+    REGULAR_OPEN = datetime(2026, 3, 31, 9, 10, tzinfo=KST)
+
     @pytest.mark.asyncio
     async def test_run_morning_scan_empty_universe(self):
         from app.scanner.morning import run_morning_scan
@@ -237,6 +240,7 @@ class TestMorningScanner:
 
         result = await run_morning_scan(
             pool=pool, redis=redis, kis_client=kis, broker=broker, risk_mgr=risk, notifier=notifier,
+            now=self.REGULAR_OPEN,
         )
         assert result["status"] == "empty"
 
@@ -252,8 +256,22 @@ class TestMorningScanner:
 
         result = await run_morning_scan(
             pool=pool, redis=redis, kis_client=kis, broker=broker, risk_mgr=risk, notifier=notifier,
+            now=self.REGULAR_OPEN,
         )
         assert result["status"] == "no_data"
+
+    @pytest.mark.asyncio
+    async def test_run_morning_scan_blocked_outside_window(self):
+        from app.scanner.morning import run_morning_scan
+        kis, _, notifier, broker, risk = _make_services()
+        pool = MockPool()
+        redis = MockRedis()
+
+        result = await run_morning_scan(
+            pool=pool, redis=redis, kis_client=kis, broker=broker, risk_mgr=risk, notifier=notifier,
+            now=datetime(2026, 3, 31, 15, 0, tzinfo=KST),
+        )
+        assert result["status"] == "blocked"
 
     @pytest.mark.asyncio
     async def test_calc_momentum_score(self):

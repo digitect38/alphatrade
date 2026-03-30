@@ -34,6 +34,7 @@ export default function AnalysisPage({ t: _t }: { t: (k: string) => string }) {
           value={stockCode}
           onChange={(code) => setStockCode(code)}
           placeholder={_t("common.placeholder.stockCode")}
+          t={_t}
         />
         <button onClick={analyze} disabled={loading} className="btn btn-primary">
           {loading ? _t("analysis.analyzing") : _t("analysis.analyze")}
@@ -50,6 +51,7 @@ export default function AnalysisPage({ t: _t }: { t: (k: string) => string }) {
           data={ohlcv}
           sma20={technical?.indicators.sma_20}
           sma60={technical?.indicators.sma_60}
+          t={_t}
         />
       )}
 

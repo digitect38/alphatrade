@@ -1,6 +1,7 @@
 """Morning Momentum Scanner (장초반 모멘텀 스캐너)
 
-09:00~09:30 사이 비정상적 움직임을 보이는 종목을 포착하여 자동매매.
+09:00~09:30 KST 정규장 초반 비정상적 움직임을 포착하여 자동매매.
+Outside that window the scanner returns a blocked status and does nothing.
 """
 
 import logging
@@ -18,6 +19,7 @@ from app.services.kis_api import KISClient
 from app.services.notification import NotificationService
 from app.services.redis_publisher import RedisPublisher
 from app.trading.position_sizer import calculate_quantity
+from app.utils.market_calendar import KST, MarketSession, get_current_session
 
 logger = logging.getLogger(__name__)
 
@@ -30,15 +32,28 @@ async def run_morning_scan(
     broker: BrokerClient,
     risk_mgr: RiskManager,
     notifier: NotificationService,
+    now: datetime | None = None,
 ) -> dict:
     """Scan all universe stocks for morning momentum and auto-trade."""
-    now = datetime.now(timezone.utc)
+    now_utc = now.astimezone(timezone.utc) if now else datetime.now(timezone.utc)
+    now_kst = now_utc.astimezone(KST)
+    session, description = get_current_session(now_kst)
+
+    # Morning scan is only valid during the early regular session.
+    if session != MarketSession.REGULAR or now_kst.time() >= datetime.strptime("09:30", "%H:%M").time():
+        return {
+            "status": "blocked",
+            "message": f"장초반 스캔 허용 시간 아님: {description}",
+            "scanned_at": now_utc.isoformat(),
+            "kst_time": now_kst.strftime("%H:%M:%S"),
+            "allowed_window": "09:00~09:30 KST",
+        }
 
     universe = await _fetch_universe(pool=pool)
     if not universe:
         return {"status": "empty", "message": "유니버스가 비어있습니다"}
 
-    movers = await _scan_prices(universe, now, pool=pool, kis_client=kis_client)
+    movers = await _scan_prices(universe, now_utc, pool=pool, kis_client=kis_client)
     if not movers:
         return {"status": "no_data", "message": "시세 조회 실패 (장외시간 가능성)"}
 
@@ -55,7 +70,7 @@ async def run_morning_scan(
 
     return {
         "status": "success",
-        "scanned_at": now.isoformat(),
+        "scanned_at": now_utc.isoformat(),
         "total_scanned": len(movers),
         "top_movers": movers[:settings.scanner_top_n],
         "gap_up": gap_up[:5],
@@ -104,7 +119,7 @@ async def _scan_prices(universe, now, *, pool: asyncpg.Pool, kis_client: KISClie
 
             async with pool.acquire() as conn:
                 await conn.execute(
-                    "INSERT INTO ohlcv (time, stock_code, open, high, low, close, volume, interval) VALUES ($1,$2,$3,$4,$5,$6,$7,'1d')",
+                    "INSERT INTO ohlcv (time, stock_code, open, high, low, close, volume, interval) VALUES ($1,$2,$3,$4,$5,$6,$7,'1m')",
                     now, code, current.open, current.high, current.low, current.close, current.volume,
                 )
 

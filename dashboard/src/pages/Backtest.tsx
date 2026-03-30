@@ -9,6 +9,7 @@ interface BacktestTrade {
   price: number;
   quantity: number;
   pnl: number | null;
+  holding_bars?: number | null;
 }
 
 interface BacktestResult {
@@ -16,11 +17,17 @@ interface BacktestResult {
   strategy: string;
   initial_capital: number;
   final_capital: number;
+  period_bars: number;
   total_return: number;
+  benchmark_return: number | null;
   annual_return: number | null;
   max_drawdown: number;
   sharpe_ratio: number | null;
   win_rate: number;
+  profit_factor: number | null;
+  avg_trade_pnl: number | null;
+  avg_holding_bars: number | null;
+  max_consecutive_losses: number;
   total_trades: number;
   trades: BacktestTrade[];
   equity_curve: number[];
@@ -60,6 +67,12 @@ export default function BacktestPage({ t: _t }: { t: (k: string) => string }) {
     initial: result.initial_capital,
   })) || [];
 
+  const edgeVsBenchmark = result && result.benchmark_return != null
+    ? result.total_return - result.benchmark_return
+    : null;
+
+  const sells = result?.trades.filter((trade) => trade.action === "SELL") ?? [];
+
   return (
     <div className="page-content">
       {/* Controls */}
@@ -68,6 +81,7 @@ export default function BacktestPage({ t: _t }: { t: (k: string) => string }) {
           value={stockCode}
           onChange={(code) => setStockCode(code)}
           placeholder={_t("common.placeholder.stockCode")}
+          t={_t}
         />
         <select
           value={strategy}
@@ -97,12 +111,16 @@ export default function BacktestPage({ t: _t }: { t: (k: string) => string }) {
 
       {result && (
         <>
-          {/* Performance Summary */}
-          <div className="metrics-grid metrics-grid-4">
+          <div className="metrics-grid metrics-grid-5">
             <MetricCard
               label={_t("bt.totalReturn")}
-              value={`${result.total_return >= 0 ? "+" : ""}${result.total_return}%`}
+              value={formatPercent(result.total_return)}
               colorClass={result.total_return >= 0 ? "text-profit" : "text-loss"}
+            />
+            <MetricCard
+              label={_t("bt.edgeVsBenchmark")}
+              value={edgeVsBenchmark != null ? formatPercent(edgeVsBenchmark) : "-"}
+              colorClass={edgeVsBenchmark != null ? (edgeVsBenchmark >= 0 ? "text-profit" : "text-loss") : "text-neutral"}
             />
             <MetricCard
               label={_t("bt.mdd")}
@@ -121,14 +139,47 @@ export default function BacktestPage({ t: _t }: { t: (k: string) => string }) {
             />
           </div>
 
-          <div className="metrics-grid metrics-grid-4">
-            <MetricCard label={_t("bt.initialCapital")} value={`${result.initial_capital.toLocaleString()}${_t("common.won")}`} />
-            <MetricCard label={_t("bt.finalCapital")} value={`${result.final_capital.toLocaleString()}${_t("common.won")}`} colorClass={result.final_capital >= result.initial_capital ? "text-profit" : "text-loss"} />
-            <MetricCard label={_t("bt.annualReturn")} value={result.annual_return != null ? `${result.annual_return}%` : "-"} />
-            <MetricCard label={_t("bt.totalTrades")} value={`${result.total_trades}`} />
+          <div className="card">
+            <h3 className="card-title">{_t("bt.performanceQuality")}</h3>
+            <div className="metrics-grid metrics-grid-5">
+              <MetricCard label={_t("bt.initialCapital")} value={formatWon(result.initial_capital, _t)} />
+              <MetricCard
+                label={_t("bt.finalCapital")}
+                value={formatWon(result.final_capital, _t)}
+                colorClass={result.final_capital >= result.initial_capital ? "text-profit" : "text-loss"}
+              />
+              <MetricCard label={_t("bt.annualReturn")} value={result.annual_return != null ? `${result.annual_return}%` : "-"} />
+              <MetricCard label={_t("bt.benchmarkReturn")} value={result.benchmark_return != null ? `${result.benchmark_return}%` : "-"} />
+              <MetricCard label={_t("bt.periodBars")} value={`${result.period_bars}`} />
+            </div>
           </div>
 
-          {/* Equity Curve */}
+          <div className="card">
+            <h3 className="card-title">{_t("bt.tradeDiagnostics")}</h3>
+            <div className="metrics-grid metrics-grid-5">
+              <MetricCard label={_t("bt.totalTrades")} value={`${result.total_trades}`} />
+              <MetricCard label={_t("bt.profitFactor")} value={result.profit_factor != null ? result.profit_factor.toFixed(2) : "-"} />
+              <MetricCard
+                label={_t("bt.avgTradePnl")}
+                value={result.avg_trade_pnl != null ? formatWon(result.avg_trade_pnl, _t) : "-"}
+                colorClass={result.avg_trade_pnl != null ? (result.avg_trade_pnl >= 0 ? "text-profit" : "text-loss") : "text-neutral"}
+              />
+              <MetricCard label={_t("bt.avgHoldingBars")} value={result.avg_holding_bars != null ? `${result.avg_holding_bars}` : "-"} />
+              <MetricCard
+                label={_t("bt.lossStreak")}
+                value={`${result.max_consecutive_losses}`}
+                colorClass={result.max_consecutive_losses >= 3 ? "text-loss" : "text-neutral"}
+              />
+            </div>
+          </div>
+
+          <div className="metrics-grid metrics-grid-4">
+            <MetricCard label={_t("bt.stockCode")} value={result.stock_code} />
+            <MetricCard label={_t("bt.strategy")} value={_t(strategyKeys[result.strategy] || "bt.ensemble")} />
+            <MetricCard label={_t("bt.capital")} value={formatWon(result.initial_capital, _t)} />
+            <MetricCard label={_t("bt.totalTrades")} value={`${sells.length} sells / ${result.total_trades} events`} />
+          </div>
+
           {equityData.length > 0 && (
             <div className="card">
               <h3 className="card-title">{_t("bt.equityCurve")}</h3>
@@ -138,7 +189,7 @@ export default function BacktestPage({ t: _t }: { t: (k: string) => string }) {
                   <XAxis dataKey="day" fontSize={11} label={{ value: "일", position: "insideBottomRight", offset: -5 }} />
                   <YAxis fontSize={11} tickFormatter={(v: number) => `${(v / 10000).toFixed(0)}만`} />
                   <Tooltip formatter={(v: number) => [`${v.toLocaleString()}원`, "자산"]} />
-                  <ReferenceLine y={result.initial_capital} stroke="#888" strokeDasharray="3 3" label="초기자본" />
+                  <ReferenceLine y={result.initial_capital} stroke="#888" strokeDasharray="3 3" label={_t("bt.initialCapital")} />
                   <Line type="monotone" dataKey="equity" stroke="#1a1a2e" strokeWidth={2} dot={false} />
                 </LineChart>
               </ResponsiveContainer>
@@ -156,6 +207,7 @@ export default function BacktestPage({ t: _t }: { t: (k: string) => string }) {
                     <th>{_t("th.action")}</th>
                     <th className="text-right">{_t("th.price")}</th>
                     <th className="text-right">{_t("th.qty")}</th>
+                    <th className="text-right">{_t("bt.avgHoldingBars")}</th>
                     <th className="text-right">{_t("th.pnl")}</th>
                   </tr>
                 </thead>
@@ -164,10 +216,11 @@ export default function BacktestPage({ t: _t }: { t: (k: string) => string }) {
                     <tr key={i}>
                       <td style={{ fontSize: "12px" }}>{t.date}</td>
                       <td className={"font-heavy " + (t.action === "BUY" ? "text-up" : "text-down")}>
-                        {t.action}
+                        {_t(t.action === "BUY" ? "signal.buy" : "signal.sell")}
                       </td>
                       <td className="text-right">{t.price.toLocaleString()}</td>
                       <td className="text-right">{t.quantity}</td>
+                      <td className="text-right">{t.holding_bars ?? "-"}</td>
                       <td className={"text-right font-bold " + (t.pnl != null ? (t.pnl >= 0 ? "text-profit" : "text-loss") : "text-neutral")}>
                         {t.pnl != null ? `${t.pnl >= 0 ? "+" : ""}${t.pnl.toLocaleString()}원` : "-"}
                       </td>
@@ -190,4 +243,12 @@ function MetricCard({ label, value, colorClass }: { label: string; value: string
       <div className={"metric-value " + (colorClass || "")}>{value}</div>
     </div>
   );
+}
+
+function formatPercent(value: number) {
+  return `${value >= 0 ? "+" : ""}${value}%`;
+}
+
+function formatWon(value: number, t: (k: string) => string) {
+  return `${Math.round(value).toLocaleString()}${t("common.won")}`;
 }

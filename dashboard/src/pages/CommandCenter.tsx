@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiGet, apiPost } from "../hooks/useApi";
 import { useWebSocket } from "../hooks/useWebSocket";
+import { eventTypeLabel, orderStatusLabel } from "../lib/labels";
 import type { HealthStatus, OrderHistoryItem } from "../types";
 
 interface Mover {
@@ -54,22 +55,6 @@ interface IncidentItem {
   symbol?: string;
   action: string;
 }
-
-const EVENT_LABELS: Record<string, string> = {
-  price_spike: "Price Spike",
-  volume_surge: "Volume Surge",
-  news_cluster: "News Cluster",
-  disclosure: "Disclosure",
-  sector_sympathy: "Sector Sympathy",
-  tradingview: "TradingView",
-};
-
-const LANE_TITLES: Record<CandidateLane, string> = {
-  eligible: "Eligible",
-  blocked: "Blocked",
-  watching: "Watching",
-  executed: "Executed",
-};
 
 const EXECUTION_ISSUE_STATUSES = new Set(["REJECTED", "BLOCKED", "FAILED", "UNKNOWN"]);
 const EXECUTION_ACTIVE_STATUSES = new Set(["SUBMITTED", "ACKED", "PARTIALLY_FILLED", "FILLED"]);
@@ -171,13 +156,13 @@ export default function CommandCenterPage({ t: _t }: { t: (k: string) => string 
           lane = "executed";
         } else if (killActive) {
           lane = "blocked";
-          riskReason = "Kill switch active";
+          riskReason = _t("state.killActive");
         } else if (sessionBlocked) {
           lane = "blocked";
-          riskReason = killStatus?.session.message || "Trading session blocked";
+          riskReason = killStatus?.session.message || _t("state.sessionBlocked");
         } else if (brokerBlocked) {
           lane = "blocked";
-          riskReason = "Broker failure threshold reached";
+          riskReason = _t("sys.brokerFails");
         } else if (candidate.priority >= 75) {
           lane = "eligible";
         } else {
@@ -186,13 +171,13 @@ export default function CommandCenterPage({ t: _t }: { t: (k: string) => string 
 
         if (recentOrder && EXECUTION_ISSUE_STATUSES.has(recentOrder.status)) {
           lane = "blocked";
-          riskReason = `Execution issue: ${recentOrder.status}`;
+          riskReason = `${_t("command.executionIssues")}: ${recentOrder.status}`;
         }
 
         return { ...candidate, lane, summary, recentOrder, riskReason };
       })
       .sort((a, b) => b.priority - a.priority);
-  }, [candidates, killStatus, orders]);
+  }, [_t, candidates, killStatus, orders]);
 
   const incidents = useMemo<IncidentItem[]>(() => {
     const list: IncidentItem[] = [];
@@ -201,9 +186,9 @@ export default function CommandCenterPage({ t: _t }: { t: (k: string) => string 
       list.push({
         id: "ws-offline",
         severity: "critical",
-        title: "Realtime feed offline",
-        summary: "Dashboard WebSocket disconnected. Live state may be stale.",
-        action: "Check feed",
+        title: _t("state.offline"),
+        summary: `${_t("nav.command")} WebSocket disconnected. ${_t("state.live")} state may be ${_t("market.stale")}.`,
+        action: _t("exec.refresh"),
       });
     }
 
@@ -211,9 +196,9 @@ export default function CommandCenterPage({ t: _t }: { t: (k: string) => string 
       list.push({
         id: "api-health",
         severity: "critical",
-        title: "API health degraded",
+        title: _t("state.apiDegraded"),
         summary: `API=${health.status} DB=${health.db} Redis=${health.redis}`,
-        action: "Open system",
+        action: _t("dash.systemStatus"),
       });
     }
 
@@ -221,9 +206,9 @@ export default function CommandCenterPage({ t: _t }: { t: (k: string) => string 
       list.push({
         id: "kill-switch",
         severity: "critical",
-        title: "Kill switch active",
-        summary: "All new orders are blocked until operator resumes trading.",
-        action: "Review block",
+        title: _t("state.killActive"),
+        summary: _t("state.blocked"),
+        action: _t("command.blocked"),
       });
     }
 
@@ -231,9 +216,9 @@ export default function CommandCenterPage({ t: _t }: { t: (k: string) => string 
       list.push({
         id: "session-block",
         severity: "warning",
-        title: "Session blocked",
-        summary: killStatus.session.message || "Outside allowed trading window.",
-        action: "Inspect session",
+        title: _t("state.sessionBlocked"),
+        summary: killStatus.session.message || _t("state.sessionBlocked"),
+        action: _t("command.risk"),
       });
     }
 
@@ -241,9 +226,9 @@ export default function CommandCenterPage({ t: _t }: { t: (k: string) => string 
       list.push({
         id: "broker-failures",
         severity: (killStatus?.broker_failures ?? 0) >= (killStatus?.broker_limit ?? 3) ? "critical" : "warning",
-        title: "Broker failures detected",
+        title: _t("sys.brokerFails"),
         summary: `${killStatus?.broker_failures ?? 0}/${killStatus?.broker_limit ?? 3} recent failures recorded.`,
-        action: "Reconcile",
+        action: _t("exec.eodReconcile"),
       });
     }
 
@@ -254,10 +239,10 @@ export default function CommandCenterPage({ t: _t }: { t: (k: string) => string 
         list.push({
           id: `order-${order.order_id}`,
           severity: "warning",
-          title: `Order ${order.status}`,
+          title: `${_t("command.orderStatus")} ${order.status}`,
           summary: `${order.stock_code} ${order.side} ${order.filled_qty}/${order.quantity}`,
           symbol: order.stock_code,
-          action: "Open execution",
+          action: _t("command.execution"),
         });
       });
 
@@ -268,15 +253,15 @@ export default function CommandCenterPage({ t: _t }: { t: (k: string) => string 
         list.push({
           id: `candidate-${candidate.stock_code}`,
           severity: "info",
-          title: "Candidate blocked",
+          title: _t("state.blocked"),
           summary: `${candidate.stock_code} blocked: ${candidate.riskReason || candidate.summary}`,
           symbol: candidate.stock_code,
-          action: "Inspect candidate",
+          action: _t("state.watching"),
         });
       });
 
     return list.slice(0, 8);
-  }, [connected, enrichedCandidates, health, killStatus, orders]);
+  }, [_t, connected, enrichedCandidates, health, killStatus, orders]);
 
   const pulse = useMemo(() => {
     const activeMovers = movers.filter((item) => Math.abs(toNumber(item.change_pct)) >= 2).length;
@@ -287,42 +272,42 @@ export default function CommandCenterPage({ t: _t }: { t: (k: string) => string 
 
     return [
       {
-        title: "Active Movers",
+        title: _t("command.activeMovers"),
         value: activeMovers,
-        delta: activeMovers > 0 ? `${activeMovers} above 2% move` : "No significant movers",
+        delta: activeMovers > 0 ? `${activeMovers} above 2% move` : _t("command.noLiveMovers"),
         tone: activeMovers > 0 ? "danger" : "neutral",
         onClick: () => setSelectedLane("watching"),
       },
       {
-        title: "Fresh Catalysts",
+        title: _t("command.freshCatalysts"),
         value: freshCatalysts,
         delta: `${candidates.length} total events scanned`,
         tone: freshCatalysts > 0 ? "info" : "neutral",
         onClick: () => setSelectedLane("watching"),
       },
       {
-        title: "Tradeable",
+        title: _t("command.tradeable"),
         value: tradeable,
-        delta: tradeable > 0 ? "Ready for operator review" : "No eligible candidates",
+        delta: tradeable > 0 ? _t("state.eligible") : _t("command.noCandidatesLane"),
         tone: tradeable > 0 ? "success" : "neutral",
         onClick: () => setSelectedLane("eligible"),
       },
       {
-        title: "Blocked",
+        title: _t("command.blocked"),
         value: blocked,
-        delta: blocked > 0 ? "Needs risk or execution review" : "No blocked candidates",
+        delta: blocked > 0 ? _t("command.risk") : _t("command.noCandidatesLane"),
         tone: blocked > 0 ? "warning" : "neutral",
         onClick: () => setSelectedLane("blocked"),
       },
       {
-        title: "Execution Issues",
+        title: _t("command.executionIssues"),
         value: executionIssues,
-        delta: executionIssues > 0 ? "Investigate before next trades" : "Execution path stable",
+        delta: executionIssues > 0 ? _t("command.execution") : _t("command.execution"),
         tone: executionIssues > 0 ? "danger" : "success",
         onClick: () => setSelectedLane("executed"),
       },
     ];
-  }, [candidates.length, enrichedCandidates, incidents, movers, orders]);
+  }, [_t, candidates.length, enrichedCandidates, incidents, movers, orders]);
 
   const laneCards = useMemo(() => ({
     eligible: enrichedCandidates.filter((item) => item.lane === "eligible"),
@@ -359,36 +344,36 @@ export default function CommandCenterPage({ t: _t }: { t: (k: string) => string 
     <div className="page-content">
       <section className={`command-strip ${killActive ? "is-danger" : "is-safe"}`}>
         <div className="command-strip-status">
-          <StatusBadge label={connected ? "Live" : "Offline"} tone={connected ? "success" : "danger"} />
-          <StatusBadge label={killActive ? "Kill Switch Active" : "Trading Enabled"} tone={killActive ? "danger" : "success"} />
-          <StatusBadge label={killStatus?.session.allowed ? "Session Open" : "Session Blocked"} tone={killStatus?.session.allowed ? "info" : "warning"} />
-          <StatusBadge label={health?.status === "ok" ? "API Healthy" : "API Degraded"} tone={health?.status === "ok" ? "success" : "danger"} />
-          <StatusBadge label={health?.db === "ok" ? "DB OK" : "DB Issue"} tone={health?.db === "ok" ? "neutral" : "danger"} />
-          <StatusBadge label={health?.redis === "ok" ? "Redis OK" : "Redis Issue"} tone={health?.redis === "ok" ? "neutral" : "danger"} />
+          <StatusBadge label={connected ? _t("state.live") : _t("state.offline")} tone={connected ? "success" : "danger"} />
+          <StatusBadge label={killActive ? _t("state.killActive") : _t("state.enabled")} tone={killActive ? "danger" : "success"} />
+          <StatusBadge label={killStatus?.session.allowed ? _t("state.sessionOpen") : _t("state.sessionBlocked")} tone={killStatus?.session.allowed ? "info" : "warning"} />
+          <StatusBadge label={health?.status === "ok" ? _t("state.apiHealthy") : _t("state.apiDegraded")} tone={health?.status === "ok" ? "success" : "danger"} />
+          <StatusBadge label={health?.db === "ok" ? _t("state.dbOk") : _t("state.dbIssue")} tone={health?.db === "ok" ? "neutral" : "danger"} />
+          <StatusBadge label={health?.redis === "ok" ? _t("state.redisOk") : _t("state.redisIssue")} tone={health?.redis === "ok" ? "neutral" : "danger"} />
         </div>
         <div className="command-strip-meta">
-          <span>Daily P&amp;L {formatSigned(killStatus?.daily_loss_pct ?? 0)}%</span>
-          <span>Broker Fails {killStatus?.broker_failures ?? 0}/{killStatus?.broker_limit ?? 3}</span>
-          <span>Last Tick {lastUpdate ? formatTime(lastUpdate) : "-"}</span>
+          <span>{_t("sys.dailyPnl")} {formatSigned(killStatus?.daily_loss_pct ?? 0)}%</span>
+          <span>{_t("sys.brokerFails")} {killStatus?.broker_failures ?? 0}/{killStatus?.broker_limit ?? 3}</span>
+          <span>{_t("sys.lastTick")} {lastUpdate ? formatTime(lastUpdate) : "-"}</span>
         </div>
         <div className="command-strip-actions">
           <button className="btn btn-sm btn-primary" onClick={() => { void loadData(); void runEventScan(); }} disabled={scanning}>
-            {scanning ? "Scanning..." : "Scan Now"}
+            {scanning ? _t("command.scanning") : _t("command.scanNow")}
           </button>
           {!killActive ? (
             <button
               className="btn btn-sm command-strip-kill"
               onClick={() => {
-                if (confirm("Kill switch 활성화?")) {
+                if (confirm(_t("command.confirmKill"))) {
                   apiPost("/trading/kill-switch/activate").then(() => void loadData());
                 }
               }}
             >
-              Kill Switch
+              {_t("command.killSwitch")}
             </button>
           ) : (
             <button className="btn btn-sm command-strip-resume" onClick={() => apiPost("/trading/kill-switch/deactivate").then(() => void loadData())}>
-              Resume
+              {_t("command.resume")}
             </button>
           )}
         </div>
@@ -408,13 +393,13 @@ export default function CommandCenterPage({ t: _t }: { t: (k: string) => string 
         <div className="card command-panel">
           <div className="command-panel-header">
             <div>
-              <h3 className="card-title">Priority Movers</h3>
-              <p className="command-panel-subtitle">Ranked by move intensity from the live cache.</p>
+              <h3 className="card-title">{_t("command.priorityMovers")}</h3>
+              <p className="command-panel-subtitle">{_t("command.priorityMoversSub")}</p>
             </div>
-            <span className="text-secondary">{movers.length} tracked</span>
+            <span className="text-secondary">{movers.length} {_t("command.tracked")}</span>
           </div>
           <div className="command-list">
-            {movers.length === 0 && <div className="command-empty">No live movers available.</div>}
+            {movers.length === 0 && <div className="command-empty">{_t("command.noLiveMovers")}</div>}
             {movers.map((item, index) => {
               const matchedCandidate = enrichedCandidates.find((candidate) => candidate.stock_code === item.stock_code);
               return (
@@ -430,9 +415,9 @@ export default function CommandCenterPage({ t: _t }: { t: (k: string) => string 
                       <span className="text-secondary">{item.stock_code}</span>
                     </div>
                     <div className="command-row-meta">
-                      <span>{item.sector || "Unclassified"}</span>
+                      <span>{item.sector || _t("state.unclassified")}</span>
                       <span>Vol {formatCompact(toNumber(item.volume))}</span>
-                      {item.stale && <span className="text-warning">stale</span>}
+                      {item.stale && <span className="text-warning">{_t("market.stale")}</span>}
                     </div>
                   </div>
                   <div className="command-row-change">
@@ -442,9 +427,9 @@ export default function CommandCenterPage({ t: _t }: { t: (k: string) => string 
                     <span className="text-secondary">{formatNumber(toNumber(item.price))}</span>
                   </div>
                   <div className="command-row-badges">
-                    {matchedCandidate ? <Badge tone="info" label={EVENT_LABELS[matchedCandidate.event_type] || matchedCandidate.event_type} /> : <Badge tone="neutral" label="No catalyst" />}
-                    {matchedCandidate ? <Badge tone={toneForLane(matchedCandidate.lane)} label={LANE_TITLES[matchedCandidate.lane]} /> : <Badge tone="neutral" label="Watching" />}
-                    {matchedCandidate?.recentOrder ? <Badge tone={toneForOrder(matchedCandidate.recentOrder.status)} label={matchedCandidate.recentOrder.status} /> : null}
+                    {matchedCandidate ? <Badge tone="info" label={eventTypeLabel(matchedCandidate.event_type, _t)} /> : <Badge tone="neutral" label={_t("state.noCatalyst")} />}
+                    {matchedCandidate ? <Badge tone={toneForLane(matchedCandidate.lane)} label={_t(`state.${matchedCandidate.lane}`)} /> : <Badge tone="neutral" label={_t("state.watching")} />}
+                    {matchedCandidate?.recentOrder ? <Badge tone={toneForOrder(matchedCandidate.recentOrder.status)} label={orderStatusLabel(matchedCandidate.recentOrder.status, _t)} /> : null}
                   </div>
                 </button>
               );
@@ -455,13 +440,13 @@ export default function CommandCenterPage({ t: _t }: { t: (k: string) => string 
         <div className="card command-panel">
           <div className="command-panel-header">
             <div>
-              <h3 className="card-title">Incident Queue</h3>
-              <p className="command-panel-subtitle">System, risk, and execution items that need attention.</p>
+              <h3 className="card-title">{_t("command.incidentQueue")}</h3>
+              <p className="command-panel-subtitle">{_t("command.incidentQueueSub")}</p>
             </div>
             <span className="text-secondary">{incidents.length} open</span>
           </div>
           <div className="command-list">
-            {incidents.length === 0 && <div className="command-empty">No active incidents.</div>}
+            {incidents.length === 0 && <div className="command-empty">{_t("command.noIncidents")}</div>}
             {incidents.map((incident) => (
               <div key={incident.id} className={`incident-card severity-${incident.severity}`}>
                 <div className="incident-card-header">
@@ -480,23 +465,23 @@ export default function CommandCenterPage({ t: _t }: { t: (k: string) => string 
       <section className="card command-panel">
         <div className="command-panel-header">
           <div>
-            <h3 className="card-title">Candidate Lanes</h3>
-            <p className="command-panel-subtitle">Engine intent grouped by actionability and execution state.</p>
+            <h3 className="card-title">{_t("command.candidateLanes")}</h3>
+            <p className="command-panel-subtitle">{_t("command.candidateLanesSub")}</p>
           </div>
           <div className="command-lane-tabs">
-            {(Object.keys(LANE_TITLES) as CandidateLane[]).map((lane) => (
+            {(["eligible", "blocked", "watching", "executed"] as CandidateLane[]).map((lane) => (
               <button
                 key={lane}
                 className={`command-lane-tab ${selectedLane === lane ? "is-active" : ""}`}
                 onClick={() => setSelectedLane(lane)}
               >
-                {LANE_TITLES[lane]} ({laneCards[lane].length})
+                {_t(`state.${lane}`)} ({laneCards[lane].length})
               </button>
             ))}
           </div>
         </div>
         <div className="candidate-grid">
-          {laneCards[selectedLane].length === 0 && <div className="command-empty">No candidates in this lane.</div>}
+          {laneCards[selectedLane].length === 0 && <div className="command-empty">{_t("command.noCandidatesLane")}</div>}
           {laneCards[selectedLane].map((candidate) => (
             <button
               key={`${candidate.stock_code}-${candidate.event_type}`}
@@ -506,17 +491,17 @@ export default function CommandCenterPage({ t: _t }: { t: (k: string) => string 
               <div className="candidate-card-header">
                 <div>
                   <div className="candidate-card-title">{candidate.stock_name || candidate.stock_code}</div>
-                  <div className="candidate-card-subtitle">{candidate.stock_code} · {candidate.priority.toFixed(0)} priority</div>
+                  <div className="candidate-card-subtitle">{candidate.stock_code} · {candidate.priority.toFixed(0)} {_t("command.priority")}</div>
                 </div>
-                <Badge tone={toneForLane(candidate.lane)} label={LANE_TITLES[candidate.lane]} />
+                <Badge tone={toneForLane(candidate.lane)} label={_t(`state.${candidate.lane}`)} />
               </div>
               <div className="candidate-card-body">
-                <Badge tone="info" label={EVENT_LABELS[candidate.event_type] || candidate.event_type} />
+                <Badge tone="info" label={eventTypeLabel(candidate.event_type, _t)} />
                 <span>{candidate.summary}</span>
               </div>
               <div className="candidate-card-footer">
-                <span>{candidate.riskReason || "No active risk block"}</span>
-                {candidate.recentOrder ? <span>Order {candidate.recentOrder.status}</span> : <span>No recent order</span>}
+                <span>{candidate.riskReason || _t("state.noActiveRiskBlock")}</span>
+                {candidate.recentOrder ? <span>{_t("command.orderStatus")} {orderStatusLabel(candidate.recentOrder.status, _t)}</span> : <span>{_t("state.noRecentOrder")}</span>}
               </div>
             </button>
           ))}
@@ -526,53 +511,53 @@ export default function CommandCenterPage({ t: _t }: { t: (k: string) => string 
       <section className="card command-panel">
         <div className="command-panel-header">
           <div>
-            <h3 className="card-title">Selected Detail</h3>
-            <p className="command-panel-subtitle">Catalysts, execution state, and recent news for the selected symbol.</p>
+            <h3 className="card-title">{_t("command.selectedDetail")}</h3>
+            <p className="command-panel-subtitle">{_t("command.selectedDetailSub")}</p>
           </div>
-          <span className="text-secondary">{selectedSymbol || "No symbol selected"}</span>
+          <span className="text-secondary">{selectedSymbol || _t("command.noSymbolSelected")}</span>
         </div>
-        {!selectedSymbol && <div className="command-empty">Select a mover or candidate to inspect details.</div>}
+        {!selectedSymbol && <div className="command-empty">{_t("command.selectToInspect")}</div>}
         {selectedSymbol && (
           <div className="detail-grid">
             <div className="detail-card">
-              <div className="detail-card-label">Price</div>
+              <div className="detail-card-label">{_t("command.price")}</div>
               <div className="detail-card-value">{selectedMover ? formatNumber(toNumber(selectedMover.price)) : "-"}</div>
               <div className={selectedMover && toNumber(selectedMover.change_pct) >= 0 ? "text-up font-heavy" : "text-down font-heavy"}>
-                {selectedMover ? `${formatSigned(toNumber(selectedMover.change_pct))}%` : "No move data"}
+                {selectedMover ? `${formatSigned(toNumber(selectedMover.change_pct))}%` : "-"}
               </div>
             </div>
             <div className="detail-card">
-              <div className="detail-card-label">Catalyst</div>
-              <div className="detail-card-value detail-small">{selectedCandidate ? (EVENT_LABELS[selectedCandidate.event_type] || selectedCandidate.event_type) : "No candidate"}</div>
-              <div className="text-secondary">{selectedCandidate?.summary || "No catalyst summary available"}</div>
+              <div className="detail-card-label">{_t("command.catalyst")}</div>
+              <div className="detail-card-value detail-small">{selectedCandidate ? eventTypeLabel(selectedCandidate.event_type, _t) : _t("state.noCandidate")}</div>
+              <div className="text-secondary">{selectedCandidate?.summary || _t("state.noCatalystSummary")}</div>
             </div>
             <div className="detail-card">
-              <div className="detail-card-label">Risk</div>
-              <div className="detail-card-value detail-small">{selectedCandidate?.riskReason || "No active block"}</div>
+              <div className="detail-card-label">{_t("command.risk")}</div>
+              <div className="detail-card-value detail-small">{selectedCandidate?.riskReason || _t("state.noActiveRiskBlock")}</div>
               <div className="text-secondary">
-                Session {killStatus?.session.allowed ? "open" : "blocked"} · Broker fails {killStatus?.broker_failures ?? 0}
+                {_t("state.sessionOpen")} {killStatus?.session.allowed ? _t("state.enabled") : _t("state.blocked")} · {_t("sys.brokerFails")} {killStatus?.broker_failures ?? 0}
               </div>
             </div>
             <div className="detail-card">
-              <div className="detail-card-label">Execution</div>
-              <div className="detail-card-value detail-small">{selectedCandidate?.recentOrder?.status || "No recent order"}</div>
+              <div className="detail-card-label">{_t("command.execution")}</div>
+              <div className="detail-card-value detail-small">{selectedCandidate?.recentOrder ? orderStatusLabel(selectedCandidate.recentOrder.status, _t) : _t("state.noRecentOrder")}</div>
               <div className="text-secondary">
-                {selectedCandidate?.recentOrder ? `${selectedCandidate.recentOrder.filled_qty}/${selectedCandidate.recentOrder.quantity} filled` : "Waiting for action"}
+                {selectedCandidate?.recentOrder ? `${selectedCandidate.recentOrder.filled_qty}/${selectedCandidate.recentOrder.quantity} ${_t("exec.filled")}` : _t("state.waitingAction")}
               </div>
             </div>
             <div className="detail-panel">
-              <div className="detail-panel-title">Recent Order Timeline</div>
-              {selectedOrders.length === 0 && <div className="command-empty small">No recent orders for this symbol.</div>}
+              <div className="detail-panel-title">{_t("command.recentOrderTimeline")}</div>
+              {selectedOrders.length === 0 && <div className="command-empty small">{_t("command.noRecentOrdersSymbol")}</div>}
               {selectedOrders.length > 0 && (
                 <div className="timeline-list">
                   {selectedOrders.map((order) => (
                     <div key={order.order_id} className="timeline-item">
                       <div className="timeline-top">
-                        <Badge tone={toneForOrder(order.status)} label={order.status} />
+                        <Badge tone={toneForOrder(order.status)} label={orderStatusLabel(order.status, _t)} />
                         <span className="text-secondary">{formatTime(order.time)}</span>
                       </div>
                       <div className="timeline-main">
-                        {order.side} {order.quantity} · filled {order.filled_qty}
+                        {_t(order.side === "BUY" ? "signal.buy" : "signal.sell")} {order.quantity} · {_t("exec.filled")} {order.filled_qty}
                       </div>
                     </div>
                   ))}
@@ -580,9 +565,9 @@ export default function CommandCenterPage({ t: _t }: { t: (k: string) => string 
               )}
             </div>
             <div className="detail-panel">
-              <div className="detail-panel-title">Latest News</div>
-              {newsLoading && <div className="command-empty small">Loading news...</div>}
-              {!newsLoading && newsItems.length === 0 && <div className="command-empty small">No recent news.</div>}
+              <div className="detail-panel-title">{_t("command.latestNews")}</div>
+              {newsLoading && <div className="command-empty small">{_t("command.loadingNews")}</div>}
+              {!newsLoading && newsItems.length === 0 && <div className="command-empty small">{_t("command.noRecentNews")}</div>}
               {!newsLoading && newsItems.length > 0 && (
                 <div className="news-stack">
                   {newsItems.map((item, index) => (

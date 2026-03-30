@@ -13,9 +13,10 @@ interface Props {
   value: string;
   onChange: (code: string, name: string) => void;
   placeholder?: string;
+  t?: (k: string) => string;
 }
 
-export default function StockSearch({ value, onChange, placeholder }: Props) {
+export default function StockSearch({ value, onChange, placeholder, t }: Props) {
   const [query, setQuery] = useState(value);
   const [results, setResults] = useState<StockItem[]>([]);
   const [open, setOpen] = useState(false);
@@ -75,7 +76,7 @@ export default function StockSearch({ value, onChange, placeholder }: Props) {
           value={query}
           onChange={(e) => handleInput(e.target.value)}
           onFocus={() => results.length > 0 && setOpen(true)}
-          placeholder={placeholder || "종목명 or 코드"}
+          placeholder={placeholder || t?.("common.placeholder.stockCode") || "종목명 or 코드"}
           style={{
             padding: "8px 12px", border: "1px solid #ddd", borderRadius: "6px",
             fontSize: "14px", width: "160px",

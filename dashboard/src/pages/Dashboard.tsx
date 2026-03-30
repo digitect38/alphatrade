@@ -56,9 +56,9 @@ export default function DashboardPage({ t }: { t: (k: string) => string }) {
 
   const signalDist = signals.reduce((acc, s) => { acc[s.signal] = (acc[s.signal] || 0) + 1; return acc; }, {} as Record<string, number>);
   const signalChartData = [
-    { name: "BUY", count: signalDist["BUY"] || 0, color: "var(--color-buy)" },
-    { name: "HOLD", count: signalDist["HOLD"] || 0, color: "var(--color-hold)" },
-    { name: "SELL", count: signalDist["SELL"] || 0, color: "var(--color-sell)" },
+    { name: t("signal.buy"), count: signalDist["BUY"] || 0, color: "var(--color-buy)" },
+    { name: t("signal.hold"), count: signalDist["HOLD"] || 0, color: "var(--color-hold)" },
+    { name: t("signal.sell"), count: signalDist["SELL"] || 0, color: "var(--color-sell)" },
   ];
 
   return (
@@ -144,9 +144,9 @@ export default function DashboardPage({ t }: { t: (k: string) => string }) {
               </BarChart>
             </ResponsiveContainer>
             <div className="flex-1 flex flex-col justify-center gap-sm">
-              <div className="flex justify-between"><span className="text-profit font-heavy">BUY</span><span className="font-heavy">{buySignals.length}</span></div>
-              <div className="flex justify-between"><span className="text-loss font-heavy">SELL</span><span className="font-heavy">{sellSignals.length}</span></div>
-              <div className="flex justify-between"><span className="text-neutral font-heavy">HOLD</span><span className="font-heavy">{signals.length - buySignals.length - sellSignals.length}</span></div>
+              <div className="flex justify-between"><span className="text-profit font-heavy">{t("signal.buy")}</span><span className="font-heavy">{buySignals.length}</span></div>
+              <div className="flex justify-between"><span className="text-loss font-heavy">{t("signal.sell")}</span><span className="font-heavy">{sellSignals.length}</span></div>
+              <div className="flex justify-between"><span className="text-neutral font-heavy">{t("signal.hold")}</span><span className="font-heavy">{signals.length - buySignals.length - sellSignals.length}</span></div>
             </div>
           </div>
           {(buySignals.length > 0 || sellSignals.length > 0) && (
@@ -155,7 +155,7 @@ export default function DashboardPage({ t }: { t: (k: string) => string }) {
               {[...buySignals, ...sellSignals].slice(0, 5).map((s) => (
                 <div key={s.stock_code} className="signal-row">
                   <span className="font-bold">{s.stock_code}</span>
-                  <span className={"font-heavy " + (s.signal === "BUY" ? "text-profit" : "text-loss")}>{s.signal}</span>
+                  <span className={"font-heavy " + (s.signal === "BUY" ? "text-profit" : "text-loss")}>{t(s.signal === "BUY" ? "signal.buy" : "signal.sell")}</span>
                   <span className="text-secondary" style={{ fontSize: "12px" }}>{s.reasons[0]?.split(":")[0] || ""}</span>
                   <span style={{ fontSize: "12px" }}>{(s.strength * 100).toFixed(0)}%</span>
                 </div>
@@ -176,10 +176,10 @@ export default function DashboardPage({ t }: { t: (k: string) => string }) {
         <div className="card">
           <h3 className="card-title">{t("dash.systemStatus")}</h3>
           <div className="flex flex-col gap-md">
-            <StatusRow label="API Server" ok={health?.status === "ok"} />
-            <StatusRow label="Database" ok={health?.db === "ok"} />
-            <StatusRow label="Redis Cache" ok={health?.redis === "ok"} />
-            <StatusRow label="Tunnel" ok={true} detail="alphatrade.visualfactory.ai" />
+            <StatusRow label={t("sys.apiServer")} ok={health?.status === "ok"} />
+            <StatusRow label={t("sys.database")} ok={health?.db === "ok"} />
+            <StatusRow label={t("sys.redisCache")} ok={health?.redis === "ok"} />
+            <StatusRow label={t("sys.tunnel")} ok={true} detail="alphatrade.visualfactory.ai" />
           </div>
         </div>
         <div className="card">
@@ -193,7 +193,7 @@ export default function DashboardPage({ t }: { t: (k: string) => string }) {
               className="action-btn"
               style={{ background: "var(--color-loss)", marginTop: "8px" }}
               onClick={() => { if (confirm("킬 스위치를 활성화하면 모든 신규 주문이 차단됩니다. 계속?")) apiPost("/trading/kill-switch/activate"); }}
-            >🚨 Kill Switch</button>
+            >🚨 {t("command.killSwitch")}</button>
           </div>
         </div>
       </div>
