@@ -40,7 +40,8 @@ export default function TrendPage({ t: _t }: { t: (k: string) => string }) {
       .then(([trend, ov]) => {
         setSectors(trend.sectors || []);
         setOverview(ov.sectors || []);
-        setSelectedSectors(new Set((trend.sectors || []).map((s) => s.sector)));
+        // Default: select top 10 sectors only (avoid chart overload)
+        setSelectedSectors(new Set((trend.sectors || []).slice(0, 10).map((s) => s.sector)));
       })
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -88,22 +89,25 @@ export default function TrendPage({ t: _t }: { t: (k: string) => string }) {
       {/* ── TAB 1: 섹터 추세 차트 ── */}
       {tab === "chart" && (
         <>
-          {/* Sector Filter Chips */}
+          {/* Sector Filter — compact scrollable list */}
           <div className="card">
             <div className="flex gap-sm items-center mb-md">
-              <h3 className="card-title" style={{ marginBottom: 0 }}>{_t("trend.sectorFilter")}</h3>
+              <h3 className="card-title" style={{ marginBottom: 0 }}>{_t("trend.sectorFilter")} ({selectedSectors.size}/{sectors.length})</h3>
+              <button onClick={() => setSelectedSectors(new Set(sectors.slice(0, 10).map((s) => s.sector)))} className="filter-btn">Top 10</button>
               <button onClick={() => setSelectedSectors(new Set(sectors.map((s) => s.sector)))} className="filter-btn">{_t("trend.all")}</button>
               <button onClick={() => setSelectedSectors(new Set())} className="filter-btn">{_t("trend.reset")}</button>
             </div>
-            <div className="flex flex-wrap gap-sm">
+            <div style={{ maxHeight: "160px", overflowY: "auto", display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "4px", fontSize: "12px" }}>
               {sectors.map((sec, i) => {
                 const active = selectedSectors.has(sec.sector);
                 const color = COLORS[i % COLORS.length];
                 return (
-                  <button key={sec.sector} onClick={() => toggleSector(sec.sector)} className="filter-chip"
-                    style={{ borderColor: color, background: active ? color : "transparent", color: active ? "#fff" : color }}>
-                    {sec.sector} ({sec.cumulative_return >= 0 ? "+" : ""}{sec.cumulative_return}%)
-                  </button>
+                  <label key={sec.sector} className="flex items-center gap-xs" style={{ cursor: "pointer", padding: "3px 6px", borderRadius: "4px", background: active ? `${color}15` : "transparent" }}>
+                    <input type="checkbox" checked={active} onChange={() => toggleSector(sec.sector)} style={{ accentColor: color }} />
+                    <span style={{ color: active ? color : "#666", fontWeight: active ? 600 : 400 }}>
+                      {sec.sector} <span className="text-secondary">({sec.cumulative_return >= 0 ? "+" : ""}{sec.cumulative_return}%)</span>
+                    </span>
+                  </label>
                 );
               })}
             </div>
