@@ -190,9 +190,110 @@ except Exception as e:
 
 ---
 
-## 5. Verification
+## 5. 외부 감사 결과 (2026-03-30)
 
-리팩토링 후 검증:
+두 건의 독립 감사를 받았으며 (`docs/plan-audit/` by Claude, `plan_audit_gemini/` by Gemini),
+리팩토링 전후 상태를 교차 검증하였다.
+
+### 5.1 두 감사 공통 합의 사항
+
+| 항목 | 양쪽 평가 | 현재 상태 |
+|---|---|---|
+| Core Engine (37 엔드포인트) | Match | ✅ 완료 |
+| Docker 인프라 (8 서비스) | Match | ✅ 완료 |
+| DB 스키마 + 제약조건 | Match | ✅ 완료 |
+| Redis Pub/Sub 발행 | Match | ✅ 동작 |
+| React 대시보드 | Match | ✅ 완료 |
+| **n8n 워크플로우 (1/10)** | **Gap** | ❌ 최대 갭 |
+| **WebSocket 실시간** | **Gap** | ❌ 미구현 |
+| NLP 센티먼트 경로 | Partial | ⚠️ Python 직접 호출 (계획: n8n AI Node) |
+
+### 5.2 두 감사가 다른 부분
+
+| 항목 | Claude 감사 (리팩 전) | Gemini 감사 (리팩 후) | 현재 실제 |
+|---|---|---|---|
+| Grafana 대시보드 | Gap (empty JSON) | Match (20+ panels) | ✅ 20+ 패널 동작 |
+| 인라인 스타일 | heavy inline | Match (CSS) | ✅ 206→44 (78% 감소) |
+| i18n | Partial | Match | ✅ 157개 번역 키 |
+| 전체 완성도 | 수치 없음 | 65% | **~75%** (자체 평가) |
+
+### 5.3 완성도 자체 평가
+
+| 영역 | 완성도 | 근��� |
+|---|---|---|
+| Core Engine | 95% | 37 엔드포인트, DI, 재시도, 트랜잭션, 784 테스트, 72% 커버리지 |
+| Infrastructure | 90% | 8 서비스 healthy, Prometheus 수집, DB 제약 |
+| Dashboard | 85% | 6 페이지, i18n, CSS 클래스, StockSearch |
+| Monitoring | 75% | Grafana 20+ 패널, n8n 메트릭 대시보드 부족 |
+| Security | 80% | CORS, Rate Limit, 보안 헤더 (JWT 미구현) |
+| **n8n Workflows** | **10%** | 1/10 워크플로우 |
+| **실시간 시세** | **5%** | REST 폴링만, WebSocket 미구현 |
+
+---
+
+## 6. 실시간 주가 수신 현황 분석
+
+### 6.1 현재 구조 (REST 폴링)
+
+```
+KIS REST API ←── get_current_price() ←── n8n (1분 스케줄) 또는 수동 버튼
+      │
+      ├── TimescaleDB 저장
+      ├── Redis Pub/Sub 발행 (ohlcv:{code}) ← 소비자 없음
+      │
+Dashboard ─── 60초 setInterval 또는 수동 ─── GET /market/prices
+```
+
+### 6.2 컴포넌트별 상태
+
+| 구성요소 | 상태 | 설명 |
+|----------|------|------|
+| KIS REST 시세조회 | ✅ 동작 | `get_current_price()` — 요청당 1건 조회 |
+| KIS WebSocket 실시간 | ❌ 미구현 | `wss://` 연결, 종목 구독, 틱 수신 없음 |
+| Redis Pub/Sub 발행 | ✅ 동작 | `ohlcv:{code}` 채널에 가격 발행 |
+| Redis Pub/Sub 구독 | �� 미구현 | 발행된 메시지를 소비하는 코드 없음 |
+| FastAPI WebSocket | ❌ 미구현 | nginx `/ws` 프록시만 설정, 핸들러 없음 |
+| 프론트엔드 WebSocket | ❌ 미구현 | useApi는 fetch 기반 |
+| 프론트엔드 자동갱신 | ⚠️ 부분 | Market.tsx 60초 polling |
+| config WS URL | ❌ 없��� | `KIS_WEBSOCKET_URL` 미정의 |
+
+### 6.3 실시간 구현 필요 작업
+
+```
+KIS WebSocket (wss://) ──→ 백그라운드 태스크 ──→ Redis Pub/Sub
+                                                       │
+                                    ┌──────────────────┘
+                                    ▼
+                          FastAPI WebSocket /ws ──→ 프론트엔드 실시간 갱신
+```
+
+| 순서 | 작업 | 설명 |
+|------|------|------|
+| 1 | KIS WebSocket 클라이언트 | `wss://` 연결, 종목 구독, 틱 파싱 |
+| 2 | 백그라운드 스트리밍 태스크 | lifespan에서 asyncio.create_task 상시 실행 |
+| 3 | Redis → WebSocket 브릿지 | Pub/Sub 구독 → 연결 클라이언트 broadcast |
+| 4 | FastAPI `/ws` 엔드포인트 | WebSocket 연결 관리 + 종목 필터링 |
+| 5 | ���론트엔드 `useWebSocket` 훅 | 실시간 가격 반영 |
+| 6 | config 확장 | `KIS_WEBSOCKET_URL`, 구독 코드 추가 |
+
+---
+
+## 7. 잔여 과제 (우선순위)
+
+| 순위 | 과제 | 영향도 | ��태 |
+|---|---|---|---|
+| 1 | 실시간 주가 수신 (KIS WebSocket) | 핵심 기능 | ❌ 미구현 |
+| 2 | n8n 워크플로우 확장 (9개) | 자동화 | ❌ 1/10 |
+| 3 | 카카오톡 알림 실전 연동 | 사용자 경험 | ⚠️ API 구현됨, 토큰 관리 필요 |
+| 4 | WebSocket 대시보드 실시간 | 사용자 경험 | ❌ 미구현 |
+| 5 | JWT 인증 (API Key→JWT) | 보안 | ⚠️ 선택 |
+| 6 | 센티먼트 경로 결정 | 아키텍처 | ⚠️ Python 직접 vs n8n |
+
+---
+
+## 8. Verification
+
+리팩토링 후 검증 (2026-03-30 전체 통과 확인):
 ```bash
 # 1. 전체 테스트 통과
 pytest tests/ -v --cov=app --cov-report=term-missing
@@ -215,7 +316,7 @@ curl -sf http://localhost:8000/order/execute  # → 401
 
 ---
 
-## 6. 문서 산출물
+## 9. 문서 산출물
 
 리팩토링 과정에서 생성할 문서:
 1. `docs/architecture.md` — 전체 아키텍처 설명
