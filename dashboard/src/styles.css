@@ -1561,6 +1561,36 @@ body {
   gap: var(--space-sm);
 }
 
+.asset-hero-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-md);
+}
+
+.asset-hero-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 92px;
+  justify-content: center;
+  background:
+    radial-gradient(circle at top right, rgba(59, 130, 246, 0.08), transparent 40%),
+    linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+}
+
+.asset-hero-label,
+.asset-chart-note,
+.asset-volume-label {
+  font-size: var(--font-sm);
+  color: var(--color-text-secondary);
+}
+
+.asset-hero-value {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--color-text-primary);
+}
+
 .asset-range-strip {
   display: flex;
   justify-content: space-between;
@@ -1658,6 +1688,16 @@ body {
   display: grid;
   grid-template-columns: minmax(0, 2.1fr) minmax(280px, 0.9fr);
   gap: var(--space-lg);
+}
+
+.asset-chart-card {
+  padding-bottom: var(--space-md);
+}
+
+.asset-volume-panel {
+  margin-top: var(--space-md);
+  border-top: 1px solid var(--color-border-light);
+  padding-top: var(--space-md);
 }
 
 .asset-section-header {
@@ -1758,6 +1798,7 @@ body {
 }
 
 @media (max-width: 960px) {
+  .asset-hero-strip,
   .asset-header,
   .asset-main-grid,
   .asset-bottom-grid {

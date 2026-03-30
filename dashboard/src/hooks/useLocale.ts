@@ -355,6 +355,12 @@ const translations: Record<string, Record<Locale, string>> = {
   "asset.compareHint": { en: "Add a ticker to overlay relative performance.", ko: "종목을 추가해 상대 수익률을 겹쳐 보세요." },
   "asset.compareBase": { en: "Primary", ko: "기준 종목" },
   "asset.compareTarget": { en: "Compare", ko: "비교 종목" },
+  "asset.compareModeNote": { en: "Normalized performance comparison view", ko: "정규화된 상대 수익률 비교 보기" },
+  "asset.chartModeNote": { en: "Toggle candles, line, and moving averages", ko: "캔들, 라인, 이동평균을 전환할 수 있습니다" },
+  "asset.rangeReturn": { en: "Selected Range Return", ko: "선택 구간 수익률" },
+  "asset.dayRange": { en: "Visible Price Range", ko: "표시 구간 가격 범위" },
+  "asset.avgVolume": { en: "Average Volume", ko: "평균 거래량" },
+  "asset.relativeVolume": { en: "Relative Volume", ko: "상대 거래량" },
 
   // Common
   "common.loading": { en: "Loading...", ko: "로딩 중..." },

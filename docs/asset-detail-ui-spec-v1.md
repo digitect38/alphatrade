@@ -14,6 +14,26 @@ It exists to answer a different question:
 - `How has it behaved across multiple windows?`
 - `What events, signals, and execution states explain the move?`
 
+## Current Implementation Status
+
+Implemented now:
+- dedicated `#asset/{code}` route
+- chart-first layout with large primary chart area
+- `1D / 5D / 1M / 3M / 6M / YTD / 1Y`
+- `Line / Candles` toggle
+- `MA20 / MA50` toggle
+- OHLC + volume hover detail
+- separate volume panel below price chart
+- normalized compare overlay using a second ticker
+- latest news and execution context panels
+- asset-specific backend APIs
+
+Still not implemented:
+- peer compare presets
+- indicator drawer beyond `MA20 / MA50`
+- advanced crosshair/header sync
+- earnings/financials/analyst modules
+
 The design target is closer to a `Yahoo Finance style chart view`, but adapted for AlphaTrade:
 - keep chart exploration familiar
 - keep execution and risk context attached
@@ -107,9 +127,10 @@ Core behavior:
 - stronger line than current default charts
 
 Required overlays:
-- volume below price
+- separate volume panel below price
 - previous close line for `1D`
-- optional moving averages toggle
+- moving averages toggle
+- line/candles toggle
 
 Visual rules:
 - rising range: green line/fill
@@ -189,7 +210,13 @@ Possible statuses:
 
 ### 8. Mini Comparison Section
 
-Optional v1, but recommended:
+Implemented in current UI:
+
+- compare ticker search using stock code/name search
+- normalized performance overlay in line mode
+- primary vs compare labels above chart
+
+Next recommended step:
 
 - sector ETF/index proxy
 - market index proxy
@@ -237,6 +264,7 @@ Recommended APIs:
 - 1M
 - 3M
 - 6M
+- YTD
 - 1Y
 
 `events`
@@ -258,6 +286,9 @@ Recommended APIs:
 ## Interaction Rules
 
 - symbol changes should preserve selected range if sensible
+- compare ticker should preserve selected range
+- enabling compare should default chart mode to `line`
+- clearing compare should keep current symbol and chart range intact
 - mobile should stack `header -> period strip -> chart -> stats -> catalysts -> execution`
 - desktop should use `chart left / stats right`
 - every major status uses arrow + color + text, not color alone

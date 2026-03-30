@@ -13,6 +13,7 @@ import {
   YAxis,
 } from "recharts";
 import DirectionValue from "../components/DirectionValue";
+import StockSearch from "../components/StockSearch";
 import { orderStatusLabel } from "../lib/labels";
 import { apiGet } from "../hooks/useApi";
 import type { OrderHistoryItem } from "../types";
@@ -101,7 +102,6 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
   const [chartMode, setChartMode] = useState<ChartMode>("candles");
   const [showMa20, setShowMa20] = useState(true);
   const [showMa50, setShowMa50] = useState(true);
-  const [compareInput, setCompareInput] = useState("");
   const [compareCode, setCompareCode] = useState("");
   const [overview, setOverview] = useState<AssetOverview | null>(null);
   const [compareOverview, setCompareOverview] = useState<AssetOverview | null>(null);
@@ -176,6 +176,13 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
   const latestOrder = executionContext?.latest_order || null;
   const activeRangeReturn = periodReturns.find((item) => item.key === range)?.value ?? 0;
   const isPositiveRange = activeRangeReturn >= 0;
+  const chartHigh = useMemo(() => (chartData.length ? Math.max(...chartData.map((item) => item.high)) : 0), [chartData]);
+  const chartLow = useMemo(() => (chartData.length ? Math.min(...chartData.map((item) => item.low)) : 0), [chartData]);
+  const averageVolume = useMemo(() => {
+    if (!chartData.length) return 0;
+    return Math.round(chartData.reduce((sum, item) => sum + item.volume, 0) / chartData.length);
+  }, [chartData]);
+  const relativeVolume = averageVolume > 0 && overview ? overview.volume / averageVolume : 0;
 
   if (!stockCode) return <div className="card">{t("asset.noCode")}</div>;
   if (loading) return <p className="text-secondary p-xl">{t("asset.loading")}</p>;
@@ -206,6 +213,25 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
             <button className="btn btn-sm" onClick={() => { window.location.hash = "command"; }}>{t("asset.backCommand")}</button>
             <button className="btn btn-sm" onClick={() => { window.location.hash = "trend"; }}>{t("asset.backIntel")}</button>
           </div>
+        </div>
+      </section>
+
+      <section className="asset-hero-strip">
+        <div className="card asset-hero-card">
+          <div className="asset-hero-label">{t("asset.rangeReturn")}</div>
+          <DirectionValue value={activeRangeReturn} suffix="%" />
+        </div>
+        <div className="card asset-hero-card">
+          <div className="asset-hero-label">{t("asset.dayRange")}</div>
+          <div className="asset-hero-value">{chartLow ? `${chartLow.toLocaleString()} - ${chartHigh.toLocaleString()}` : "-"}</div>
+        </div>
+        <div className="card asset-hero-card">
+          <div className="asset-hero-label">{t("asset.avgVolume")}</div>
+          <div className="asset-hero-value">{averageVolume ? averageVolume.toLocaleString() : "-"}</div>
+        </div>
+        <div className="card asset-hero-card">
+          <div className="asset-hero-label">{t("asset.relativeVolume")}</div>
+          <div className="asset-hero-value">{relativeVolume ? `${relativeVolume.toFixed(2)}x` : "-"}</div>
         </div>
       </section>
 
@@ -240,28 +266,21 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
       <section className="card asset-compare-strip">
         <div className="asset-compare-form">
           <div className="asset-compare-label">{t("asset.compare")}</div>
-          <input
-            className="input asset-compare-input"
-            value={compareInput}
-            onChange={(e) => setCompareInput(e.target.value.trim())}
-            placeholder={t("asset.comparePlaceholder")}
-          />
-          <button
-            className="btn btn-sm"
-            onClick={() => {
-              if (!compareInput || compareInput === stockCode) return;
-              setCompareCode(compareInput);
+          <StockSearch
+            value={compareCode}
+            onChange={(code) => {
+              if (!code || code === stockCode) return;
+              setCompareCode(code);
               setChartMode("line");
             }}
-          >
-            {t("asset.compareAdd")}
-          </button>
+            placeholder={t("asset.comparePlaceholder")}
+            t={t}
+          />
           {compareCode ? (
             <button
               className="btn btn-sm btn-secondary"
               onClick={() => {
                 setCompareCode("");
-                setCompareInput("");
               }}
             >
               {t("asset.compareClear")}
@@ -286,9 +305,10 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
         <div className="card asset-chart-card">
           <div className="asset-section-header">
             <h3 className="card-title">{t("asset.chart")}</h3>
+            <div className="asset-chart-note">{compareCode && chartMode === "line" ? t("asset.compareModeNote") : t("asset.chartModeNote")}</div>
           </div>
-          <ResponsiveContainer width="100%" height={420}>
-            <ComposedChart data={chartPoints}>
+          <ResponsiveContainer width="100%" height={460}>
+            <ComposedChart data={chartPoints} syncId="asset-detail">
               <defs>
                 <linearGradient id="assetChartFill" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor={isPositiveRange ? "var(--color-profit)" : "var(--color-loss)"} stopOpacity={0.24} />
@@ -303,7 +323,6 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
                 domain={chartMode === "line" && compareCode ? ["auto", "auto"] : ["auto", "auto"]}
                 tickFormatter={(value: number) => (chartMode === "line" && compareCode ? `${value.toFixed(1)}%` : `${(value / 1000).toFixed(0)}k`)}
               />
-              <YAxis yAxisId="volume" orientation="right" hide />
               <Tooltip
                 content={({ active, payload, label }) => {
                   if (!active || !payload?.length) return null;
@@ -332,7 +351,6 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
                 labelFormatter={(_label, payload) => payload?.[0]?.payload?.time ? new Date(payload[0].payload.time).toLocaleString("ko-KR") : ""}
               />
               {overview?.current_price ? <ReferenceLine yAxisId="price" y={overview.current_price - overview.change} stroke="#94a3b8" strokeDasharray="4 4" /> : null}
-              <Bar yAxisId="volume" dataKey="volume" fill="#cbd5e1" opacity={0.45} />
               {chartMode === "line" ? (
                 <>
                   <Area
@@ -363,6 +381,20 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
               {showMa50 ? <Line yAxisId="price" type="monotone" dataKey="ma50" stroke="#f59e0b" strokeWidth={1.75} dot={false} connectNulls name={t("asset.overlay.ma50")} /> : null}
             </ComposedChart>
           </ResponsiveContainer>
+          <div className="asset-volume-panel">
+            <div className="asset-volume-label">{t("asset.volume")}</div>
+            <ResponsiveContainer width="100%" height={110}>
+              <ComposedChart data={chartPoints} syncId="asset-detail">
+                <XAxis dataKey="label" hide />
+                <YAxis hide />
+                <Tooltip
+                  formatter={(value: number) => [value.toLocaleString(), t("asset.volume")]}
+                  labelFormatter={(_label, payload) => payload?.[0]?.payload?.time ? new Date(payload[0].payload.time).toLocaleString("ko-KR") : ""}
+                />
+                <Bar dataKey="volume" fill="rgba(100, 116, 139, 0.35)" radius={[3, 3, 0, 0]} />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
         </div>
 
         <div className="card asset-side-card">
