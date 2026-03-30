@@ -1,8 +1,8 @@
 """Shared fixtures for all tests."""
 
 import os
-# Disable rate limiting and auth during tests
-os.environ.setdefault("RATE_LIMIT_MAX", "10000")
+# Relax rate limiting during tests without violating security config expectations.
+os.environ.setdefault("RATE_LIMIT_MAX", "1000")
 os.environ.setdefault("API_AUTH_KEY", "")
 
 import pytest
