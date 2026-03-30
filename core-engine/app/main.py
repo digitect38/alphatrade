@@ -4,6 +4,7 @@ from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_client import generate_latest
 
+from app.config import settings
 from app.database import close_db, close_redis, init_db, init_redis
 from app.metrics import registry
 from app.execution.broker import BrokerClient
@@ -23,6 +24,7 @@ from app.routes.strategy import router as strategy_router
 from app.routes.trading import router as trading_router
 from app.routes.webhook import router as webhook_router
 from app.routes.alert import router as alert_router
+from app.routes.ws import router as ws_router, redis_to_websocket_bridge
 from app.services.dart_api import DARTClient
 from app.services.kis_api import KISClient
 from app.services.naver_news import NaverNewsClient
@@ -60,7 +62,36 @@ async def lifespan(app: FastAPI):
         import logging
         logging.getLogger(__name__).error("Inflight order recovery failed: %s", e)
 
+    # Start Redis→WebSocket bridge (background task)
+    import asyncio
+    ws_bridge_task = asyncio.create_task(redis_to_websocket_bridge(redis_client))
+
+    # Start KIS WebSocket real-time streaming (if API keys configured)
+    kis_ws_task = None
+    if settings.kis_app_key and settings.kis_app_secret:
+        try:
+            from app.services.kis_websocket import KISWebSocketClient
+            kis_ws_client = KISWebSocketClient(redis=redis_client)
+            # Get universe stock codes for subscription
+            async with db_pool.acquire() as conn:
+                universe = await conn.fetch("SELECT stock_code FROM universe WHERE is_active = TRUE")
+            codes = [r["stock_code"] for r in universe]
+            if codes:
+                kis_ws_task = asyncio.create_task(kis_ws_client.run(stock_codes=codes))
+                app.state.kis_ws_client = kis_ws_client
+                import logging
+                logging.getLogger(__name__).info("KIS WebSocket started for %d stocks", len(codes))
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error("KIS WebSocket startup failed: %s", e)
+
     yield
+
+    # Shutdown background tasks
+    ws_bridge_task.cancel()
+    if kis_ws_task:
+        app.state.kis_ws_client.stop()
+        kis_ws_task.cancel()
 
     # Shutdown
     await app.state.notifier.close()
@@ -101,6 +132,7 @@ app.include_router(order_router, prefix="/order", tags=["order"])
 app.include_router(portfolio_router, prefix="/portfolio", tags=["portfolio"])
 app.include_router(scanner_router, prefix="/scanner", tags=["scanner"])
 app.include_router(alert_router, prefix="/alert", tags=["alert"])
+app.include_router(ws_router, tags=["websocket"])
 app.include_router(market_router, prefix="/market", tags=["market"])
 app.include_router(index_router, prefix="/index", tags=["index"])
 app.include_router(trading_router, prefix="/trading", tags=["trading"])

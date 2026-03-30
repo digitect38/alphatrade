@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { apiGet, apiPost } from "../hooks/useApi";
+import { useWebSocket } from "../hooks/useWebSocket";
 
 interface StockPrice {
   stock_code: string;
@@ -32,6 +33,21 @@ export default function MarketPage({ t }: { t: (k: string) => string }) {
   const [loading, setLoading] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [scanResult, setScanResult] = useState<string | null>(null);
+
+  // Real-time WebSocket
+  const { connected: wsConnected } = useWebSocket({
+    onTick: (tick) => {
+      setData((prev) => {
+        if (!prev) return prev;
+        const stocks = prev.stocks.map((s) =>
+          s.stock_code === tick.stock_code
+            ? { ...s, price: tick.price, change_pct: tick.change_pct, change: tick.change, volume: tick.volume }
+            : s
+        );
+        return { ...prev, stocks, updated_at: tick.received_at };
+      });
+    },
+  });
 
   // News modal state
   const [newsOpen, setNewsOpen] = useState(false);
@@ -84,7 +100,11 @@ export default function MarketPage({ t }: { t: (k: string) => string }) {
           <input type="checkbox" checked={autoRefresh} onChange={(e) => setAutoRefresh(e.target.checked)} />
           {t("market.autoRefresh")}
         </label>
-        <button onClick={runMorningScan} className="btn btn-danger ml-auto">
+        <span className="flex items-center gap-xs ml-auto" style={{ fontSize: "11px" }}>
+          <span className={"status-dot " + (wsConnected ? "ok" : "error")} />
+          {wsConnected ? "LIVE" : "OFFLINE"}
+        </span>
+        <button onClick={runMorningScan} className="btn btn-danger">
           {t("market.morningScan")}
         </button>
         {data && (
