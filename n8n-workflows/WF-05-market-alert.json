@@ -1,0 +1,36 @@
+{
+  "id": "6",
+  "name": "WF-05 Market Alert",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "minutes", "minutesInterval": 10 }]
+        }
+      },
+      "id": "schedule-1",
+      "name": "Every 10 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://core-engine:8000/alert/scan",
+        "options": { "timeout": 30000 }
+      },
+      "id": "http-1",
+      "name": "Scan Market Alerts (KakaoTalk+Telegram)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [220, 0]
+    }
+  ],
+  "connections": {
+    "Every 10 Minutes": {
+      "main": [[{ "node": "Scan Market Alerts (KakaoTalk+Telegram)", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" }
+}

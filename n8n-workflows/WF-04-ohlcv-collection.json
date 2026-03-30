@@ -1,0 +1,36 @@
+{
+  "id": "5",
+  "name": "WF-04 OHLCV Collection",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "minutes", "minutesInterval": 1 }]
+        }
+      },
+      "id": "schedule-1",
+      "name": "Every 1 Minute (Market Hours)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://core-engine:8000/collect/ohlcv",
+        "options": { "timeout": 30000 }
+      },
+      "id": "http-1",
+      "name": "Collect OHLCV Data",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [220, 0]
+    }
+  ],
+  "connections": {
+    "Every 1 Minute (Market Hours)": {
+      "main": [[{ "node": "Collect OHLCV Data", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" }
+}

@@ -1,0 +1,82 @@
+{
+  "id": "8",
+  "name": "WF-07 Health Check",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "minutes", "minutesInterval": 5 }]
+        }
+      },
+      "id": "schedule-1",
+      "name": "Every 5 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://core-engine:8000/health",
+        "options": { "timeout": 10000 }
+      },
+      "id": "http-1",
+      "name": "Check Health",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [220, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.status }}",
+              "operation": "notEqual",
+              "value2": "ok"
+            }
+          ]
+        }
+      },
+      "id": "if-1",
+      "name": "Status Not OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [440, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/sendMessage",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "chat_id", "value": "<YOUR_CHAT_ID>" },
+            { "name": "text", "value": "=ALERT: Core Engine health check failed!\nStatus: {{ $json.status }}\nTimestamp: {{ $now.toISO() }}" }
+          ]
+        },
+        "options": { "timeout": 10000 }
+      },
+      "id": "http-2",
+      "name": "Send Telegram Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [660, 0]
+    }
+  ],
+  "connections": {
+    "Every 5 Minutes": {
+      "main": [[{ "node": "Check Health", "type": "main", "index": 0 }]]
+    },
+    "Check Health": {
+      "main": [[{ "node": "Status Not OK?", "type": "main", "index": 0 }]]
+    },
+    "Status Not OK?": {
+      "main": [
+        [{ "node": "Send Telegram Alert", "type": "main", "index": 0 }],
+        []
+      ]
+    }
+  },
+  "settings": { "executionOrder": "v1" }
+}

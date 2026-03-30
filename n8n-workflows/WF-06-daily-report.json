@@ -1,0 +1,96 @@
+{
+  "id": "7",
+  "name": "WF-06 Daily Report",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "cronExpression", "expression": "30 16 * * 1-5" }]
+        }
+      },
+      "id": "schedule-1",
+      "name": "Cron 16:30 KST Weekdays",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://core-engine:8000/trading/status",
+        "options": { "timeout": 30000 }
+      },
+      "id": "http-1",
+      "name": "Get Trading Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [220, 0]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://core-engine:8000/portfolio/status",
+        "options": { "timeout": 30000 }
+      },
+      "id": "http-2",
+      "name": "Get Portfolio Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [440, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.status }}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      },
+      "id": "if-1",
+      "name": "Check Status Valid",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [660, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/sendMessage",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "chat_id", "value": "<YOUR_CHAT_ID>" },
+            { "name": "text", "value": "=Daily Report\nTrading: {{ $('Get Trading Status').item.json.status }}\nPortfolio: {{ $('Get Portfolio Status').item.json }}" }
+          ]
+        },
+        "options": { "timeout": 10000 }
+      },
+      "id": "http-3",
+      "name": "Send Telegram Daily Summary",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [880, 0]
+    }
+  ],
+  "connections": {
+    "Cron 16:30 KST Weekdays": {
+      "main": [[{ "node": "Get Trading Status", "type": "main", "index": 0 }]]
+    },
+    "Get Trading Status": {
+      "main": [[{ "node": "Get Portfolio Status", "type": "main", "index": 0 }]]
+    },
+    "Get Portfolio Status": {
+      "main": [[{ "node": "Check Status Valid", "type": "main", "index": 0 }]]
+    },
+    "Check Status Valid": {
+      "main": [
+        [{ "node": "Send Telegram Daily Summary", "type": "main", "index": 0 }],
+        []
+      ]
+    }
+  },
+  "settings": { "executionOrder": "v1" }
+}

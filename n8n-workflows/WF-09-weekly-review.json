@@ -1,0 +1,36 @@
+{
+  "id": "9",
+  "name": "WF-09 Weekly Review",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "cronExpression", "expression": "0 9 * * 6" }]
+        }
+      },
+      "id": "schedule-1",
+      "name": "Cron Saturday 09:00 KST",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://core-engine:8000/portfolio/status",
+        "options": { "timeout": 30000 }
+      },
+      "id": "http-1",
+      "name": "Get Weekly Portfolio Review",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [220, 0]
+    }
+  ],
+  "connections": {
+    "Cron Saturday 09:00 KST": {
+      "main": [[{ "node": "Get Weekly Portfolio Review", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" }
+}
