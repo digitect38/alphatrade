@@ -4,7 +4,10 @@ Tests run without real DB/Redis — uses dependency_overrides with async mocks.
 ~200 test cases.
 """
 
+import hashlib
+import hmac
 import pytest
+import time
 from datetime import datetime, timezone
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -386,6 +389,48 @@ class TestPortfolioRoutes:
 
 
 class TestWebhookRoutes:
+    def test_tradingview_webhook_with_hmac(self, client):
+        secret = "test_secret"
+        body = {
+            "ticker": "005930",
+            "action": "buy",
+            "price": 60000,
+        }
+        body_bytes = json_bytes = __import__("json").dumps(body).encode()
+        timestamp = str(int(time.time()))
+        signature = hmac.new(secret.encode(), f"{timestamp}.".encode() + body_bytes, hashlib.sha256).hexdigest()
+
+        with patch("app.routes.webhook.settings.tradingview_webhook_secret", secret):
+            resp = client.post(
+                "/webhook/tradingview",
+                content=json_bytes,
+                headers={
+                    "Content-Type": "application/json",
+                    "X-Timestamp": timestamp,
+                    "X-Signature": signature,
+                },
+            )
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "received"
+
+    def test_tradingview_webhook_rejects_bad_hmac(self, client):
+        secret = "test_secret"
+        body = {"ticker": "005930", "action": "buy"}
+        json_bytes = __import__("json").dumps(body).encode()
+        timestamp = str(int(time.time()))
+
+        with patch("app.routes.webhook.settings.tradingview_webhook_secret", secret):
+            resp = client.post(
+                "/webhook/tradingview",
+                content=json_bytes,
+                headers={
+                    "Content-Type": "application/json",
+                    "X-Timestamp": timestamp,
+                    "X-Signature": "bad-signature",
+                },
+            )
+        assert resp.status_code == 403
+
     def test_tradingview_webhook_with_secret(self, client):
         from app.config import settings
         secret = settings.tradingview_webhook_secret or "test_secret"
@@ -439,6 +484,53 @@ class TestTradingRoutes:
     def test_trading_monitor(self, client):
         resp = client.post("/trading/monitor")
         assert resp.status_code == 200
+
+    def test_reconcile_with_broker_mismatch(self, client):
+        from app.main import app
+        from app.deps import get_kis_client
+        from app.services.kis_api import KISClient
+
+        class ReconcileConn(FakeConn):
+            def __init__(self):
+                super().__init__()
+                self.calls = []
+
+            async def fetch(self, query, *args, **kwargs):
+                self.calls.append(("fetch", query))
+                if "FROM orders" in query:
+                    return [
+                        {"order_id": "ORD-1", "stock_code": "005930", "side": "BUY", "quantity": 10, "status": "SUBMITTED"},
+                    ]
+                if "FROM portfolio_positions WHERE quantity <= 0" in query:
+                    return []
+                if "SUM(quantity * avg_price)" in query:
+                    return [{"total_invested": Decimal("100000")}]
+                if "FROM portfolio_positions WHERE quantity > 0" in query:
+                    return [{"stock_code": "005930", "quantity": 10, "avg_price": Decimal("10000")}]
+                return []
+
+            async def fetchrow(self, query, *args, **kwargs):
+                if "FROM portfolio_snapshots" in query:
+                    return {"total_value": Decimal("1000000"), "cash": Decimal("500000"), "invested": Decimal("120000")}
+                return None
+
+        _pool.conn = ReconcileConn()
+
+        mock_kis = MagicMock(spec=KISClient)
+        mock_kis.get_account_balance = AsyncMock(return_value={
+            "cash": 450000,
+            "positions": [{"stock_code": "005930", "quantity": 8}],
+        })
+        app.dependency_overrides[get_kis_client] = lambda: mock_kis
+
+        resp = client.post("/trading/reconcile")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "completed"
+        assert data["mismatches"] >= 2
+        mismatch_types = {item["type"] for item in data["details"]}
+        assert "position_qty_mismatch" in mismatch_types
+        assert "broker_cash_mismatch" in mismatch_types or "cash_mismatch" in mismatch_types
 
 
 # ========== Scanner Routes ==========
