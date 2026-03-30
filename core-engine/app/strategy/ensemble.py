@@ -135,4 +135,8 @@ async def generate_signal(
                      "components": {c.name: c.score for c in components}},
         )
 
+        # Callback to n8n for WF-05 trade alert (v1.3 engine→n8n)
+        from app.services.n8n_callback import on_signal_generated
+        await on_signal_generated(stock_code, signal, strength, ensemble_score)
+
     return result

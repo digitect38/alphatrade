@@ -125,6 +125,11 @@ async def collect_news(
         errors.append(f"Collection failed: {e}")
         logger.error("News collection error: %s", e)
 
+    # Callback to n8n for WF-03 sentiment analysis (v1.3 engine→n8n)
+    if inserted > 0:
+        from app.services.n8n_callback import on_news_collected
+        await on_news_collected(inserted, [s.stock_codes[0] for s in sample if s.stock_codes])
+
     return NewsCollectionResult(
         status=_collection_status(errors, inserted),
         inserted=inserted, duplicates=duplicates, errors=errors,

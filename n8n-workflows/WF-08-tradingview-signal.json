@@ -1,0 +1,55 @@
+{
+  "id": "11",
+  "name": "WF-08: TradingView Signal Routing",
+  "nodes": [
+    {
+      "parameters": { "path": "tradingview-signal", "httpMethod": "POST", "responseMode": "onReceived" },
+      "id": "webhook-1",
+      "name": "TradingView Signal Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse TradingView signal and prepare for strategy engine\nconst input = $input.first().json;\nconst ticker = input.ticker || '';\nconst action = (input.action || '').toUpperCase();\nconst price = input.price || 0;\n\n// Map TradingView ticker to KRX stock code if needed\nlet stockCode = ticker;\nif (ticker.length < 6) {\n  stockCode = ticker.padStart(6, '0');\n}\n\nreturn [{\n  json: {\n    stock_code: stockCode,\n    action: action,\n    price: price,\n    source: 'tradingview',\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "code-1",
+      "name": "Parse TV Signal",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, 0]
+    },
+    {
+      "parameters": { "method": "POST", "url": "http://core-engine:8000/strategy/signal", "sendBody": true, "specifyBody": "json", "jsonBody": "={\"stock_code\": \"{{ $json.stock_code }}\"}", "options": { "timeout": 30000 } },
+      "id": "http-signal",
+      "name": "Generate Strategy Signal",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [440, 0]
+    },
+    {
+      "parameters": { "conditions": { "string": [{ "value1": "={{ $json.signal }}", "operation": "notEqual", "value2": "HOLD" }] } },
+      "id": "if-1",
+      "name": "Actionable Signal?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [660, 0]
+    },
+    {
+      "parameters": { "method": "POST", "url": "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/sendMessage", "sendBody": true, "specifyBody": "json", "jsonBody": "={\"chat_id\": \"<YOUR_CHAT_ID>\", \"text\": \"📊 TradingView → {{ $json.signal }} {{ $json.stock_code }} (강도: {{ Math.round($json.strength * 100) }}%)\", \"parse_mode\": \"HTML\"}", "options": {} },
+      "id": "telegram-1",
+      "name": "Telegram Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [880, -50]
+    }
+  ],
+  "connections": {
+    "TradingView Signal Webhook": { "main": [[{ "node": "Parse TV Signal", "type": "main", "index": 0 }]] },
+    "Parse TV Signal": { "main": [[{ "node": "Generate Strategy Signal", "type": "main", "index": 0 }]] },
+    "Generate Strategy Signal": { "main": [[{ "node": "Actionable Signal?", "type": "main", "index": 0 }]] },
+    "Actionable Signal?": { "main": [[{ "node": "Telegram Alert", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" }
+}

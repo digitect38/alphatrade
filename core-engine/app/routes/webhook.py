@@ -101,6 +101,10 @@ async def receive_tradingview_webhook(
     except Exception as e:
         logger.error("Failed to publish TradingView event: %s", e)
 
+    # Callback to n8n for WF-08 TradingView routing (v1.3 engine→n8n)
+    from app.services.n8n_callback import on_tradingview_received
+    await on_tradingview_received(data.ticker, data.action, data.price)
+
     return {
         "status": "received",
         "ticker": data.ticker,

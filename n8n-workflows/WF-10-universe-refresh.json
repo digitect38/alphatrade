@@ -1,36 +1,55 @@
 {
   "id": "10",
-  "name": "WF-10 Universe Refresh",
+  "name": "WF-10: Universe Refresh (Stock List + Filtering)",
   "nodes": [
     {
-      "parameters": {
-        "rule": {
-          "interval": [{ "field": "cronExpression", "expression": "30 8 * * 1-5" }]
-        }
-      },
+      "parameters": { "rule": { "interval": [{ "field": "cronExpression", "expression": "30 8 * * 1-5" }] } },
       "id": "schedule-1",
-      "name": "Cron Daily 08:30 KST",
+      "name": "Daily 08:30 KST (Weekdays)",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
       "position": [0, 0]
     },
     {
-      "parameters": {
-        "method": "POST",
-        "url": "http://core-engine:8000/collect/stocks",
-        "options": { "timeout": 60000 }
-      },
-      "id": "http-1",
+      "parameters": { "method": "POST", "url": "http://core-engine:8000/collect/stocks", "options": { "timeout": 60000 } },
+      "id": "http-stocks",
       "name": "Refresh KRX Stock List",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [220, 0]
+    },
+    {
+      "parameters": { "method": "POST", "url": "http://core-engine:8000/strategy/signals/batch", "sendBody": true, "specifyBody": "json", "jsonBody": "{}", "options": { "timeout": 120000 } },
+      "id": "http-signals",
+      "name": "Generate Universe Signals",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [440, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst signals = input.signals || [];\nconst candidates = signals.filter(s => s.signal === 'BUY').sort((a, b) => b.strength - a.strength).slice(0, 20);\nconst summary = `유니버스 갱신: ${candidates.length}종목 선정\\n` + candidates.map(s => `${s.stock_code} (${Math.round(s.strength * 100)}%)`).join(', ');\nreturn [{ json: { candidates, count: candidates.length, summary } }];"
+      },
+      "id": "code-filter",
+      "name": "Filter Universe Candidates",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [660, 0]
+    },
+    {
+      "parameters": { "method": "POST", "url": "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/sendMessage", "sendBody": true, "specifyBody": "json", "jsonBody": "={\"chat_id\": \"<YOUR_CHAT_ID>\", \"text\": \"📋 {{ $json.summary }}\"}", "options": {} },
+      "id": "telegram-1",
+      "name": "Telegram Universe Update",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [880, 0]
     }
   ],
   "connections": {
-    "Cron Daily 08:30 KST": {
-      "main": [[{ "node": "Refresh KRX Stock List", "type": "main", "index": 0 }]]
-    }
+    "Daily 08:30 KST (Weekdays)": { "main": [[{ "node": "Refresh KRX Stock List", "type": "main", "index": 0 }]] },
+    "Refresh KRX Stock List": { "main": [[{ "node": "Generate Universe Signals", "type": "main", "index": 0 }]] },
+    "Generate Universe Signals": { "main": [[{ "node": "Filter Universe Candidates", "type": "main", "index": 0 }]] },
+    "Filter Universe Candidates": { "main": [[{ "node": "Telegram Universe Update", "type": "main", "index": 0 }]] }
   },
   "settings": { "executionOrder": "v1" }
 }

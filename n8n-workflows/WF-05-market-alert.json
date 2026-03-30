@@ -1,36 +1,75 @@
 {
   "id": "6",
-  "name": "WF-05 Market Alert",
+  "name": "WF-05: Trade Alert (Webhook from Strategy Engine)",
   "nodes": [
     {
-      "parameters": {
-        "rule": {
-          "interval": [{ "field": "minutes", "minutesInterval": 10 }]
-        }
-      },
-      "id": "schedule-1",
-      "name": "Every 10 Minutes",
-      "type": "n8n-nodes-base.scheduleTrigger",
-      "typeVersion": 1.2,
+      "parameters": { "path": "signal-generated", "httpMethod": "POST", "responseMode": "onReceived" },
+      "id": "webhook-1",
+      "name": "Signal Generated Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
       "position": [0, 0]
     },
     {
-      "parameters": {
-        "method": "POST",
-        "url": "http://core-engine:8000/alert/scan",
-        "options": { "timeout": 30000 }
-      },
-      "id": "http-1",
-      "name": "Scan Market Alerts (KakaoTalk+Telegram)",
+      "parameters": { "conditions": { "string": [{ "value1": "={{ $json.signal }}", "operation": "isNotEmpty" }] } },
+      "id": "if-1",
+      "name": "Has Signal?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [220, 0]
+    },
+    {
+      "parameters": { "rules": { "rules": [
+        { "value": "BUY", "output": 0 },
+        { "value": "SELL", "output": 1 }
+      ], "fallbackOutput": 2 }, "dataPropertyName": "={{ $json.signal }}" },
+      "id": "switch-1",
+      "name": "Signal Type Switch",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [440, 0]
+    },
+    {
+      "parameters": { "method": "POST", "url": "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/sendMessage", "sendBody": true, "specifyBody": "json", "jsonBody": "={\"chat_id\": \"<YOUR_CHAT_ID>\", \"text\": \"🟢 BUY {{ $json.stock_code }} (강도: {{ Math.round($json.strength * 100) }}%, 점수: {{ $json.score }})\", \"parse_mode\": \"HTML\"}", "options": {} },
+      "id": "telegram-buy",
+      "name": "Telegram BUY Alert",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [220, 0]
+      "position": [660, -100]
+    },
+    {
+      "parameters": { "method": "POST", "url": "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/sendMessage", "sendBody": true, "specifyBody": "json", "jsonBody": "={\"chat_id\": \"<YOUR_CHAT_ID>\", \"text\": \"🔴 SELL {{ $json.stock_code }} (강도: {{ Math.round($json.strength * 100) }}%, 점수: {{ $json.score }})\", \"parse_mode\": \"HTML\"}", "options": {} },
+      "id": "telegram-sell",
+      "name": "Telegram SELL Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [660, 100]
+    },
+    {
+      "parameters": { "method": "POST", "url": "http://core-engine:8000/alert/scan", "options": { "timeout": 30000 } },
+      "id": "http-scan",
+      "name": "Periodic Market Scan",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [660, 300]
+    },
+    {
+      "parameters": { "rule": { "interval": [{ "field": "minutes", "minutesInterval": 10 }] } },
+      "id": "schedule-1",
+      "name": "Every 10 Minutes (backup)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [440, 300]
     }
   ],
   "connections": {
-    "Every 10 Minutes": {
-      "main": [[{ "node": "Scan Market Alerts (KakaoTalk+Telegram)", "type": "main", "index": 0 }]]
-    }
+    "Signal Generated Webhook": { "main": [[{ "node": "Has Signal?", "type": "main", "index": 0 }]] },
+    "Has Signal?": { "main": [[{ "node": "Signal Type Switch", "type": "main", "index": 0 }]] },
+    "Signal Type Switch": { "main": [
+      [{ "node": "Telegram BUY Alert", "type": "main", "index": 0 }],
+      [{ "node": "Telegram SELL Alert", "type": "main", "index": 0 }]
+    ] },
+    "Every 10 Minutes (backup)": { "main": [[{ "node": "Periodic Market Scan", "type": "main", "index": 0 }]] }
   },
   "settings": { "executionOrder": "v1" }
 }

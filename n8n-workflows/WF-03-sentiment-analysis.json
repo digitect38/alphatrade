@@ -1,36 +1,44 @@
 {
   "id": "4",
-  "name": "WF-03 Sentiment Analysis",
+  "name": "WF-03: Sentiment Analysis (Webhook from WF-01)",
   "nodes": [
     {
-      "parameters": {
-        "rule": {
-          "interval": [{ "field": "minutes", "minutesInterval": 10 }]
-        }
-      },
-      "id": "schedule-1",
-      "name": "Every 10 Minutes",
-      "type": "n8n-nodes-base.scheduleTrigger",
-      "typeVersion": 1.2,
+      "parameters": { "path": "news-collected", "httpMethod": "POST", "responseMode": "onReceived" },
+      "id": "webhook-1",
+      "name": "News Collected Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
       "position": [0, 0]
     },
     {
-      "parameters": {
-        "method": "POST",
-        "url": "http://core-engine:8000/strategy/signals/batch",
-        "options": { "timeout": 60000 }
-      },
-      "id": "http-1",
-      "name": "Run Sentiment Analysis Batch",
+      "parameters": { "method": "GET", "url": "http://core-engine:8000/data/news/unprocessed?limit=20", "options": { "timeout": 15000 } },
+      "id": "http-read",
+      "name": "Read Unprocessed News",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [220, 0]
+    },
+    {
+      "parameters": { "method": "POST", "url": "http://core-engine:8000/analyze/sentiment", "sendBody": true, "specifyBody": "json", "jsonBody": "={\"text\": \"{{ $json.title }}. {{ $json.content }}\"}", "options": { "timeout": 30000 } },
+      "id": "http-ai",
+      "name": "Analyze Sentiment (LLM)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [440, 0]
+    },
+    {
+      "parameters": { "method": "POST", "url": "http://core-engine:8000/data/sentiment", "sendBody": true, "specifyBody": "json", "jsonBody": "={\"time\": \"{{ $now.toISO() }}\", \"stock_code\": \"{{ $json.stock_codes ? $json.stock_codes[0] : '000000' }}\", \"source_type\": \"news\", \"score\": {{ $json.score }}, \"confidence\": {{ $json.confidence || 0.5 }}, \"model\": \"{{ $json.model }}\"}", "options": { "timeout": 10000 } },
+      "id": "http-store",
+      "name": "Store Sentiment Score",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [660, 0]
     }
   ],
   "connections": {
-    "Every 10 Minutes": {
-      "main": [[{ "node": "Run Sentiment Analysis Batch", "type": "main", "index": 0 }]]
-    }
+    "News Collected Webhook": { "main": [[{ "node": "Read Unprocessed News", "type": "main", "index": 0 }]] },
+    "Read Unprocessed News": { "main": [[{ "node": "Analyze Sentiment (LLM)", "type": "main", "index": 0 }]] },
+    "Analyze Sentiment (LLM)": { "main": [[{ "node": "Store Sentiment Score", "type": "main", "index": 0 }]] }
   },
   "settings": { "executionOrder": "v1" }
 }
