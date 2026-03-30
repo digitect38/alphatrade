@@ -17,7 +17,7 @@ class TestRiskManagerConstants:
         assert self.rm.MAX_PER_STOCK == 250_000
 
     def test_stop_loss(self):
-        assert self.rm.STOP_LOSS_PCT == -0.03
+        assert self.rm.STOP_LOSS_PCT == -0.015
 
     def test_take_profit(self):
         assert self.rm.TAKE_PROFIT_PCT == 0.10
@@ -29,7 +29,7 @@ class TestRiskManagerConstants:
         assert self.rm.MAX_DAILY_TRADES == 10
 
     def test_max_position_ratio(self):
-        assert self.rm.MAX_POSITION_RATIO == 0.20
+        assert self.rm.MAX_POSITION_RATIO == 0.10
 
     def test_max_total_invested(self):
         assert self.rm.MAX_TOTAL_INVESTED == 0.90
@@ -39,15 +39,17 @@ class TestStopLoss:
     rm = RiskManager()
 
     @pytest.mark.parametrize("avg,current,expected", [
-        (60000, 57000, True),    # -5% → stop loss (-3% threshold)
-        (60000, 58200, True),    # -3% exactly → triggers (uses <=)
+        (60000, 57000, True),    # -5% → stop loss (-1.5% threshold)
+        (60000, 58200, True),    # -3% → stop loss
         (60000, 58000, True),    # -3.33% → stop loss
-        (60000, 59000, False),   # -1.67% → ok
+        (60000, 59000, True),    # -1.67% → stop loss (> 1.5%)
+        (60000, 59100, True),    # -1.5% exactly → triggers (uses <=)
+        (60000, 59200, False),   # -1.33% → ok
         (60000, 60000, False),   # 0% → ok
         (60000, 65000, False),   # +8.33% → ok
         (100000, 96000, True),   # -4% → stop loss
-        (100000, 97000, True),   # -3% → stop loss
-        (100000, 98000, False),  # -2% → ok
+        (100000, 98000, True),   # -2% → stop loss
+        (100000, 98600, False),  # -1.4% → ok
     ])
     @pytest.mark.asyncio
     async def test_stop_loss_trigger(self, avg, current, expected):
@@ -89,7 +91,7 @@ class TestStopLossTakeProfitBoundary:
     """Test boundary conditions between stop-loss and take-profit."""
     rm = RiskManager()
 
-    @pytest.mark.parametrize("pnl_pct", [-0.10, -0.05, -0.03, -0.02, -0.01, 0.0,
+    @pytest.mark.parametrize("pnl_pct", [-0.10, -0.05, -0.03, -0.02, -0.015, -0.01, 0.0,
                                           0.01, 0.05, 0.08, 0.10, 0.15, 0.20])
     @pytest.mark.asyncio
     async def test_pnl_boundaries(self, pnl_pct):
@@ -101,7 +103,7 @@ class TestStopLossTakeProfitBoundary:
         # Should never trigger both
         assert not (sl and tp)
 
-        if pnl_pct <= -0.03:
+        if pnl_pct <= -0.015:
             assert sl is True
         else:
             assert sl is False

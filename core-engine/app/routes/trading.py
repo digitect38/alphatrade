@@ -4,7 +4,9 @@ import asyncpg
 import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends
 
-from app.deps import get_db, get_redis, get_kis_client, get_naver_client, get_broker, get_risk_manager, get_notifier
+from app.config import settings
+from app.deps import get_db, get_redis, get_kis_client, get_naver_client, get_broker, get_risk_manager, get_notifier, get_trading_guard
+from app.execution.trading_guard import TradingGuard
 from app.execution.broker import BrokerClient
 from app.execution.risk_manager import RiskManager
 from app.services.kis_api import KISClient
@@ -79,4 +81,39 @@ async def api_trading_status(pool: asyncpg.Pool = Depends(get_db)):
         "cumulative_return_pct": round(float(row["cumulative_return"]) * 100, 2) if row["cumulative_return"] else 0,
         "mdd_pct": round(float(row["mdd"]) * 100, 2) if row["mdd"] else 0,
         "positions_count": row["positions_count"],
+    }
+
+
+@router.post("/kill-switch/activate")
+async def api_kill_switch_activate(
+    guard: TradingGuard = Depends(get_trading_guard),
+    notifier: NotificationService = Depends(get_notifier),
+):
+    """Activate kill switch — blocks ALL new orders immediately."""
+    await guard.activate_kill_switch("수동 활성화 (operator)")
+    await notifier.alert("🚨 [킬 스위치 활성화] 수동 조작으로 모든 신규 주문이 차단되었습니다.")
+    return {"status": "activated", "message": "킬 스위치 활성화 — 모든 신규 주문 차단"}
+
+
+@router.post("/kill-switch/deactivate")
+async def api_kill_switch_deactivate(guard: TradingGuard = Depends(get_trading_guard)):
+    """Deactivate kill switch — requires manual operator action."""
+    await guard.deactivate_kill_switch()
+    return {"status": "deactivated", "message": "킬 스위치 해제 — 신규 주문 허용"}
+
+
+@router.get("/kill-switch/status")
+async def api_kill_switch_status(guard: TradingGuard = Depends(get_trading_guard)):
+    """Get current kill switch and trading guard status."""
+    active = await guard.is_kill_switch_active()
+    _, daily_loss = await guard.check_daily_loss()
+    session_ok, session_msg = guard.is_trading_session()
+    broker_failures = await guard.get_broker_failure_count()
+
+    return {
+        "kill_switch": "active" if active else "inactive",
+        "daily_loss_pct": round(daily_loss * 100, 2),
+        "session": {"allowed": session_ok, "message": session_msg},
+        "broker_failures": broker_failures,
+        "broker_limit": settings.risk_broker_max_failures,
     }

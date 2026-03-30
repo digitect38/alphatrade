@@ -10,6 +10,7 @@ import redis.asyncio as aioredis
 from app.config import settings
 from app.execution.broker import BrokerClient
 from app.metrics import ORDERS_TOTAL
+from app.services.audit import log_event
 from app.execution.risk_manager import RiskManager
 from app.models.execution import OrderRequest, OrderResult, RiskCheckRequest
 from app.services.redis_publisher import RedisPublisher
@@ -52,9 +53,22 @@ async def execute_order(
     broker: BrokerClient,
     risk_mgr: RiskManager,
 ) -> OrderResult:
-    """Execute a trading order with risk management."""
+    """Execute a trading order with risk management + trading guard."""
+    from app.execution.trading_guard import TradingGuard
+
     now = datetime.now(timezone.utc)
     order_id = f"ORD-{uuid.uuid4().hex[:12].upper()}"
+
+    # 0. Trading guard (kill switch, session, stale data, broker circuit breaker)
+    if request.side == "BUY":  # Guards apply to new entries only
+        guard = TradingGuard(pool=pool, redis=redis)
+        price_est = request.price or 0
+        guard_ok, guard_violations = await guard.pre_trade_check(request.stock_code, price_est * request.quantity)
+        if not guard_ok:
+            msg = f"거래 안전 차단: {'; '.join(guard_violations)}"
+            await _store_order(now, order_id, request, status="BLOCKED", message=msg, pool=pool)
+            return _build_result(order_id, request, now, status="BLOCKED", message=msg, risk_checks=guard_violations)
+
     portfolio_value, cash = await _get_portfolio_state(pool=pool)
 
     # 1. Risk check
@@ -76,6 +90,9 @@ async def execute_order(
         quantity=request.quantity, order_type=request.order_type, price=request.price,
     )
     if not broker_resp.success:
+        # Record broker failure for circuit breaker
+        guard = TradingGuard(pool=pool, redis=redis)
+        await guard.record_broker_failure()
         await _store_order(now, order_id, request, status="FAILED", message=broker_resp.message, pool=pool)
         return _build_result(order_id, request, now, status="FAILED", message=broker_resp.message, risk_checks=risk_result.warnings)
 
@@ -90,10 +107,24 @@ async def execute_order(
     # 4. Publish event
     await _publish_order_event(redis, order_id, request, broker_resp.filled_qty, filled_price)
 
-    return _build_result(
+    # Reset broker circuit breaker on success
+    guard_success = TradingGuard(pool=pool, redis=redis)
+    await guard_success.reset_broker_failures()
+
+    result = _build_result(
         order_id, request, now, status=status, message=broker_resp.message,
         risk_checks=risk_result.warnings, filled_qty=broker_resp.filled_qty, filled_price=filled_price,
     )
+
+    # Audit log
+    await log_event(
+        pool, source="order", event_type=f"order_{status.lower()}",
+        symbol=request.stock_code, correlation_id=order_id,
+        payload={"order_id": order_id, "side": request.side, "qty": request.quantity,
+                 "filled_qty": broker_resp.filled_qty, "filled_price": filled_price, "status": status},
+    )
+
+    return result
 
 
 async def _get_portfolio_state(*, pool: asyncpg.Pool) -> tuple[float, float]:

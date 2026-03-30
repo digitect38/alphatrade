@@ -56,3 +56,8 @@ def get_broker(request: Request):
 
 def get_risk_manager(request: Request):
     return request.app.state.risk_manager
+
+
+def get_trading_guard(request: Request):
+    from app.execution.trading_guard import TradingGuard
+    return TradingGuard(pool=request.app.state.db_pool, redis=request.app.state.redis_client)

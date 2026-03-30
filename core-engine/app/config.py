@@ -48,15 +48,22 @@ class Settings(BaseSettings):
     # TradingView
     tradingview_webhook_secret: str = ""
 
-    # --- Risk Management ---
+    # --- Risk Management (v1.31 16.5.1 기준) ---
     risk_max_total_capital: float = 500_000  # 총 투자 한도 (원)
     risk_max_per_stock: float = 250_000  # 종목당 최대 (원)
-    risk_max_position_ratio: float = 0.20  # 종목당 최대 비중
+    risk_max_position_ratio: float = 0.10  # 종목당 최대 비중 (v1.31: 10%)
+    risk_max_sector_ratio: float = 0.25  # 섹터 집중 한도 (v1.31: 25%)
     risk_max_total_invested: float = 0.90  # 최대 투자 비율
-    risk_stop_loss_pct: float = -0.03  # 손절 기준
+    risk_stop_loss_pct: float = -0.015  # 손절 기준 (v1.31: -1.5%)
     risk_take_profit_pct: float = 0.10  # 익절 기준
-    risk_max_daily_loss_pct: float = -0.02  # 일간 최대 손실
+    risk_max_daily_loss_pct: float = -0.02  # 일간 최대 손실 → 킬 스위치 발동
+    risk_max_strategy_daily_loss_pct: float = -0.01  # 전략별 일간 손실 (v1.31: -1%)
     risk_max_daily_trades: int = 10  # 일간 최대 거래
+    risk_max_participation_rate: float = 0.01  # 20일 평균 거래대금 대비 참여율 (v1.31: 1%)
+    risk_stale_price_seconds: int = 30  # 시세 유효 기간 (v1.31: 30초)
+    risk_broker_max_failures: int = 3  # 브로커 연속 실패 차단 횟수
+    risk_session_open_delay_min: int = 5  # 장 개시 후 진입 대기 (분)
+    risk_session_close_buffer_min: int = 20  # 장 마감 전 진입 차단 (분)
 
     # --- Strategy ---
     strategy_weight_momentum: float = 0.30

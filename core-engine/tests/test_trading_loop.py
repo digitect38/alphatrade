@@ -60,13 +60,28 @@ class MockAcquire:
 
 
 class MockRedis:
+    _store: dict = {}
+
     async def publish(self, *a, **kw):
         return 0
 
-    async def get(self, *a, **kw):
-        return None
+    async def get(self, key):
+        return self._store.get(key)
 
-    async def setex(self, *a, **kw):
+    async def set(self, key, value):
+        self._store[key] = value
+
+    async def setex(self, key, ttl, value):
+        self._store[key] = value
+
+    async def delete(self, key):
+        self._store.pop(key, None)
+
+    async def incr(self, key):
+        self._store[key] = str(int(self._store.get(key, "0")) + 1)
+        return int(self._store[key])
+
+    async def expire(self, *a, **kw):
         pass
 
 

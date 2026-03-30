@@ -197,3 +197,33 @@ ALTER TABLE orders ADD CONSTRAINT chk_order_type CHECK (order_type IN ('MARKET',
 ALTER TABLE stocks ADD CONSTRAINT chk_stock_market CHECK (market IN ('KOSPI', 'KOSDAQ'));
 ALTER TABLE ohlcv ADD CONSTRAINT chk_ohlcv_interval CHECK (interval IN ('1m', '5m', '15m', '1h', '1d'));
 ALTER TABLE ohlcv ADD CONSTRAINT chk_ohlcv_prices CHECK (open >= 0 AND high >= 0 AND low >= 0 AND close >= 0);
+
+-- ===========================================
+-- Audit Log (v1.31 16.5.3 — append-only)
+-- ===========================================
+
+CREATE TABLE audit_log (
+    event_id        TEXT NOT NULL,                    -- UUID
+    event_time      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    source          VARCHAR(50) NOT NULL,             -- strategy, risk, order, broker, operator, system
+    event_type      VARCHAR(50) NOT NULL,             -- order_created, risk_blocked, kill_switch, etc.
+    strategy_id     VARCHAR(50),
+    symbol          VARCHAR(20),
+    operator_id     VARCHAR(50) DEFAULT 'system',
+    correlation_id  TEXT,                             -- links related events
+    payload         JSONB NOT NULL,
+    payload_hash    TEXT NOT NULL                     -- SHA-256 of payload for integrity
+);
+
+SELECT create_hypertable('audit_log', 'event_time');
+CREATE INDEX idx_audit_source ON audit_log(source, event_time DESC);
+CREATE INDEX idx_audit_symbol ON audit_log(symbol, event_time DESC);
+CREATE INDEX idx_audit_correlation ON audit_log(correlation_id, event_time DESC);
+
+-- Prevent UPDATE/DELETE on audit_log (append-only)
+CREATE OR REPLACE RULE audit_no_update AS ON UPDATE TO audit_log DO INSTEAD NOTHING;
+CREATE OR REPLACE RULE audit_no_delete AS ON DELETE TO audit_log DO INSTEAD NOTHING;
+
+-- Update orders status constraint to include BLOCKED
+ALTER TABLE orders DROP CONSTRAINT IF EXISTS chk_order_status;
+ALTER TABLE orders ADD CONSTRAINT chk_order_status CHECK (status IN ('PENDING', 'SUBMITTED', 'FILLED', 'PARTIAL', 'CANCELLED', 'FAILED', 'BLOCKED'));

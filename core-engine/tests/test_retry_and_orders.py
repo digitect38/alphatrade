@@ -123,11 +123,41 @@ class MockAcquire:
 
 
 class MockRedis:
+    _store: dict = {}
+
     async def publish(self, *a, **kw):
         return 0
 
+    async def get(self, key):
+        return self._store.get(key)
+
+    async def set(self, key, value):
+        self._store[key] = value
+
+    async def delete(self, key):
+        self._store.pop(key, None)
+
+    async def incr(self, key):
+        self._store[key] = str(int(self._store.get(key, "0")) + 1)
+        return int(self._store[key])
+
+    async def expire(self, *a, **kw):
+        pass
+
 
 class TestExecuteOrder:
+    """Tests for execute_order with TradingGuard bypassed (allows testing in any session)."""
+
+    @pytest.fixture(autouse=True)
+    def _bypass_guard(self):
+        from unittest.mock import patch, AsyncMock as AM
+        with patch("app.execution.trading_guard.TradingGuard") as MockGuard:
+            g = MockGuard.return_value
+            g.pre_trade_check = AM(return_value=(True, []))
+            g.reset_broker_failures = AM()
+            g.record_broker_failure = AM()
+            yield
+
     def _make_deps(self, risk_allowed=True, broker_success=True):
         from app.execution.broker import BrokerClient, BrokerResponse
         from app.execution.risk_manager import RiskManager
@@ -156,6 +186,7 @@ class TestExecuteOrder:
         broker, risk = self._make_deps(risk_allowed=True, broker_success=True)
         pool = MockPool()
         redis = MockRedis()
+        redis._store = {}
 
         result = await execute_order(
             OrderRequest(stock_code="005930", side="BUY", quantity=10),
