@@ -86,9 +86,10 @@ async def _step_collect_ohlcv(errors: list, *, pool: asyncpg.Pool, redis: aiored
                 record = await kis_client.get_current_price(code)
                 if not record:
                     continue
+                record.interval = "1m"
                 async with pool.acquire() as conn:
                     await conn.execute(
-                        "INSERT INTO ohlcv (time, stock_code, open, high, low, close, volume, value, interval) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'1d')",
+                        "INSERT INTO ohlcv (time, stock_code, open, high, low, close, volume, value, interval) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'1m')",
                         record.time, record.stock_code, record.open, record.high, record.low, record.close, record.volume, record.value,
                     )
                     inserted += 1

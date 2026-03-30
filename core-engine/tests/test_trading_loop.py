@@ -117,6 +117,41 @@ def _make_services():
 
 class TestTradingLoop:
     @pytest.mark.asyncio
+    async def test_step_collect_ohlcv_stores_intraday_snapshots_as_1m(self):
+        from app.trading.loop import _step_collect_ohlcv
+        from app.models.ohlcv import OHLCVRecord
+
+        executed: list[tuple] = []
+
+        class RecordingConn(MockConn):
+            async def execute(self, *args, **kwargs):
+                executed.append(args)
+                return "INSERT 0 1"
+
+        conn = RecordingConn(fetch_data=[{"stock_code": "005930"}])
+        pool = MockPool(conn)
+        redis = MockRedis()
+        kis, *_ = _make_services()
+        kis.get_current_price = AsyncMock(return_value=OHLCVRecord(
+            time=datetime.now(timezone.utc),
+            stock_code="005930",
+            open=Decimal("58000"),
+            high=Decimal("59000"),
+            low=Decimal("57000"),
+            close=Decimal("58500"),
+            volume=15000000,
+            value=870000000000,
+            interval="1d",
+        ))
+
+        result = await _step_collect_ohlcv([], pool=pool, redis=redis, kis_client=kis)
+
+        assert result["status"] == "success"
+        assert result["inserted"] == 1
+        assert executed
+        assert "'1m'" in executed[0][0]
+
+    @pytest.mark.asyncio
     async def test_save_portfolio_snapshot_empty(self):
         from app.trading.loop import save_portfolio_snapshot
         pool = MockPool(MockConn(fetch_data=[], fetchrow_data=None))

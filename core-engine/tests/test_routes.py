@@ -565,6 +565,16 @@ class TestMarketRoutes:
 
 
 class TestAssetRoutes:
+    def test_asset_intraday_quality_detector_flags_repeated_snapshots(self):
+        from app.routes.asset import _is_synthetic_intraday
+
+        rows = [
+            {"open": Decimal("100"), "high": Decimal("110"), "low": Decimal("95"), "close": Decimal("105"), "volume": 1000}
+            for _ in range(12)
+        ]
+
+        assert _is_synthetic_intraday(rows) is True
+
     def test_asset_overview(self, client):
         from app.routes import asset as asset_route
 

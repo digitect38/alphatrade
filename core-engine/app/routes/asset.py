@@ -96,6 +96,21 @@ async def _load_chart(pool: asyncpg.Pool, stock_code: str, range_key: str):
             limit,
         )
 
+        if interval == "1m" and _is_synthetic_intraday(rows):
+            fallback_limit = 5 if range_key == "1D" else 22
+            rows = await conn.fetch(
+                """
+                SELECT time, open, high, low, close, volume
+                FROM ohlcv
+                WHERE stock_code = $1 AND interval = '1d'
+                ORDER BY time DESC
+                LIMIT $2
+                """,
+                stock_code,
+                fallback_limit,
+            )
+            interval = "1d"
+
     points = [
         {
             "time": row["time"].isoformat(),
@@ -108,6 +123,23 @@ async def _load_chart(pool: asyncpg.Pool, stock_code: str, range_key: str):
         for row in reversed(rows)
     ]
     return {"stock_code": stock_code, "range": range_key, "interval": interval, "points": points}
+
+
+def _is_synthetic_intraday(rows) -> bool:
+    if len(rows) < 10:
+        return False
+
+    unique_bars = {
+        (
+            float(row["open"] or 0),
+            float(row["high"] or 0),
+            float(row["low"] or 0),
+            float(row["close"] or 0),
+            int(row["volume"] or 0),
+        )
+        for row in rows
+    }
+    return len(unique_bars) <= 3
 
 
 async def _load_daily_bars(pool: asyncpg.Pool, stock_code: str) -> list[dict]:

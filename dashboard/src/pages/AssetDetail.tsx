@@ -106,6 +106,7 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
   const [overview, setOverview] = useState<AssetOverview | null>(null);
   const [compareOverview, setCompareOverview] = useState<AssetOverview | null>(null);
   const [chartData, setChartData] = useState<AssetChartPoint[]>([]);
+  const [chartInterval, setChartInterval] = useState<string>("1d");
   const [compareChartData, setCompareChartData] = useState<AssetChartPoint[]>([]);
   const [periodReturns, setPeriodReturns] = useState<Array<{ key: RangeKey; value: number }>>([]);
   const [executionContext, setExecutionContext] = useState<AssetExecutionContext | null>(null);
@@ -122,6 +123,7 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
     ])
       .then(([overviewData, chartResponse, returnsResponse, executionResponse]) => {
         setOverview(overviewData);
+        setChartInterval(chartResponse.interval || "1d");
         setChartData(chartResponse.points || []);
         setPeriodReturns((Object.entries(returnsResponse.returns) as Array<[RangeKey, number]>).map(([key, value]) => ({ key, value })));
         setExecutionContext(executionResponse);
@@ -159,7 +161,8 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
     const compareByTime = new Map(compareChartData.map((bar, index) => [bar.time, compareNormalized[index]]));
 
     return chartData.map((bar, index) => ({
-      label: formatChartLabel(bar.time, range),
+      label: formatChartLabel(bar.time, range, chartInterval),
+      interval: chartInterval,
       time: bar.time,
       close: bar.close,
       volume: bar.volume,
@@ -171,7 +174,7 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
       primaryNormalized: primaryNormalized[index],
       compareNormalized: compareByTime.get(bar.time) ?? null,
     }));
-  }, [chartData, compareChartData, range]);
+  }, [chartData, compareChartData, chartInterval, range]);
 
   const latestOrder = executionContext?.latest_order || null;
   const activeRangeReturn = periodReturns.find((item) => item.key === range)?.value ?? 0;
@@ -488,9 +491,11 @@ function AssetStat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function formatChartLabel(value: string, range: RangeKey) {
+function formatChartLabel(value: string, range: RangeKey, interval = "1d") {
   const date = new Date(value);
-  if (range === "1D" || range === "5D") return date.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
+  if ((range === "1D" || range === "5D") && interval === "1m") {
+    return date.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
+  }
   return date.toLocaleDateString("ko-KR", { month: "short", day: "numeric" });
 }
 
