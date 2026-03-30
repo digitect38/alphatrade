@@ -171,3 +171,56 @@ class KISClient:
             logger.error("KIS get_daily_chart failed for %s: %s", stock_code, e)
 
         return records
+
+    async def get_account_balance(self) -> dict | None:
+        """Get account balance (주식잔고조회) for broker reconciliation.
+
+        Returns: {"cash": float, "positions": [{"stock_code", "quantity", "avg_price", "current_price"}]}
+        """
+        try:
+            # 모의투자: VTTC8434R, 실전: TTTC8434R
+            tr_id = "VTTC8434R" if "vts" in settings.kis_base_url else "TTTC8434R"
+            data = await self._request_with_retry(
+                "GET",
+                f"{settings.kis_base_url}/uapi/domestic-stock/v1/trading/inquire-balance",
+                tr_id=tr_id,
+                params={
+                    "CANO": settings.kis_cano,
+                    "ACNT_PRDT_CD": settings.kis_acnt_prdt_cd,
+                    "AFHR_FLPR_YN": "N",
+                    "OFL_YN": "",
+                    "INQR_DVSN": "02",
+                    "UNPR_DVSN": "01",
+                    "FUND_STTL_ICLD_YN": "N",
+                    "FNCG_AMT_AUTO_RDPT_YN": "N",
+                    "PRCS_DVSN": "01",
+                    "CTX_AREA_FK100": "",
+                    "CTX_AREA_NK100": "",
+                },
+            )
+
+            positions = []
+            for item in data.get("output1", []):
+                qty = int(item.get("hldg_qty", "0"))
+                if qty <= 0:
+                    continue
+                positions.append({
+                    "stock_code": item.get("pdno", ""),
+                    "stock_name": item.get("prdt_name", ""),
+                    "quantity": qty,
+                    "avg_price": float(item.get("pchs_avg_pric", "0")),
+                    "current_price": float(item.get("prpr", "0")),
+                    "eval_amount": float(item.get("evlu_amt", "0")),
+                })
+
+            # output2 has account summary
+            summary = data.get("output2", [{}])
+            if isinstance(summary, list) and summary:
+                summary = summary[0]
+            cash = float(summary.get("dnca_tot_amt", "0")) if summary else 0
+
+            return {"cash": cash, "positions": positions}
+
+        except Exception as e:
+            logger.error("KIS get_account_balance failed: %s", e)
+            return None

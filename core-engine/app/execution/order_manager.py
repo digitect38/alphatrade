@@ -90,25 +90,41 @@ async def execute_order(
         await _store_order(now, order_id, request, status="FAILED", message=msg, pool=pool, idempotency_key=idem_key)
         return _build_result(order_id, request, now, status="FAILED", message=msg, risk_checks=risk_result.violations)
 
-    # 2. Submit to broker
+    # 2. Store CREATED order, then VALIDATED
+    await _store_order(now, order_id, request, status="CREATED", pool=pool, idempotency_key=idem_key)
+    await transition_order_state(pool, order_id, OrderState.VALIDATED, "risk check passed")
+
+    # 3. Submit to broker → SUBMITTED
+    await transition_order_state(pool, order_id, OrderState.SUBMITTED, "sending to broker")
     broker_resp = await broker.submit_order(
         stock_code=request.stock_code, side=request.side,
         quantity=request.quantity, order_type=request.order_type, price=request.price,
     )
+
     if not broker_resp.success:
-        # Record broker failure for circuit breaker
         guard = TradingGuard(pool=pool, redis=redis)
         await guard.record_broker_failure()
-        await _store_order(now, order_id, request, status="FAILED", message=broker_resp.message, pool=pool, idempotency_key=idem_key)
-        return _build_result(order_id, request, now, status="FAILED", message=broker_resp.message, risk_checks=risk_result.warnings)
+        await transition_order_state(pool, order_id, OrderState.REJECTED, broker_resp.message)
+        return _build_result(order_id, request, now, status="REJECTED", message=broker_resp.message, risk_checks=risk_result.warnings)
 
-    # 3. Store filled order & update positions (atomic transaction)
-    status = "FILLED" if broker_resp.filled_qty == request.quantity else "PARTIAL"
+    # 4. Broker ACK → determine fill status
+    await transition_order_state(pool, order_id, OrderState.ACKED, f"broker order_no={broker_resp.order_no}")
+
+    if broker_resp.filled_qty == request.quantity:
+        final_status = OrderState.FILLED
+    elif broker_resp.filled_qty > 0:
+        final_status = OrderState.PARTIALLY_FILLED
+    else:
+        final_status = OrderState.ACKED  # awaiting fill
+
+    await transition_order_state(pool, order_id, final_status, f"filled={broker_resp.filled_qty}/{request.quantity}")
+
+    # 5. Update positions (atomic transaction)
     filled_price = broker_resp.filled_price or request.price
-    async with pool.acquire() as conn:
-        async with conn.transaction():
-            await _store_order_conn(conn, now, order_id, request, status=status, filled_qty=broker_resp.filled_qty, filled_price=filled_price, message=broker_resp.message, idempotency_key=idem_key)
-            await _update_position_conn(conn, request.stock_code, request.side, broker_resp.filled_qty, filled_price or 0)
+    if broker_resp.filled_qty > 0:
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                await _update_position_conn(conn, request.stock_code, request.side, broker_resp.filled_qty, filled_price or 0)
 
     # 4. Publish event
     await _publish_order_event(redis, order_id, request, broker_resp.filled_qty, filled_price)
@@ -118,16 +134,17 @@ async def execute_order(
     await guard_success.reset_broker_failures()
 
     result = _build_result(
-        order_id, request, now, status=status, message=broker_resp.message,
+        order_id, request, now, status=final_status.value, message=broker_resp.message,
         risk_checks=risk_result.warnings, filled_qty=broker_resp.filled_qty, filled_price=filled_price,
     )
 
     # Audit log
     await log_event(
-        pool, source="order", event_type=f"order_{status.lower()}",
+        pool, source="order", event_type=f"order_{final_status.value.lower()}",
         symbol=request.stock_code, correlation_id=order_id,
         payload={"order_id": order_id, "side": request.side, "qty": request.quantity,
-                 "filled_qty": broker_resp.filled_qty, "filled_price": filled_price, "status": status},
+                 "filled_qty": broker_resp.filled_qty, "filled_price": filled_price,
+                 "status": final_status.value, "broker_order_no": broker_resp.order_no},
     )
 
     return result

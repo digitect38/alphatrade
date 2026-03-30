@@ -20,6 +20,9 @@ class Settings(BaseSettings):
 
     # Security
     api_auth_key: str = ""  # Set to enable API key auth (empty = dev mode, no auth)
+    api_auth_key_admin: str = ""  # Admin role key (full access)
+    api_auth_key_operator: str = ""  # Operator role key (trade + kill switch)
+    api_auth_key_viewer: str = ""  # Viewer role key (read-only)
     rate_limit_max: int = 300  # Max requests per window
     rate_limit_window: int = 60  # Window in seconds
 

@@ -122,11 +122,12 @@ async def api_kill_switch_status(guard: TradingGuard = Depends(get_trading_guard
 @router.post("/reconcile")
 async def api_eod_reconcile(
     pool: asyncpg.Pool = Depends(get_db),
+    kis_client: KISClient = Depends(get_kis_client),
     notifier: NotificationService = Depends(get_notifier),
 ):
     """End-of-day broker reconciliation (v1.31 A-3).
 
-    Compares internal positions/orders with expected state.
+    Compares internal positions/cash/orders with BROKER ledger via KIS API.
     Should be called daily after market close (via n8n WF or manually).
     """
     from app.services.audit import log_event
@@ -180,10 +181,51 @@ async def api_eod_reconcile(
                     "diff": diff,
                 })
 
+    # 4. Broker reconciliation — compare with KIS account balance
+    broker_balance = await kis_client.get_account_balance()
+    if broker_balance:
+        broker_positions = {p["stock_code"]: p for p in broker_balance["positions"]}
+
+        async with pool.acquire() as conn:
+            internal_positions = await conn.fetch(
+                "SELECT stock_code, quantity, avg_price FROM portfolio_positions WHERE quantity > 0"
+            )
+
+        internal_map = {r["stock_code"]: r for r in internal_positions}
+
+        # Position quantity mismatches
+        all_codes = set(broker_positions.keys()) | set(internal_map.keys())
+        for code in all_codes:
+            broker_qty = broker_positions.get(code, {}).get("quantity", 0)
+            internal_qty = internal_map.get(code, {}).get("quantity", 0) if code in internal_map else 0
+            if broker_qty != internal_qty:
+                mismatches.append({
+                    "type": "position_qty_mismatch",
+                    "stock_code": code,
+                    "broker_qty": broker_qty,
+                    "internal_qty": internal_qty,
+                })
+
+        # Cash mismatch vs broker
+        if broker_balance["cash"] > 0:
+            async with pool.acquire() as conn:
+                snap = await conn.fetchrow("SELECT cash FROM portfolio_snapshots ORDER BY time DESC LIMIT 1")
+            internal_cash = float(snap["cash"]) if snap else 0
+            cash_diff = abs(broker_balance["cash"] - internal_cash)
+            if cash_diff > 10000:  # 1만원 이상 차이
+                mismatches.append({
+                    "type": "broker_cash_mismatch",
+                    "broker_cash": broker_balance["cash"],
+                    "internal_cash": internal_cash,
+                    "diff": cash_diff,
+                })
+    else:
+        mismatches.append({"type": "broker_api_unavailable", "message": "KIS 잔고 조회 실패"})
+
     # Log reconciliation result
     await log_event(
         pool, source="reconciliation", event_type="eod_reconcile",
-        payload={"mismatches": len(mismatches), "details": mismatches},
+        payload={"mismatches": len(mismatches), "details": mismatches, "broker_queried": broker_balance is not None},
     )
 
     if mismatches:

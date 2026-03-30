@@ -226,7 +226,7 @@ class TestExecuteOrder:
             OrderRequest(stock_code="005930", side="SELL", quantity=5),
             pool=pool, redis=redis, broker=broker, risk_mgr=risk,
         )
-        assert result.status == "FAILED"
+        assert result.status == "REJECTED"  # FSM: SUBMITTED → REJECTED
         assert result.message == "failed"
 
     @pytest.mark.asyncio

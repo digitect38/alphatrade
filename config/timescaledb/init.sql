@@ -225,5 +225,11 @@ CREATE OR REPLACE RULE audit_no_update AS ON UPDATE TO audit_log DO INSTEAD NOTH
 CREATE OR REPLACE RULE audit_no_delete AS ON DELETE TO audit_log DO INSTEAD NOTHING;
 
 -- Update orders status constraint to include BLOCKED
+-- v1.31 FSM states: all order lifecycle states must be allowed
 ALTER TABLE orders DROP CONSTRAINT IF EXISTS chk_order_status;
-ALTER TABLE orders ADD CONSTRAINT chk_order_status CHECK (status IN ('PENDING', 'SUBMITTED', 'FILLED', 'PARTIAL', 'CANCELLED', 'FAILED', 'BLOCKED'));
+ALTER TABLE orders ADD CONSTRAINT chk_order_status CHECK (status IN (
+    'CREATED', 'VALIDATED', 'SUBMITTED', 'ACKED',
+    'PARTIALLY_FILLED', 'FILLED', 'CANCELLED', 'REJECTED',
+    'EXPIRED', 'UNKNOWN', 'BLOCKED', 'FAILED',
+    'PARTIAL', 'PENDING'  -- legacy compat
+));

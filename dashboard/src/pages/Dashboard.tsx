@@ -189,6 +189,11 @@ export default function DashboardPage({ t }: { t: (k: string) => string }) {
             <button className="action-btn" style={{ background: "var(--color-accent-purple)" }} onClick={() => apiPost("/scanner/morning")}>{t("action.morningScan")}</button>
             <button className="action-btn" style={{ background: "var(--color-accent-cyan)" }} onClick={() => apiPost("/trading/snapshot")}>{t("action.saveSnapshot")}</button>
             <button className="action-btn" style={{ background: "var(--color-accent-amber)" }} onClick={() => apiPost("/trading/monitor")}>{t("action.monitorPositions")}</button>
+            <button
+              className="action-btn"
+              style={{ background: "var(--color-loss)", marginTop: "8px" }}
+              onClick={() => { if (confirm("킬 스위치를 활성화하면 모든 신규 주문이 차단됩니다. 계속?")) apiPost("/trading/kill-switch/activate"); }}
+            >🚨 Kill Switch</button>
           </div>
         </div>
       </div>

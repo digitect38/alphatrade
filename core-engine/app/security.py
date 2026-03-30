@@ -24,34 +24,67 @@ STRICT_RATE_LIMITS: dict[str, int] = {
 }
 
 
-class AuthMiddleware(BaseHTTPMiddleware):
-    """API Key authentication.
+# Role hierarchy: admin > operator > viewer > service
+ROLES = {"admin", "operator", "viewer", "service"}
 
-    If API_AUTH_KEY is set in .env, all non-public endpoints require
-    the header: X-API-Key: <key>
+# Paths requiring specific roles (prefix match)
+OPERATOR_PATHS = {"/trading/kill-switch", "/order/execute", "/trading/run-cycle", "/scanner/morning"}
+ADMIN_PATHS = {"/trading/reconcile"}
+
+
+def _resolve_role(api_key: str) -> str | None:
+    """Resolve API key to role. Returns None if key is invalid."""
+    if settings.api_auth_key_admin and api_key == settings.api_auth_key_admin:
+        return "admin"
+    if settings.api_auth_key_operator and api_key == settings.api_auth_key_operator:
+        return "operator"
+    if settings.api_auth_key_viewer and api_key == settings.api_auth_key_viewer:
+        return "viewer"
+    if settings.api_auth_key and api_key == settings.api_auth_key:
+        return "service"  # legacy single key = service role
+    return None
+
+
+def _check_role_access(role: str, path: str) -> bool:
+    """Check if role has access to the given path."""
+    if role == "admin":
+        return True
+    if role == "operator":
+        return not any(path.startswith(p) for p in ADMIN_PATHS)
+    if role in ("viewer", "service"):
+        return not any(path.startswith(p) for p in OPERATOR_PATHS | ADMIN_PATHS)
+    return False
+
+
+class AuthMiddleware(BaseHTTPMiddleware):
+    """API Key authentication with role-based access control (v1.31 16.5.5).
+
+    Roles: admin (full), operator (trade+kill), viewer (read-only), service (legacy).
+    If no auth keys configured, all access is allowed (dev mode).
     """
 
     async def dispatch(self, request: Request, call_next):
-        auth_key = settings.api_auth_key
-        if not auth_key:
+        # Dev mode: no auth configured
+        if not (settings.api_auth_key or settings.api_auth_key_admin):
             return await call_next(request)
 
         path = request.url.path
-
         if path in PUBLIC_PATHS or path.startswith("/docs") or path.startswith("/redoc"):
             return await call_next(request)
 
         provided = request.headers.get("X-API-Key", "")
-        if provided != auth_key:
-            logger.warning(
-                "Unauthorized request: path=%s ip=%s",
-                path, request.client.host if request.client else "unknown",
-            )
-            return JSONResponse(
-                status_code=401,
-                content={"error": "unauthorized", "message": "Invalid or missing API key"},
-            )
+        role = _resolve_role(provided)
 
+        if not role:
+            logger.warning("Unauthorized: path=%s ip=%s", path, request.client.host if request.client else "unknown")
+            return JSONResponse(status_code=401, content={"error": "unauthorized", "message": "Invalid or missing API key"})
+
+        if not _check_role_access(role, path):
+            logger.warning("Forbidden: role=%s path=%s", role, path)
+            return JSONResponse(status_code=403, content={"error": "forbidden", "message": f"Role '{role}' cannot access {path}"})
+
+        # Attach role to request state for downstream use
+        request.state.role = role
         return await call_next(request)
 
 
