@@ -2,6 +2,8 @@ import logging
 from datetime import datetime, timezone
 
 import feedparser
+
+from app.utils.market_calendar import KST
 import httpx
 from bs4 import BeautifulSoup
 
@@ -85,7 +87,7 @@ class NaverNewsClient:
                 date_str = date_tag.get_text(strip=True)
                 try:
                     time = datetime.strptime(date_str, "%Y.%m.%d %H:%M")
-                    time = time.replace(tzinfo=timezone.utc)
+                    time = time.replace(tzinfo=KST)
                 except ValueError:
                     time = datetime.now(timezone.utc)
 

@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 import httpx
 
 from app.config import settings
+from app.utils.market_calendar import KST
 from app.models.disclosure import DisclosureRecord
 
 logger = logging.getLogger(__name__)
@@ -50,7 +51,7 @@ class DARTClient:
             logger.warning("DART_API_KEY not configured, skipping")
             return []
 
-        today = datetime.now().strftime("%Y%m%d")
+        today = datetime.now(KST).strftime("%Y%m%d")
         params = {
             "crtfc_key": settings.dart_api_key,
             "bgn_de": bgn_de or today,
@@ -75,7 +76,7 @@ class DARTClient:
             for item in data.get("list", []):
                 rcept_dt = item.get("rcept_dt", today)
                 try:
-                    time = datetime.strptime(rcept_dt, "%Y%m%d").replace(tzinfo=timezone.utc)
+                    time = datetime.strptime(rcept_dt, "%Y%m%d").replace(tzinfo=KST)
                 except ValueError:
                     time = datetime.now(timezone.utc)
 

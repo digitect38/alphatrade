@@ -19,6 +19,7 @@ from enum import Enum
 import asyncpg
 
 from app.services.audit import log_event
+from app.utils.market_calendar import KST
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +60,7 @@ def generate_idempotency_key(
 
     Format: SHA-256(strategy_id + trading_day + symbol + side + intent_seq)
     """
-    trading_day = datetime.now(timezone.utc).strftime("%Y%m%d")
+    trading_day = datetime.now(KST).strftime("%Y%m%d")
     raw = f"{strategy_id or 'manual'}:{trading_day}:{symbol}:{side}:{intent_seq}"
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
 

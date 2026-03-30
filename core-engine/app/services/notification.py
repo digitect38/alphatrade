@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 import httpx
 
 from app.config import settings
+from app.utils.market_calendar import KST
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +96,7 @@ class NotificationService:
             f"변동: {change_pct:+.2f}%\n"
             f"현재가: {price:,.0f}원\n"
             f"거래량: {volume:,}\n"
-            f"시간: {datetime.now(timezone.utc).strftime('%H:%M:%S')}"
+            f"시간: {datetime.now(KST).strftime('%H:%M')}"
         )
         await self.alert(msg)
 
@@ -107,7 +108,7 @@ class NotificationService:
             f"종목: {stock_name} ({stock_code})\n"
             f"손실: {pnl_pct:.2f}%\n"
             f"수량: {quantity}주 전량 매도\n"
-            f"시간: {datetime.now(timezone.utc).strftime('%H:%M:%S')}"
+            f"시간: {datetime.now(KST).strftime('%H:%M')}"
         )
         await self.alert(msg)
 
@@ -119,7 +120,7 @@ class NotificationService:
             f"종목: {stock_name} ({stock_code})\n"
             f"수익: +{pnl_pct:.2f}%\n"
             f"수량: {quantity}주 전량 매도\n"
-            f"시간: {datetime.now(timezone.utc).strftime('%H:%M:%S')}"
+            f"시간: {datetime.now(KST).strftime('%H:%M')}"
         )
         await self.alert(msg)
 

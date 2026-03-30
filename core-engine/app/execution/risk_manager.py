@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 import asyncpg
 
 from app.config import settings
+from app.utils.market_calendar import KST
 from app.models.execution import RiskCheckRequest, RiskCheckResult
 from app.services.audit import log_event
 
@@ -127,7 +128,7 @@ class RiskManager:
     async def _check_daily_limits(self, portfolio_value, pool, violations):
         """Daily trade count and loss limits."""
         async with pool.acquire() as conn:
-            today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0)
+            today_start = datetime.now(KST).replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
             count = await conn.fetchval("SELECT count(*) FROM orders WHERE time >= $1", today_start)
         if count >= self.MAX_DAILY_TRADES:
             violations.append(f"일간 거래 횟수 초과: {count} >= {self.MAX_DAILY_TRADES}")
