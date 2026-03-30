@@ -3,14 +3,6 @@ import { XAxis, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from "rechar
 import { apiGet, apiPost } from "../hooks/useApi";
 import type { BatchSignalResult, PortfolioStatus, StrategySignal } from "../types";
 
-const card = (flex?: number) => ({
-  background: "#fff", borderRadius: "12px", padding: "20px",
-  boxShadow: "0 1px 4px rgba(0,0,0,0.08)", flex: flex || "unset",
-}) as const;
-
-const metricLabel = { fontSize: "12px", color: "#999", marginBottom: "2px", letterSpacing: "0.5px", textTransform: "uppercase" } as const;
-const metricValue = { fontSize: "28px", fontWeight: 800, lineHeight: 1.2 } as const;
-
 interface TradingStatus {
   time: string;
   total_value: number;
@@ -37,17 +29,12 @@ export default function DashboardPage({ t }: { t: (k: string) => string }) {
       apiPost<BatchSignalResult>("/strategy/signals/batch", {}),
       apiGet<{ status: string; db: string; redis: string }>("/health"),
     ])
-      .then(([p, s, sig, h]) => {
-        setPortfolio(p);
-        setStatus(s);
-        setSignals(sig.signals || []);
-        setHealth(h);
-      })
+      .then(([p, s, sig, h]) => { setPortfolio(p); setStatus(s); setSignals(sig.signals || []); setHealth(h); })
       .catch(console.error)
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <p style={{ padding: "40px", color: "#888" }}>{t("common.loading")}</p>;
+  if (loading) return <p className="text-secondary p-xl">{t("common.loading")}</p>;
 
   const initialCapital = 10_000_000;
   const totalValue = portfolio?.total_value || initialCapital;
@@ -61,92 +48,78 @@ export default function DashboardPage({ t }: { t: (k: string) => string }) {
   const buySignals = signals.filter((s) => s.signal === "BUY");
   const sellSignals = signals.filter((s) => s.signal === "SELL");
 
-  // Build equity mini-chart from positions
   const equityData = portfolio?.positions.map((p) => ({
     name: p.stock_name || p.stock_code,
     value: (p.current_price || p.avg_price) * p.quantity,
     pnl: p.unrealized_pnl_pct || 0,
   })) || [];
 
-  // Signal distribution for bar chart
-  const signalDist = signals.reduce(
-    (acc, s) => {
-      acc[s.signal] = (acc[s.signal] || 0) + 1;
-      return acc;
-    },
-    {} as Record<string, number>,
-  );
+  const signalDist = signals.reduce((acc, s) => { acc[s.signal] = (acc[s.signal] || 0) + 1; return acc; }, {} as Record<string, number>);
   const signalChartData = [
-    { name: "BUY", count: signalDist["BUY"] || 0, color: "#16a34a" },
-    { name: "HOLD", count: signalDist["HOLD"] || 0, color: "#94a3b8" },
-    { name: "SELL", count: signalDist["SELL"] || 0, color: "#dc2626" },
+    { name: "BUY", count: signalDist["BUY"] || 0, color: "var(--color-buy)" },
+    { name: "HOLD", count: signalDist["HOLD"] || 0, color: "var(--color-hold)" },
+    { name: "SELL", count: signalDist["SELL"] || 0, color: "var(--color-sell)" },
   ];
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-
+    <div className="page-content">
       {/* Row 1: Key Metrics */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: "16px" }}>
-        <div style={card()}>
-          <div style={metricLabel}>{t("dash.totalValue")}</div>
-          <div style={metricValue}>{fmt(totalValue)}</div>
-          <div style={{ fontSize: "12px", color: "#999", marginTop: "2px" }}>{t("common.won")}</div>
+      <div className="metrics-grid metrics-grid-5">
+        <div className="card">
+          <div className="metric-label">{t("dash.totalValue")}</div>
+          <div className="metric-value">{fmt(totalValue)}</div>
+          <div className="metric-unit">{t("common.won")}</div>
         </div>
-        <div style={card()}>
-          <div style={metricLabel}>{t("dash.dailyPnl")}</div>
-          <div style={{ ...metricValue, color: dailyPnl >= 0 ? "#16a34a" : "#dc2626" }}>
+        <div className="card">
+          <div className="metric-label">{t("dash.dailyPnl")}</div>
+          <div className={"metric-value " + (dailyPnl >= 0 ? "text-profit" : "text-loss")}>
             {dailyPnl >= 0 ? "+" : ""}{fmt(dailyPnl)}
           </div>
-          <div style={{ fontSize: "12px", color: "#999", marginTop: "2px" }}>{t("common.won")}</div>
+          <div className="metric-unit">{t("common.won")}</div>
         </div>
-        <div style={card()}>
-          <div style={metricLabel}>{t("dash.return")}</div>
-          <div style={{ ...metricValue, color: totalReturn >= 0 ? "#16a34a" : "#dc2626" }}>
+        <div className="card">
+          <div className="metric-label">{t("dash.return")}</div>
+          <div className={"metric-value " + (totalReturn >= 0 ? "text-profit" : "text-loss")}>
             {totalReturn >= 0 ? "+" : ""}{totalReturn.toFixed(2)}%
           </div>
         </div>
-        <div style={card()}>
-          <div style={metricLabel}>{t("dash.mdd")}</div>
-          <div style={{ ...metricValue, color: mdd < -3 ? "#dc2626" : "#f59e0b" }}>
+        <div className="card">
+          <div className="metric-label">{t("dash.mdd")}</div>
+          <div className={"metric-value " + (mdd < -3 ? "text-loss" : "text-warning")}>
             {mdd.toFixed(2)}%
           </div>
         </div>
-        <div style={card()}>
-          <div style={metricLabel}>{t("dash.positions")}</div>
-          <div style={metricValue}>{posCount}</div>
-          <div style={{ fontSize: "12px", color: "#999", marginTop: "2px" }}>{t("common.stocks")}</div>
+        <div className="card">
+          <div className="metric-label">{t("dash.positions")}</div>
+          <div className="metric-value">{posCount}</div>
+          <div className="metric-unit">{t("common.stocks")}</div>
         </div>
       </div>
 
-      {/* Row 2: Portfolio Composition + Signal Overview */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
-
-        {/* Portfolio Composition */}
-        <div style={card()}>
-          <h3 style={{ margin: "0 0 16px", fontSize: "15px", fontWeight: 700 }}>{t("dash.portfolioComposition")}</h3>
-          <div style={{ display: "flex", gap: "16px", alignItems: "center", marginBottom: "16px" }}>
-            {/* Cash vs Invested bar */}
-            <div style={{ flex: 1 }}>
-              <div style={{ display: "flex", height: "24px", borderRadius: "12px", overflow: "hidden", background: "#f0f0f0" }}>
-                <div style={{ width: `${100 - cashRatio}%`, background: "#1a1a2e", transition: "width 0.3s" }} />
-                <div style={{ width: `${cashRatio}%`, background: "#e2e8f0", transition: "width 0.3s" }} />
+      {/* Row 2: Portfolio + Signals */}
+      <div className="metrics-grid metrics-grid-2">
+        <div className="card">
+          <h3 className="card-title">{t("dash.portfolioComposition")}</h3>
+          <div className="flex gap-lg items-center mb-lg">
+            <div className="flex-1">
+              <div className="cash-bar">
+                <div style={{ width: `${100 - cashRatio}%`, background: "var(--color-accent)" }} />
+                <div style={{ width: `${cashRatio}%`, background: "#e2e8f0" }} />
               </div>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", color: "#888", marginTop: "4px" }}>
+              <div className="flex justify-between text-secondary" style={{ fontSize: "11px", marginTop: "4px" }}>
                 <span>{t("dash.invested")} {(100 - cashRatio).toFixed(0)}%</span>
                 <span>{t("dash.cash")} {cashRatio.toFixed(0)}%</span>
               </div>
             </div>
           </div>
-
-          {/* Position breakdown */}
           {equityData.length > 0 ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+            <div className="flex-col gap-sm">
               {equityData.map((p) => (
-                <div key={p.name} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid #f5f5f5" }}>
-                  <span style={{ fontSize: "13px", fontWeight: 600 }}>{p.name}</span>
-                  <div style={{ display: "flex", gap: "16px", alignItems: "center" }}>
-                    <span style={{ fontSize: "13px" }}>{fmt(p.value)}{t("common.won")}</span>
-                    <span style={{ fontSize: "12px", fontWeight: 700, color: p.pnl >= 0 ? "#16a34a" : "#dc2626", minWidth: "60px", textAlign: "right" }}>
+                <div key={p.name} className="position-row">
+                  <span className="font-bold">{p.name}</span>
+                  <div className="flex gap-lg items-center">
+                    <span>{fmt(p.value)}{t("common.won")}</span>
+                    <span className={"font-heavy " + (p.pnl >= 0 ? "text-profit" : "text-loss")} style={{ minWidth: "60px", textAlign: "right" }}>
                       {p.pnl >= 0 ? "+" : ""}{p.pnl.toFixed(2)}%
                     </span>
                   </div>
@@ -154,52 +127,36 @@ export default function DashboardPage({ t }: { t: (k: string) => string }) {
               ))}
             </div>
           ) : (
-            <div style={{ color: "#bbb", fontSize: "13px", textAlign: "center", padding: "20px" }}>
-              {t("dash.noPositions")}
-            </div>
+            <div className="text-muted text-center p-xl">{t("dash.noPositions")}</div>
           )}
         </div>
 
-        {/* Signal Overview */}
-        <div style={card()}>
-          <h3 style={{ margin: "0 0 16px", fontSize: "15px", fontWeight: 700 }}>{t("dash.strategySignals")}</h3>
-          <div style={{ display: "flex", gap: "20px", marginBottom: "16px" }}>
+        <div className="card">
+          <h3 className="card-title">{t("dash.strategySignals")}</h3>
+          <div className="flex gap-xl mb-lg">
             <ResponsiveContainer width="40%" height={120}>
               <BarChart data={signalChartData}>
                 <Bar dataKey="count" radius={[4, 4, 0, 0]}>
-                  {signalChartData.map((entry, i) => (
-                    <Cell key={i} fill={entry.color} />
-                  ))}
+                  {signalChartData.map((entry, i) => (<Cell key={i} fill={entry.color} />))}
                 </Bar>
                 <XAxis dataKey="name" fontSize={11} tickLine={false} axisLine={false} />
                 <Tooltip />
               </BarChart>
             </ResponsiveContainer>
-            <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", gap: "8px" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "14px" }}>
-                <span style={{ color: "#16a34a", fontWeight: 700 }}>BUY</span>
-                <span style={{ fontWeight: 700 }}>{buySignals.length}</span>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "14px" }}>
-                <span style={{ color: "#dc2626", fontWeight: 700 }}>SELL</span>
-                <span style={{ fontWeight: 700 }}>{sellSignals.length}</span>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "14px" }}>
-                <span style={{ color: "#94a3b8", fontWeight: 700 }}>HOLD</span>
-                <span style={{ fontWeight: 700 }}>{signals.length - buySignals.length - sellSignals.length}</span>
-              </div>
+            <div className="flex-1 flex flex-col justify-center gap-sm">
+              <div className="flex justify-between"><span className="text-profit font-heavy">BUY</span><span className="font-heavy">{buySignals.length}</span></div>
+              <div className="flex justify-between"><span className="text-loss font-heavy">SELL</span><span className="font-heavy">{sellSignals.length}</span></div>
+              <div className="flex justify-between"><span className="text-neutral font-heavy">HOLD</span><span className="font-heavy">{signals.length - buySignals.length - sellSignals.length}</span></div>
             </div>
           </div>
-
-          {/* Action signals only */}
           {(buySignals.length > 0 || sellSignals.length > 0) && (
-            <div style={{ borderTop: "1px solid #f0f0f0", paddingTop: "12px" }}>
-              <div style={{ fontSize: "12px", color: "#888", marginBottom: "8px" }}>{t("dash.actionSignals")}</div>
+            <div className="action-section">
+              <div className="text-secondary mb-sm" style={{ fontSize: "12px" }}>{t("dash.actionSignals")}</div>
               {[...buySignals, ...sellSignals].slice(0, 5).map((s) => (
-                <div key={s.stock_code} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 0", fontSize: "13px" }}>
-                  <span style={{ fontWeight: 600 }}>{s.stock_code}</span>
-                  <span style={{ fontWeight: 700, color: s.signal === "BUY" ? "#16a34a" : "#dc2626" }}>{s.signal}</span>
-                  <span style={{ color: "#888", fontSize: "12px" }}>{s.reasons[0]?.split(":")[0] || ""}</span>
+                <div key={s.stock_code} className="signal-row">
+                  <span className="font-bold">{s.stock_code}</span>
+                  <span className={"font-heavy " + (s.signal === "BUY" ? "text-profit" : "text-loss")}>{s.signal}</span>
+                  <span className="text-secondary" style={{ fontSize: "12px" }}>{s.reasons[0]?.split(":")[0] || ""}</span>
                   <span style={{ fontSize: "12px" }}>{(s.strength * 100).toFixed(0)}%</span>
                 </div>
               ))}
@@ -208,68 +165,62 @@ export default function DashboardPage({ t }: { t: (k: string) => string }) {
         </div>
       </div>
 
-      {/* Row 3: Risk + System */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "16px" }}>
-
-        {/* Risk Gauge */}
-        <div style={card()}>
-          <h3 style={{ margin: "0 0 12px", fontSize: "15px", fontWeight: 700 }}>{t("dash.riskStatus")}</h3>
+      {/* Row 3: Risk + System + Actions */}
+      <div className="metrics-grid metrics-grid-3">
+        <div className="card">
+          <h3 className="card-title">{t("dash.riskStatus")}</h3>
           <RiskMeter label={t("risk.dailyLossLimit")} used={Math.abs(dailyPnl / totalValue * 100)} max={2} unit="%" />
           <RiskMeter label={t("risk.maxDrawdown")} used={Math.abs(mdd)} max={10} unit="%" />
           <RiskMeter label={t("risk.cashRatio")} used={cashRatio} max={100} unit="%" inverted />
         </div>
-
-        {/* System Health */}
-        <div style={card()}>
-          <h3 style={{ margin: "0 0 12px", fontSize: "15px", fontWeight: 700 }}>{t("dash.systemStatus")}</h3>
-          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+        <div className="card">
+          <h3 className="card-title">{t("dash.systemStatus")}</h3>
+          <div className="flex flex-col gap-md">
             <StatusRow label="API Server" ok={health?.status === "ok"} />
             <StatusRow label="Database" ok={health?.db === "ok"} />
             <StatusRow label="Redis Cache" ok={health?.redis === "ok"} />
             <StatusRow label="Tunnel" ok={true} detail="alphatrade.visualfactory.ai" />
           </div>
         </div>
-
-        {/* Quick Actions */}
-        <div style={card()}>
-          <h3 style={{ margin: "0 0 12px", fontSize: "15px", fontWeight: 700 }}>{t("dash.quickActions")}</h3>
-          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-            <ActionButton label={t("action.runCycle")} color="#1a1a2e" onClick={() => apiPost("/trading/run-cycle")} />
-            <ActionButton label={t("action.morningScan")} color="#7c3aed" onClick={() => apiPost("/scanner/morning")} />
-            <ActionButton label={t("action.saveSnapshot")} color="#0891b2" onClick={() => apiPost("/trading/snapshot")} />
-            <ActionButton label={t("action.monitorPositions")} color="#d97706" onClick={() => apiPost("/trading/monitor")} />
+        <div className="card">
+          <h3 className="card-title">{t("dash.quickActions")}</h3>
+          <div className="flex flex-col gap-sm">
+            <button className="action-btn" style={{ background: "var(--color-accent)" }} onClick={() => apiPost("/trading/run-cycle")}>{t("action.runCycle")}</button>
+            <button className="action-btn" style={{ background: "var(--color-accent-purple)" }} onClick={() => apiPost("/scanner/morning")}>{t("action.morningScan")}</button>
+            <button className="action-btn" style={{ background: "var(--color-accent-cyan)" }} onClick={() => apiPost("/trading/snapshot")}>{t("action.saveSnapshot")}</button>
+            <button className="action-btn" style={{ background: "var(--color-accent-amber)" }} onClick={() => apiPost("/trading/monitor")}>{t("action.monitorPositions")}</button>
           </div>
         </div>
       </div>
 
-      {/* Row 4: Top Movers */}
+      {/* Row 4: Position Detail */}
       {portfolio && portfolio.positions.length > 0 && (
-        <div style={card()}>
-          <h3 style={{ margin: "0 0 12px", fontSize: "15px", fontWeight: 700 }}>{t("dash.positionDetail")}</h3>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
+        <div className="card">
+          <h3 className="card-title">{t("dash.positionDetail")}</h3>
+          <table className="data-table">
             <thead>
-              <tr style={{ borderBottom: "2px solid #eee", textAlign: "left" }}>
-                <th style={{ padding: "8px" }}>{t("th.code")}</th>
-                <th style={{ padding: "8px" }}>{t("th.name")}</th>
-                <th style={{ padding: "8px", textAlign: "right" }}>{t("th.qty")}</th>
-                <th style={{ padding: "8px", textAlign: "right" }}>{t("th.avgPrice")}</th>
-                <th style={{ padding: "8px", textAlign: "right" }}>{t("th.current")}</th>
-                <th style={{ padding: "8px", textAlign: "right" }}>{t("th.pnl")}</th>
-                <th style={{ padding: "8px", textAlign: "right" }}>{t("th.weight")}</th>
+              <tr>
+                <th>{t("th.code")}</th>
+                <th>{t("th.name")}</th>
+                <th className="text-right">{t("th.qty")}</th>
+                <th className="text-right">{t("th.avgPrice")}</th>
+                <th className="text-right">{t("th.current")}</th>
+                <th className="text-right">{t("th.pnl")}</th>
+                <th className="text-right">{t("th.weight")}</th>
               </tr>
             </thead>
             <tbody>
               {portfolio.positions.map((p) => (
-                <tr key={p.stock_code} style={{ borderBottom: "1px solid #f0f0f0" }}>
-                  <td style={{ padding: "8px", fontWeight: 600 }}>{p.stock_code}</td>
-                  <td style={{ padding: "8px" }}>{p.stock_name || "-"}</td>
-                  <td style={{ padding: "8px", textAlign: "right" }}>{p.quantity}</td>
-                  <td style={{ padding: "8px", textAlign: "right" }}>{fmt(p.avg_price)}</td>
-                  <td style={{ padding: "8px", textAlign: "right" }}>{p.current_price ? fmt(p.current_price) : "-"}</td>
-                  <td style={{ padding: "8px", textAlign: "right", color: (p.unrealized_pnl_pct ?? 0) >= 0 ? "#16a34a" : "#dc2626", fontWeight: 700 }}>
+                <tr key={p.stock_code}>
+                  <td className="font-bold">{p.stock_code}</td>
+                  <td>{p.stock_name || "-"}</td>
+                  <td className="text-right">{p.quantity}</td>
+                  <td className="text-right">{fmt(p.avg_price)}</td>
+                  <td className="text-right">{p.current_price ? fmt(p.current_price) : "-"}</td>
+                  <td className={"text-right font-heavy " + ((p.unrealized_pnl_pct ?? 0) >= 0 ? "text-profit" : "text-loss")}>
                     {p.unrealized_pnl_pct != null ? `${p.unrealized_pnl_pct >= 0 ? "+" : ""}${p.unrealized_pnl_pct}%` : "-"}
                   </td>
-                  <td style={{ padding: "8px", textAlign: "right" }}>{p.weight ? `${(p.weight * 100).toFixed(1)}%` : "-"}</td>
+                  <td className="text-right">{p.weight ? `${(p.weight * 100).toFixed(1)}%` : "-"}</td>
                 </tr>
               ))}
             </tbody>
@@ -280,8 +231,6 @@ export default function DashboardPage({ t }: { t: (k: string) => string }) {
   );
 }
 
-// Helper components
-
 function fmt(n: number) {
   return n.toLocaleString("ko-KR", { maximumFractionDigits: 0 });
 }
@@ -290,16 +239,15 @@ function RiskMeter({ label, used, max, unit, inverted }: { label: string; used: 
   const pct = Math.min((used / max) * 100, 100);
   const danger = inverted ? pct < 20 : pct > 70;
   const warning = inverted ? pct < 40 : pct > 50;
-  const color = danger ? "#dc2626" : warning ? "#f59e0b" : "#16a34a";
-
+  const color = danger ? "var(--color-loss)" : warning ? "var(--color-warning)" : "var(--color-profit)";
   return (
-    <div style={{ marginBottom: "12px" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", marginBottom: "4px" }}>
-        <span style={{ color: "#666" }}>{label}</span>
-        <span style={{ fontWeight: 600, color }}>{used.toFixed(1)}{unit} / {max}{unit}</span>
+    <div className="risk-meter">
+      <div className="risk-meter-header">
+        <span className="text-secondary">{label}</span>
+        <span className="font-bold" style={{ color }}>{used.toFixed(1)}{unit} / {max}{unit}</span>
       </div>
-      <div style={{ height: "6px", borderRadius: "3px", background: "#f0f0f0" }}>
-        <div style={{ height: "100%", borderRadius: "3px", background: color, width: `${pct}%`, transition: "width 0.3s" }} />
+      <div className="progress-bar">
+        <div className="progress-bar-fill" style={{ background: color, width: `${pct}%` }} />
       </div>
     </div>
   );
@@ -307,34 +255,10 @@ function RiskMeter({ label, used, max, unit, inverted }: { label: string; used: 
 
 function StatusRow({ label, ok, detail }: { label: string; ok: boolean; detail?: string }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-      <div style={{ width: "10px", height: "10px", borderRadius: "50%", background: ok ? "#16a34a" : "#dc2626", flexShrink: 0 }} />
-      <span style={{ fontSize: "13px", fontWeight: 500 }}>{label}</span>
-      {detail && <span style={{ fontSize: "11px", color: "#888", marginLeft: "auto" }}>{detail}</span>}
+    <div className="status-row">
+      <span className={"status-dot " + (ok ? "ok" : "error")} />
+      <span className="label">{label}</span>
+      {detail && <span className="detail">{detail}</span>}
     </div>
-  );
-}
-
-function ActionButton({ label, color, onClick }: { label: string; color: string; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        padding: "10px 16px",
-        background: color,
-        color: "#fff",
-        border: "none",
-        borderRadius: "8px",
-        cursor: "pointer",
-        fontSize: "13px",
-        fontWeight: 600,
-        textAlign: "left",
-        transition: "opacity 0.2s",
-      }}
-      onMouseOver={(e) => (e.currentTarget.style.opacity = "0.85")}
-      onMouseOut={(e) => (e.currentTarget.style.opacity = "1")}
-    >
-      {label}
-    </button>
   );
 }

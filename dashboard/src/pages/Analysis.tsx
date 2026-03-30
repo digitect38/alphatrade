@@ -4,9 +4,7 @@ import TechnicalChart from "../components/TechnicalChart";
 import { apiGet, apiPost } from "../hooks/useApi";
 import type { OHLCVRecord, TechnicalResult } from "../types";
 
-const card = { background: "#fff", borderRadius: "8px", padding: "20px", boxShadow: "0 1px 3px rgba(0,0,0,0.1)" } as const;
-
-const signalColors: Record<string, string> = { bullish: "#16a34a", bearish: "#dc2626", neutral: "#888" };
+const signalColors: Record<string, string> = { bullish: "text-profit", bearish: "text-loss", neutral: "text-neutral" };
 
 export default function AnalysisPage({ t: _t }: { t: (k: string) => string }) {
   const [stockCode, setStockCode] = useState("005930");
@@ -30,22 +28,18 @@ export default function AnalysisPage({ t: _t }: { t: (k: string) => string }) {
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-      <div style={{ ...card, display: "flex", gap: "12px", alignItems: "center" }}>
+    <div className="page-content">
+      <div className="card flex gap-md items-center">
         <StockSearch
           value={stockCode}
           onChange={(code) => setStockCode(code)}
           placeholder={_t("common.placeholder.stockCode")}
         />
-        <button
-          onClick={analyze}
-          disabled={loading}
-          style={{ padding: "8px 20px", background: "#1a1a2e", color: "#fff", border: "none", borderRadius: "6px", cursor: "pointer", fontSize: "14px" }}
-        >
+        <button onClick={analyze} disabled={loading} className="btn btn-primary">
           {loading ? _t("analysis.analyzing") : _t("analysis.analyze")}
         </button>
         {technical && (
-          <span style={{ fontSize: "14px", fontWeight: 600 }}>
+          <span className="font-bold" style={{ fontSize: "14px" }}>
             {_t("analysis.currentPrice")}: {technical.current_price?.toLocaleString()}{_t("common.won")}
           </span>
         )}
@@ -61,51 +55,51 @@ export default function AnalysisPage({ t: _t }: { t: (k: string) => string }) {
 
       {technical && (
         <>
-          <div style={card}>
-            <h3 style={{ margin: "0 0 12px", fontSize: "14px" }}>{_t("analysis.scores")}</h3>
-            <div style={{ display: "flex", gap: "32px", fontSize: "14px" }}>
+          <div className="card">
+            <h3 className="card-title">{_t("analysis.scores")}</h3>
+            <div className="flex gap-xl" style={{ fontSize: "14px" }}>
               <div>
-                <span style={{ color: "#888" }}>{_t("analysis.trend")}: </span>
-                <strong style={{ color: technical.trend_score >= 0 ? "#16a34a" : "#dc2626" }}>
+                <span className="text-secondary">{_t("analysis.trend")}: </span>
+                <strong className={technical.trend_score >= 0 ? "text-profit" : "text-loss"}>
                   {technical.trend_score.toFixed(3)}
                 </strong>
               </div>
               <div>
-                <span style={{ color: "#888" }}>{_t("analysis.momentum")}: </span>
-                <strong style={{ color: technical.momentum_score >= 0 ? "#16a34a" : "#dc2626" }}>
+                <span className="text-secondary">{_t("analysis.momentum")}: </span>
+                <strong className={technical.momentum_score >= 0 ? "text-profit" : "text-loss"}>
                   {technical.momentum_score.toFixed(3)}
                 </strong>
               </div>
               <div>
-                <span style={{ color: "#888" }}>{_t("analysis.overall")}: </span>
-                <strong style={{ color: technical.overall_score >= 0 ? "#16a34a" : "#dc2626" }}>
+                <span className="text-secondary">{_t("analysis.overall")}: </span>
+                <strong className={technical.overall_score >= 0 ? "text-profit" : "text-loss"}>
                   {technical.overall_score.toFixed(3)}
                 </strong>
               </div>
             </div>
           </div>
 
-          <div style={card}>
-            <h3 style={{ margin: "0 0 12px", fontSize: "14px" }}>{_t("analysis.signals")} ({technical.signals.length})</h3>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+          <div className="card">
+            <h3 className="card-title">{_t("analysis.signals")} ({technical.signals.length})</h3>
+            <div className="flex flex-wrap gap-sm">
               {technical.signals.map((s, i) => (
                 <div key={i} style={{ padding: "6px 12px", borderRadius: "6px", background: "#f5f5f5", fontSize: "12px" }}>
-                  <strong style={{ color: signalColors[s.signal] }}>{s.indicator}</strong>
+                  <strong className={signalColors[s.signal]}>{s.indicator}</strong>
                   {" "}{s.description}
                 </div>
               ))}
             </div>
           </div>
 
-          <div style={card}>
-            <h3 style={{ margin: "0 0 12px", fontSize: "14px" }}>{_t("analysis.keyIndicators")}</h3>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "12px", fontSize: "13px" }}>
+          <div className="card">
+            <h3 className="card-title">{_t("analysis.keyIndicators")}</h3>
+            <div className="metrics-grid metrics-grid-4" style={{ fontSize: "13px" }}>
               {Object.entries(technical.indicators)
                 .filter(([_, v]) => v !== null)
                 .map(([k, v]) => (
                   <div key={k} style={{ padding: "6px" }}>
-                    <div style={{ color: "#888", fontSize: "11px" }}>{k}</div>
-                    <div style={{ fontWeight: 600 }}>{typeof v === "number" ? v.toLocaleString(undefined, { maximumFractionDigits: 2 }) : v}</div>
+                    <div className="metric-label">{k}</div>
+                    <div className="font-bold">{typeof v === "number" ? v.toLocaleString(undefined, { maximumFractionDigits: 2 }) : v}</div>
                   </div>
                 ))}
             </div>

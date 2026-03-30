@@ -3,8 +3,6 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import StockSearch from "../components/StockSearch";
 import { apiPost } from "../hooks/useApi";
 
-const card = { background: "#fff", borderRadius: "8px", padding: "20px", boxShadow: "0 1px 3px rgba(0,0,0,0.1)" } as const;
-
 interface BacktestTrade {
   date: string;
   action: "BUY" | "SELL";
@@ -63,9 +61,9 @@ export default function BacktestPage({ t: _t }: { t: (k: string) => string }) {
   })) || [];
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+    <div className="page-content">
       {/* Controls */}
-      <div style={{ ...card, display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
+      <div className="card flex gap-md items-center flex-wrap">
         <StockSearch
           value={stockCode}
           onChange={(code) => setStockCode(code)}
@@ -74,28 +72,25 @@ export default function BacktestPage({ t: _t }: { t: (k: string) => string }) {
         <select
           value={strategy}
           onChange={(e) => setStrategy(e.target.value)}
-          style={{ padding: "8px 12px", border: "1px solid #ddd", borderRadius: "6px", fontSize: "14px" }}
+          className="select"
         >
           {Object.keys(strategyKeys).map((k) => (
             <option key={k} value={k}>{_t(strategyKeys[k])}</option>
           ))}
         </select>
-        <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+        <div className="flex items-center gap-xs">
           <input
             type="number"
             value={capital}
             onChange={(e) => setCapital(Number(e.target.value))}
             step={1000000}
             min={1000000}
-            style={{ padding: "8px 12px", border: "1px solid #ddd", borderRadius: "6px", fontSize: "14px", width: "140px" }}
+            className="input"
+            style={{ width: "140px" }}
           />
-          <span style={{ fontSize: "13px", color: "#888" }}>{_t("common.won")}</span>
+          <span className="text-secondary" style={{ fontSize: "13px" }}>{_t("common.won")}</span>
         </div>
-        <button
-          onClick={runBacktest}
-          disabled={loading}
-          style={{ padding: "8px 24px", background: "#1a1a2e", color: "#fff", border: "none", borderRadius: "6px", cursor: "pointer", fontSize: "14px" }}
-        >
+        <button onClick={runBacktest} disabled={loading} className="btn btn-primary">
           {loading ? _t("bt.running") : _t("bt.run")}
         </button>
       </div>
@@ -103,40 +98,40 @@ export default function BacktestPage({ t: _t }: { t: (k: string) => string }) {
       {result && (
         <>
           {/* Performance Summary */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "16px" }}>
+          <div className="metrics-grid metrics-grid-4">
             <MetricCard
               label={_t("bt.totalReturn")}
               value={`${result.total_return >= 0 ? "+" : ""}${result.total_return}%`}
-              color={result.total_return >= 0 ? "#16a34a" : "#dc2626"}
+              colorClass={result.total_return >= 0 ? "text-profit" : "text-loss"}
             />
             <MetricCard
               label={_t("bt.mdd")}
               value={`${result.max_drawdown}%`}
-              color="#dc2626"
+              colorClass="text-loss"
             />
             <MetricCard
               label={_t("bt.winRate")}
               value={`${result.win_rate}%`}
-              color={result.win_rate >= 50 ? "#16a34a" : "#f59e0b"}
+              colorClass={result.win_rate >= 50 ? "text-profit" : "text-warning"}
             />
             <MetricCard
               label={_t("bt.sharpe")}
               value={result.sharpe_ratio?.toFixed(2) ?? "-"}
-              color={result.sharpe_ratio && result.sharpe_ratio > 1 ? "#16a34a" : "#888"}
+              colorClass={result.sharpe_ratio && result.sharpe_ratio > 1 ? "text-profit" : "text-neutral"}
             />
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "16px" }}>
+          <div className="metrics-grid metrics-grid-4">
             <MetricCard label={_t("bt.initialCapital")} value={`${result.initial_capital.toLocaleString()}${_t("common.won")}`} />
-            <MetricCard label={_t("bt.finalCapital")} value={`${result.final_capital.toLocaleString()}${_t("common.won")}`} color={result.final_capital >= result.initial_capital ? "#16a34a" : "#dc2626"} />
+            <MetricCard label={_t("bt.finalCapital")} value={`${result.final_capital.toLocaleString()}${_t("common.won")}`} colorClass={result.final_capital >= result.initial_capital ? "text-profit" : "text-loss"} />
             <MetricCard label={_t("bt.annualReturn")} value={result.annual_return != null ? `${result.annual_return}%` : "-"} />
             <MetricCard label={_t("bt.totalTrades")} value={`${result.total_trades}`} />
           </div>
 
           {/* Equity Curve */}
           {equityData.length > 0 && (
-            <div style={card}>
-              <h3 style={{ margin: "0 0 12px", fontSize: "14px" }}>{_t("bt.equityCurve")}</h3>
+            <div className="card">
+              <h3 className="card-title">{_t("bt.equityCurve")}</h3>
               <ResponsiveContainer width="100%" height={300}>
                 <LineChart data={equityData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
@@ -152,28 +147,28 @@ export default function BacktestPage({ t: _t }: { t: (k: string) => string }) {
 
           {/* Trade History */}
           {result.trades.length > 0 && (
-            <div style={card}>
-              <h3 style={{ margin: "0 0 12px", fontSize: "14px" }}>{_t("bt.tradeHistory")} ({result.trades.length})</h3>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
+            <div className="card">
+              <h3 className="card-title">{_t("bt.tradeHistory")} ({result.trades.length})</h3>
+              <table className="data-table">
                 <thead>
-                  <tr style={{ borderBottom: "2px solid #eee", textAlign: "left" }}>
-                    <th style={{ padding: "8px" }}>{_t("th.date")}</th>
-                    <th style={{ padding: "8px" }}>{_t("th.action")}</th>
-                    <th style={{ padding: "8px", textAlign: "right" }}>{_t("th.price")}</th>
-                    <th style={{ padding: "8px", textAlign: "right" }}>{_t("th.qty")}</th>
-                    <th style={{ padding: "8px", textAlign: "right" }}>{_t("th.pnl")}</th>
+                  <tr>
+                    <th>{_t("th.date")}</th>
+                    <th>{_t("th.action")}</th>
+                    <th className="text-right">{_t("th.price")}</th>
+                    <th className="text-right">{_t("th.qty")}</th>
+                    <th className="text-right">{_t("th.pnl")}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {result.trades.map((t, i) => (
-                    <tr key={i} style={{ borderBottom: "1px solid #f0f0f0" }}>
-                      <td style={{ padding: "8px", fontSize: "12px" }}>{t.date}</td>
-                      <td style={{ padding: "8px", fontWeight: 700, color: t.action === "BUY" ? "#dc2626" : "#3b82f6" }}>
+                    <tr key={i}>
+                      <td style={{ fontSize: "12px" }}>{t.date}</td>
+                      <td className={"font-heavy " + (t.action === "BUY" ? "text-up" : "text-down")}>
                         {t.action}
                       </td>
-                      <td style={{ padding: "8px", textAlign: "right" }}>{t.price.toLocaleString()}</td>
-                      <td style={{ padding: "8px", textAlign: "right" }}>{t.quantity}</td>
-                      <td style={{ padding: "8px", textAlign: "right", fontWeight: 600, color: t.pnl != null ? (t.pnl >= 0 ? "#16a34a" : "#dc2626") : "#888" }}>
+                      <td className="text-right">{t.price.toLocaleString()}</td>
+                      <td className="text-right">{t.quantity}</td>
+                      <td className={"text-right font-bold " + (t.pnl != null ? (t.pnl >= 0 ? "text-profit" : "text-loss") : "text-neutral")}>
                         {t.pnl != null ? `${t.pnl >= 0 ? "+" : ""}${t.pnl.toLocaleString()}원` : "-"}
                       </td>
                     </tr>
@@ -188,11 +183,11 @@ export default function BacktestPage({ t: _t }: { t: (k: string) => string }) {
   );
 }
 
-function MetricCard({ label, value, color }: { label: string; value: string; color?: string }) {
+function MetricCard({ label, value, colorClass }: { label: string; value: string; colorClass?: string }) {
   return (
-    <div style={card}>
-      <div style={{ fontSize: "12px", color: "#888", marginBottom: "4px" }}>{label}</div>
-      <div style={{ fontSize: "20px", fontWeight: 700, color: color || "#1a1a2e" }}>{value}</div>
+    <div className="card">
+      <div className="metric-label">{label}</div>
+      <div className={"metric-value " + (colorClass || "")}>{value}</div>
     </div>
   );
 }

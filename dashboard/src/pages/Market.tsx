@@ -1,8 +1,6 @@
 import { useEffect, useState } from "react";
 import { apiGet, apiPost } from "../hooks/useApi";
 
-const card = { background: "#fff", borderRadius: "8px", padding: "20px", boxShadow: "0 1px 3px rgba(0,0,0,0.1)" } as const;
-
 interface StockPrice {
   stock_code: string;
   stock_name: string;
@@ -77,90 +75,72 @@ export default function MarketPage({ t }: { t: (k: string) => string }) {
   }, [autoRefresh]);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-      <div style={{ ...card, display: "flex", gap: "12px", alignItems: "center" }}>
-        <button
-          onClick={fetchPrices}
-          disabled={loading}
-          style={{ padding: "8px 20px", background: "#1a1a2e", color: "#fff", border: "none", borderRadius: "6px", cursor: "pointer", fontSize: "14px" }}
-        >
+    <div className="page-content">
+      <div className="card flex gap-md items-center">
+        <button onClick={fetchPrices} disabled={loading} className="btn btn-primary">
           {loading ? t("market.loading") : t("market.refresh")}
         </button>
-        <label style={{ fontSize: "13px", display: "flex", alignItems: "center", gap: "6px" }}>
+        <label className="flex items-center gap-sm" style={{ fontSize: "13px" }}>
           <input type="checkbox" checked={autoRefresh} onChange={(e) => setAutoRefresh(e.target.checked)} />
           {t("market.autoRefresh")}
         </label>
-        <button
-          onClick={runMorningScan}
-          style={{ padding: "8px 20px", background: "#dc2626", color: "#fff", border: "none", borderRadius: "6px", cursor: "pointer", fontSize: "14px", marginLeft: "auto" }}
-        >
+        <button onClick={runMorningScan} className="btn btn-danger ml-auto">
           {t("market.morningScan")}
         </button>
         {data && (
-          <span style={{ fontSize: "12px", color: "#888" }}>
+          <span className="text-secondary" style={{ fontSize: "12px" }}>
             {new Date(data.updated_at).toLocaleString("ko-KR")} · {data.count}종목
           </span>
         )}
       </div>
 
       {data && data.stocks.length > 0 && (
-        <div style={card}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
+        <div className="card">
+          <table className="data-table">
             <thead>
-              <tr style={{ borderBottom: "2px solid #eee", textAlign: "left" }}>
-                <th style={{ padding: "8px" }}>{t("th.name")}</th>
-                <th style={{ padding: "8px" }}>{t("th.sector")}</th>
-                <th style={{ padding: "8px", textAlign: "right" }}>{t("th.price")}</th>
-                <th style={{ padding: "8px", textAlign: "right" }}>{t("th.change")}</th>
-                <th style={{ padding: "8px", textAlign: "right" }}>{t("th.changePct")}</th>
-                <th style={{ padding: "8px", textAlign: "right" }}>{t("th.volume")}</th>
-                <th style={{ padding: "8px", textAlign: "center" }}>{t("th.news")}</th>
+              <tr>
+                <th>{t("th.name")}</th>
+                <th>{t("th.sector")}</th>
+                <th className="text-right">{t("th.price")}</th>
+                <th className="text-right">{t("th.change")}</th>
+                <th className="text-right">{t("th.changePct")}</th>
+                <th className="text-right">{t("th.volume")}</th>
+                <th className="text-center">{t("th.news")}</th>
               </tr>
             </thead>
             <tbody>
               {data.stocks.map((s) => {
-                const color = s.change_pct > 0 ? "#dc2626" : s.change_pct < 0 ? "#3b82f6" : "#888";
+                const colorClass = s.change_pct > 0 ? "text-up" : s.change_pct < 0 ? "text-down" : "text-neutral";
                 return (
-                  <tr key={s.stock_code} style={{ borderBottom: "1px solid #f0f0f0" }}>
-                    <td style={{ padding: "8px" }}>
-                      <span style={{ fontWeight: 600 }}>{s.stock_name}</span>
-                      <span style={{ fontSize: "11px", color: "#888", marginLeft: "6px" }}>{s.stock_code}</span>
-                      {s.stale && <span style={{ fontSize: "10px", color: "#f59e0b", marginLeft: "4px" }}>stale</span>}
+                  <tr key={s.stock_code}>
+                    <td>
+                      <span className="font-bold">{s.stock_name}</span>
+                      <span className="text-secondary" style={{ fontSize: "11px", marginLeft: "6px" }}>{s.stock_code}</span>
+                      {s.stale && <span className="text-warning" style={{ fontSize: "10px", marginLeft: "4px" }}>stale</span>}
                     </td>
-                    <td style={{ padding: "8px", fontSize: "12px", color: "#666" }}>{s.sector}</td>
-                    <td style={{ padding: "8px", textAlign: "right", fontWeight: 600 }}>
+                    <td className="text-secondary" style={{ fontSize: "12px" }}>{s.sector}</td>
+                    <td className="text-right font-bold">
                       {s.price.toLocaleString()}
                     </td>
-                    <td style={{ padding: "8px", textAlign: "right", color, fontWeight: 600 }}>
+                    <td className={"text-right font-bold " + colorClass}>
                       {s.change > 0 ? "+" : ""}{s.change.toLocaleString()}
                     </td>
-                    <td style={{ padding: "8px", textAlign: "right", color, fontWeight: 700 }}>
+                    <td className={"text-right font-heavy " + colorClass}>
                       {s.change_pct > 0 ? "+" : ""}{s.change_pct}%
                     </td>
-                    <td style={{ padding: "8px", textAlign: "right", fontSize: "12px" }}>
+                    <td className="text-right" style={{ fontSize: "12px" }}>
                       {s.volume.toLocaleString()}
                     </td>
-                    <td style={{ padding: "8px", textAlign: "center" }}>
+                    <td className="text-center">
                       {s.news_count > 0 ? (
                         <span
                           onClick={() => openNews(s.stock_code, s.stock_name)}
-                          style={{
-                            display: "inline-block",
-                            background: "#ef4444",
-                            color: "#fff",
-                            borderRadius: "10px",
-                            padding: "2px 8px",
-                            fontSize: "11px",
-                            fontWeight: 700,
-                            cursor: "pointer",
-                            minWidth: "20px",
-                            textAlign: "center",
-                          }}
+                          className="badge badge-red"
                         >
                           {s.news_count}
                         </span>
                       ) : (
-                        <span style={{ color: "#ccc", fontSize: "11px" }}>-</span>
+                        <span className="text-muted" style={{ fontSize: "11px" }}>-</span>
                       )}
                     </td>
                   </tr>
@@ -172,8 +152,8 @@ export default function MarketPage({ t }: { t: (k: string) => string }) {
       )}
 
       {scanResult && (
-        <div style={card}>
-          <h3 style={{ margin: "0 0 12px", fontSize: "14px" }}>{t("market.scanResult")}</h3>
+        <div className="card">
+          <h3 className="card-title">{t("market.scanResult")}</h3>
           <pre style={{ fontSize: "12px", overflow: "auto", maxHeight: "300px", background: "#f5f5f5", padding: "12px", borderRadius: "6px" }}>
             {scanResult}
           </pre>
@@ -182,77 +162,36 @@ export default function MarketPage({ t }: { t: (k: string) => string }) {
 
       {/* News Modal */}
       {newsOpen && (
-        <div
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: "rgba(0,0,0,0.5)",
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            zIndex: 1000,
-          }}
-          onClick={() => setNewsOpen(false)}
-        >
-          <div
-            style={{
-              background: "#fff",
-              borderRadius: "12px",
-              padding: "24px",
-              width: "700px",
-              maxHeight: "80vh",
-              overflowY: "auto",
-              boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-              <h2 style={{ margin: 0, fontSize: "18px" }}>
+        <div className="modal-overlay" onClick={() => setNewsOpen(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 style={{ fontSize: "18px" }}>
                 {newsStock?.name} ({newsStock?.code}) {t("market.relatedNews")}
               </h2>
-              <button
-                onClick={() => setNewsOpen(false)}
-                style={{ background: "none", border: "none", fontSize: "20px", cursor: "pointer", color: "#888" }}
-              >
+              <button onClick={() => setNewsOpen(false)} className="modal-close">
                 ✕
               </button>
             </div>
 
             {newsLoading ? (
-              <p style={{ color: "#888" }}>{t("common.loading")}</p>
+              <p className="text-secondary">{t("common.loading")}</p>
             ) : newsItems.length === 0 ? (
-              <p style={{ color: "#888" }}>{t("market.noNews")}</p>
+              <p className="text-secondary">{t("market.noNews")}</p>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+              <div className="flex flex-col gap-md">
                 {newsItems.map((n, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      padding: "12px",
-                      borderRadius: "8px",
-                      background: "#f9f9f9",
-                      borderLeft: "3px solid #1a1a2e",
-                    }}
-                  >
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
-                      <span style={{ fontSize: "11px", color: "#888" }}>{n.source}</span>
-                      <span style={{ fontSize: "11px", color: "#888" }}>
+                  <div key={i} className="news-item">
+                    <div className="flex justify-between mb-sm">
+                      <span className="text-secondary" style={{ fontSize: "11px" }}>{n.source}</span>
+                      <span className="text-secondary" style={{ fontSize: "11px" }}>
                         {new Date(n.time).toLocaleString("ko-KR")}
                       </span>
                     </div>
-                    <a
-                      href={n.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{ color: "#1a1a2e", fontWeight: 600, fontSize: "14px", textDecoration: "none" }}
-                    >
+                    <a href={n.url} target="_blank" rel="noopener noreferrer">
                       {n.title}
                     </a>
                     {n.content && (
-                      <p style={{ margin: "6px 0 0", fontSize: "12px", color: "#666", lineHeight: 1.5 }}>
+                      <p className="text-secondary" style={{ margin: "6px 0 0", fontSize: "12px", lineHeight: 1.5 }}>
                         {n.content}
                       </p>
                     )}

@@ -4,8 +4,6 @@ import StockSearch from "../components/StockSearch";
 import { apiGet, apiPost } from "../hooks/useApi";
 import type { OrderHistoryItem } from "../types";
 
-const card = { background: "#fff", borderRadius: "8px", padding: "20px", boxShadow: "0 1px 3px rgba(0,0,0,0.1)" } as const;
-
 export default function OrdersPage({ t: _t }: { t: (k: string) => string }) {
   const [orders, setOrders] = useState<OrderHistoryItem[]>([]);
   const [stockCode, setStockCode] = useState("005930");
@@ -39,10 +37,10 @@ export default function OrdersPage({ t: _t }: { t: (k: string) => string }) {
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-      <div style={card}>
-        <h3 style={{ margin: "0 0 12px", fontSize: "14px" }}>{_t("order.manual")}</h3>
-        <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
+    <div className="page-content">
+      <div className="card">
+        <h3 className="card-title">{_t("order.manual")}</h3>
+        <div className="flex gap-md items-center flex-wrap">
           <StockSearch
             value={stockCode}
             onChange={(code) => setStockCode(code)}
@@ -51,7 +49,7 @@ export default function OrdersPage({ t: _t }: { t: (k: string) => string }) {
           <select
             value={side}
             onChange={(e) => setSide(e.target.value as "BUY" | "SELL")}
-            style={{ padding: "8px 12px", border: "1px solid #ddd", borderRadius: "6px", fontSize: "14px" }}
+            className="select"
           >
             <option value="BUY">BUY</option>
             <option value="SELL">SELL</option>
@@ -61,26 +59,20 @@ export default function OrdersPage({ t: _t }: { t: (k: string) => string }) {
             value={quantity}
             onChange={(e) => setQuantity(Number(e.target.value))}
             min={1}
-            style={{ padding: "8px 12px", border: "1px solid #ddd", borderRadius: "6px", fontSize: "14px", width: "80px" }}
+            className="input"
+            style={{ width: "80px" }}
           />
           <button
             onClick={submitOrder}
             disabled={submitting}
-            style={{
-              padding: "8px 20px",
-              background: side === "BUY" ? "#dc2626" : "#3b82f6",
-              color: "#fff",
-              border: "none",
-              borderRadius: "6px",
-              cursor: "pointer",
-              fontSize: "14px",
-            }}
+            className={"btn " + (side === "BUY" ? "btn-danger" : "btn-primary")}
+            style={{ background: side === "BUY" ? "var(--color-up)" : "var(--color-down)" }}
           >
             {submitting ? "..." : _t(side === "BUY" ? "order.buy" : "order.sell")}
           </button>
         </div>
         {message && (
-          <p style={{ marginTop: "8px", fontSize: "13px", color: message.startsWith("Error") ? "#dc2626" : "#16a34a" }}>
+          <p className={message.startsWith("Error") ? "text-loss" : "text-profit"} style={{ marginTop: "8px", fontSize: "13px" }}>
             {message}
           </p>
         )}

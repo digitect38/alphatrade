@@ -2,8 +2,6 @@ import { useEffect, useState } from "react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { apiGet } from "../hooks/useApi";
 
-const card = { background: "#fff", borderRadius: "8px", padding: "20px", boxShadow: "0 1px 3px rgba(0,0,0,0.1)" } as const;
-
 interface TrendPoint {
   date: string;
   return_pct: number;
@@ -100,15 +98,15 @@ export default function TrendPage({ t: _t }: { t: (k: string) => string }) {
   if (loading) return <p>{_t("common.loading")}</p>;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+    <div className="page-content">
       {/* Sector Filter */}
-      <div style={card}>
-        <div style={{ display: "flex", gap: "8px", alignItems: "center", marginBottom: "12px" }}>
-          <h3 style={{ margin: 0, fontSize: "14px" }}>{_t("trend.sectorFilter")}</h3>
-          <button onClick={selectAll} style={filterBtn}>{_t("trend.all")}</button>
-          <button onClick={selectNone} style={filterBtn}>{_t("trend.reset")}</button>
+      <div className="card">
+        <div className="flex gap-sm items-center mb-md">
+          <h3 className="card-title" style={{ marginBottom: 0 }}>{_t("trend.sectorFilter")}</h3>
+          <button onClick={selectAll} className="filter-btn">{_t("trend.all")}</button>
+          <button onClick={selectNone} className="filter-btn">{_t("trend.reset")}</button>
         </div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+        <div className="flex flex-wrap gap-sm">
           {sectors.map((sec, i) => {
             const active = selectedSectors.has(sec.sector);
             const color = COLORS[i % COLORS.length];
@@ -116,16 +114,11 @@ export default function TrendPage({ t: _t }: { t: (k: string) => string }) {
               <button
                 key={sec.sector}
                 onClick={() => toggleSector(sec.sector)}
+                className="filter-chip"
                 style={{
-                  padding: "6px 14px",
-                  borderRadius: "20px",
-                  border: `2px solid ${color}`,
+                  borderColor: color,
                   background: active ? color : "transparent",
                   color: active ? "#fff" : color,
-                  cursor: "pointer",
-                  fontSize: "13px",
-                  fontWeight: 600,
-                  transition: "all 0.15s",
                 }}
               >
                 {sec.sector} ({sec.cumulative_return >= 0 ? "+" : ""}{sec.cumulative_return}%)
@@ -137,8 +130,8 @@ export default function TrendPage({ t: _t }: { t: (k: string) => string }) {
 
       {/* Cumulative Return Chart */}
       {chartData.length > 0 && (
-        <div style={card}>
-          <h3 style={{ margin: "0 0 12px", fontSize: "14px" }}>{_t("trend.cumulativeReturn")}</h3>
+        <div className="card">
+          <h3 className="card-title">{_t("trend.cumulativeReturn")}</h3>
           <ResponsiveContainer width="100%" height={400}>
             <LineChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
@@ -168,64 +161,65 @@ export default function TrendPage({ t: _t }: { t: (k: string) => string }) {
       )}
 
       {/* Sector Rankings */}
-      <div style={card}>
-        <h3 style={{ margin: "0 0 12px", fontSize: "14px" }}>{_t("trend.sectorRanking")}</h3>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
+      <div className="card">
+        <h3 className="card-title">{_t("trend.sectorRanking")}</h3>
+        <table className="data-table">
           <thead>
-            <tr style={{ borderBottom: "2px solid #eee", textAlign: "left" }}>
-              <th style={{ padding: "8px", width: "40px" }}>#</th>
-              <th style={{ padding: "8px" }}>{_t("th.sector")}</th>
-              <th style={{ padding: "8px", textAlign: "right" }}>{_t("trend.stockCount")}</th>
-              <th style={{ padding: "8px", textAlign: "right" }}>{_t("trend.avgChange")}</th>
-              <th style={{ padding: "8px", textAlign: "right" }}>{_t("trend.cumReturn")}</th>
-              <th style={{ padding: "8px", textAlign: "center" }}>{_t("trend.detail")}</th>
+            <tr>
+              <th style={{ width: "40px" }}>#</th>
+              <th>{_t("th.sector")}</th>
+              <th className="text-right">{_t("trend.stockCount")}</th>
+              <th className="text-right">{_t("trend.avgChange")}</th>
+              <th className="text-right">{_t("trend.cumReturn")}</th>
+              <th className="text-center">{_t("trend.detail")}</th>
             </tr>
           </thead>
           <tbody>
             {overview.map((sec, i) => {
               const trendSec = sectors.find((s) => s.sector === sec.sector);
               const cumReturn = trendSec?.cumulative_return ?? 0;
-              const color = sec.avg_change > 0 ? "#dc2626" : sec.avg_change < 0 ? "#3b82f6" : "#888";
-              const cumColor = cumReturn > 0 ? "#dc2626" : cumReturn < 0 ? "#3b82f6" : "#888";
+              const changeClass = sec.avg_change > 0 ? "text-up" : sec.avg_change < 0 ? "text-down" : "text-neutral";
+              const cumClass = cumReturn > 0 ? "text-up" : cumReturn < 0 ? "text-down" : "text-neutral";
               const expanded = expandedSector === sec.sector;
 
               return (
                 <>
-                  <tr key={sec.sector} style={{ borderBottom: "1px solid #f0f0f0" }}>
-                    <td style={{ padding: "8px", fontWeight: 600, color: "#888" }}>{i + 1}</td>
-                    <td style={{ padding: "8px", fontWeight: 600 }}>{sec.sector}</td>
-                    <td style={{ padding: "8px", textAlign: "right" }}>{sec.stock_count}</td>
-                    <td style={{ padding: "8px", textAlign: "right", color, fontWeight: 700 }}>
+                  <tr key={sec.sector}>
+                    <td className="font-bold text-secondary">{i + 1}</td>
+                    <td className="font-bold">{sec.sector}</td>
+                    <td className="text-right">{sec.stock_count}</td>
+                    <td className={"text-right font-heavy " + changeClass}>
                       {sec.avg_change > 0 ? "+" : ""}{sec.avg_change}%
                     </td>
-                    <td style={{ padding: "8px", textAlign: "right", color: cumColor, fontWeight: 700 }}>
+                    <td className={"text-right font-heavy " + cumClass}>
                       {cumReturn > 0 ? "+" : ""}{cumReturn}%
                     </td>
-                    <td style={{ padding: "8px", textAlign: "center" }}>
+                    <td className="text-center">
                       <button
                         onClick={() => setExpandedSector(expanded ? null : sec.sector)}
-                        style={{ background: "none", border: "1px solid #ddd", borderRadius: "4px", padding: "2px 8px", cursor: "pointer", fontSize: "12px" }}
+                        className="btn btn-sm"
+                        style={{ background: "none", border: "1px solid #ddd" }}
                       >
                         {expanded ? _t("trend.collapse") : _t("trend.stocks")}
                       </button>
                     </td>
                   </tr>
                   {expanded && sec.stocks.map((stock) => {
-                    const sColor = stock.change_pct > 0 ? "#dc2626" : stock.change_pct < 0 ? "#3b82f6" : "#888";
+                    const sClass = stock.change_pct > 0 ? "text-up" : stock.change_pct < 0 ? "text-down" : "text-neutral";
                     return (
-                      <tr key={stock.stock_code} style={{ background: "#fafafa", borderBottom: "1px solid #f5f5f5" }}>
-                        <td style={{ padding: "6px 8px" }} />
-                        <td style={{ padding: "6px 8px", fontSize: "12px" }}>
-                          <span style={{ color: "#888" }}>{stock.stock_code}</span> {stock.stock_name}
+                      <tr key={stock.stock_code} className="expanded-row">
+                        <td />
+                        <td style={{ fontSize: "12px" }}>
+                          <span className="text-secondary">{stock.stock_code}</span> {stock.stock_name}
                         </td>
                         <td />
-                        <td style={{ padding: "6px 8px", textAlign: "right", fontSize: "12px", color: sColor, fontWeight: 600 }}>
+                        <td className={"text-right font-bold " + sClass} style={{ fontSize: "12px" }}>
                           {stock.change_pct > 0 ? "+" : ""}{stock.change_pct}%
                         </td>
-                        <td style={{ padding: "6px 8px", textAlign: "right", fontSize: "12px" }}>
+                        <td className="text-right" style={{ fontSize: "12px" }}>
                           {stock.price.toLocaleString()}{_t("common.won")}
                         </td>
-                        <td style={{ padding: "6px 8px", textAlign: "right", fontSize: "11px", color: "#888" }}>
+                        <td className="text-right text-secondary" style={{ fontSize: "11px" }}>
                           {stock.volume.toLocaleString()}
                         </td>
                       </tr>
@@ -240,12 +234,3 @@ export default function TrendPage({ t: _t }: { t: (k: string) => string }) {
     </div>
   );
 }
-
-const filterBtn = {
-  padding: "4px 10px",
-  border: "1px solid #ddd",
-  borderRadius: "4px",
-  background: "#f5f5f5",
-  cursor: "pointer",
-  fontSize: "12px",
-} as const;
