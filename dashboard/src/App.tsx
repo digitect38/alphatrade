@@ -3,6 +3,7 @@ import Sidebar from "./components/Sidebar";
 import { ToastProvider } from "./components/Toast";
 import { useLocale } from "./hooks/useLocale";
 import AnalysisPage from "./pages/Analysis";
+import AssetDetailPage from "./pages/AssetDetail";
 import BacktestPage from "./pages/Backtest";
 import CommandCenterPage from "./pages/CommandCenter";
 import DashboardPage from "./pages/Dashboard";
@@ -20,6 +21,7 @@ const titleKeys: Record<string, string> = {
   backtest: "title.backtest",
   execution: "title.execution",
   orders: "title.orders",
+  asset: "title.asset",
 };
 
 export default function App() {
@@ -36,12 +38,14 @@ export default function App() {
     window.location.hash = p;
   };
 
+  const pageKey = page.startsWith("asset") ? "asset" : page;
+
   return (
     <ToastProvider>
       <div className="app-layout">
         <Sidebar current={page} onNavigate={navigate} locale={locale} onLocaleChange={setLocale} t={t} />
         <main className="app-main">
-          <h1 className="page-title">{t(titleKeys[page] || "title.command")}</h1>
+          <h1 className="page-title">{t(titleKeys[pageKey] || "title.command")}</h1>
           {page === "command" && <CommandCenterPage t={t} />}
           {page === "dashboard" && <DashboardPage t={t} />}
           {page === "market" && <MarketPage t={t} />}
@@ -50,6 +54,7 @@ export default function App() {
           {page === "backtest" && <BacktestPage t={t} />}
           {page === "execution" && <ExecutionPage t={t} />}
           {page === "orders" && <OrdersPage t={t} />}
+          {page.startsWith("asset") && <AssetDetailPage t={t} route={page} />}
         </main>
       </div>
     </ToastProvider>

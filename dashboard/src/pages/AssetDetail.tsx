@@ -1,0 +1,529 @@
+import { useEffect, useMemo, useState } from "react";
+import {
+  Area,
+  Bar,
+  CartesianGrid,
+  ComposedChart,
+  Customized,
+  Line,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import DirectionValue from "../components/DirectionValue";
+import { orderStatusLabel } from "../lib/labels";
+import { apiGet } from "../hooks/useApi";
+import type { OrderHistoryItem } from "../types";
+
+type RangeKey = "1D" | "5D" | "1M" | "3M" | "6M" | "YTD" | "1Y";
+type ChartMode = "line" | "candles";
+
+interface NewsItem {
+  time: string;
+  source: string;
+  title: string;
+  content: string;
+  url: string;
+}
+
+interface AssetOverview {
+  stock_code: string;
+  stock_name: string;
+  market: string;
+  sector: string;
+  current_price: number;
+  change: number;
+  change_pct: number;
+  volume: number;
+  updated_at: string | null;
+  session: { current_session: string; description: string; kst_time: string };
+}
+
+interface AssetChartPoint {
+  time: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+interface AssetChartResponse {
+  stock_code: string;
+  range: RangeKey;
+  interval: string;
+  points: AssetChartPoint[];
+}
+
+interface AssetReturnsResponse {
+  stock_code: string;
+  returns: Record<string, number>;
+}
+
+interface AssetSignalSummary {
+  overall_signal: string;
+  confidence: number;
+  trend_score: number;
+  momentum_score: number;
+  overall_score: number;
+  top_signals: Array<{
+    indicator: string;
+    signal: string;
+    strength: number;
+    description: string;
+  }>;
+}
+
+interface AssetExecutionContext {
+  stock_code: string;
+  session: { current_session: string; description: string; kst_time: string };
+  latest_order: OrderHistoryItem | null;
+  recent_orders: OrderHistoryItem[];
+  recent_news: NewsItem[];
+  signal_summary: AssetSignalSummary;
+}
+
+const RANGE_CONFIG: Record<RangeKey, { interval: string; limit: number }> = {
+  "1D": { interval: "1m", limit: 240 },
+  "5D": { interval: "1m", limit: 600 },
+  "1M": { interval: "1d", limit: 30 },
+  "3M": { interval: "1d", limit: 90 },
+  "6M": { interval: "1d", limit: 180 },
+  "YTD": { interval: "1d", limit: 260 },
+  "1Y": { interval: "1d", limit: 260 },
+};
+
+export default function AssetDetailPage({ t, route }: { t: (k: string) => string; route: string }) {
+  const stockCode = useMemo(() => route.split("/")[1] || "", [route]);
+  const [range, setRange] = useState<RangeKey>("1M");
+  const [chartMode, setChartMode] = useState<ChartMode>("candles");
+  const [showMa20, setShowMa20] = useState(true);
+  const [showMa50, setShowMa50] = useState(true);
+  const [compareInput, setCompareInput] = useState("");
+  const [compareCode, setCompareCode] = useState("");
+  const [overview, setOverview] = useState<AssetOverview | null>(null);
+  const [compareOverview, setCompareOverview] = useState<AssetOverview | null>(null);
+  const [chartData, setChartData] = useState<AssetChartPoint[]>([]);
+  const [compareChartData, setCompareChartData] = useState<AssetChartPoint[]>([]);
+  const [periodReturns, setPeriodReturns] = useState<Array<{ key: RangeKey; value: number }>>([]);
+  const [executionContext, setExecutionContext] = useState<AssetExecutionContext | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!stockCode) return;
+    setLoading(true);
+    Promise.all([
+      apiGet<AssetOverview>(`/asset/${stockCode}/overview`),
+      apiGet<AssetChartResponse>(`/asset/${stockCode}/chart?range=${range}`),
+      apiGet<AssetReturnsResponse>(`/asset/${stockCode}/period-returns`),
+      apiGet<AssetExecutionContext>(`/asset/${stockCode}/execution-context`),
+    ])
+      .then(([overviewData, chartResponse, returnsResponse, executionResponse]) => {
+        setOverview(overviewData);
+        setChartData(chartResponse.points || []);
+        setPeriodReturns((Object.entries(returnsResponse.returns) as Array<[RangeKey, number]>).map(([key, value]) => ({ key, value })));
+        setExecutionContext(executionResponse);
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [range, stockCode]);
+
+  useEffect(() => {
+    if (!compareCode) {
+      setCompareOverview(null);
+      setCompareChartData([]);
+      return;
+    }
+
+    Promise.all([
+      apiGet<AssetOverview>(`/asset/${compareCode}/overview`),
+      apiGet<AssetChartResponse>(`/asset/${compareCode}/chart?range=${range}`),
+    ])
+      .then(([overviewData, chartResponse]) => {
+        setCompareOverview(overviewData);
+        setCompareChartData(chartResponse.points || []);
+      })
+      .catch(() => {
+        setCompareOverview(null);
+        setCompareChartData([]);
+      });
+  }, [compareCode, range]);
+
+  const chartPoints = useMemo(() => {
+    const ma20Values = computeMovingAverage(chartData, 20);
+    const ma50Values = computeMovingAverage(chartData, 50);
+    const primaryNormalized = normalizeSeries(chartData);
+    const compareNormalized = normalizeSeries(compareChartData);
+    const compareByTime = new Map(compareChartData.map((bar, index) => [bar.time, compareNormalized[index]]));
+
+    return chartData.map((bar, index) => ({
+      label: formatChartLabel(bar.time, range),
+      time: bar.time,
+      close: bar.close,
+      volume: bar.volume,
+      open: bar.open,
+      high: bar.high,
+      low: bar.low,
+      ma20: ma20Values[index],
+      ma50: ma50Values[index],
+      primaryNormalized: primaryNormalized[index],
+      compareNormalized: compareByTime.get(bar.time) ?? null,
+    }));
+  }, [chartData, compareChartData, range]);
+
+  const latestOrder = executionContext?.latest_order || null;
+  const activeRangeReturn = periodReturns.find((item) => item.key === range)?.value ?? 0;
+  const isPositiveRange = activeRangeReturn >= 0;
+
+  if (!stockCode) return <div className="card">{t("asset.noCode")}</div>;
+  if (loading) return <p className="text-secondary p-xl">{t("asset.loading")}</p>;
+
+  return (
+    <div className="page-content asset-detail-page">
+      <section className="card asset-header">
+        <div className="asset-header-main">
+            <div className="asset-code-block">
+            <div className="asset-name">{overview?.stock_name || stockCode}</div>
+            <div className="asset-meta">
+              <span>{stockCode}</span>
+              <span>{t("asset.market")}: {overview?.market || "-"}</span>
+              <span>{t("asset.sector")}: {overview?.sector || "-"}</span>
+            </div>
+          </div>
+          <div className="asset-price-block">
+            <div className="asset-price">{overview?.current_price?.toLocaleString() || "-"}</div>
+            <DirectionValue value={overview?.change_pct ?? 0} suffix="%" />
+            <div className="text-secondary">
+              {overview ? <DirectionValue value={overview.change} precision={0} /> : "-"}
+            </div>
+          </div>
+        </div>
+        <div className="asset-header-side">
+          <div className="asset-session-badge">{t("asset.marketSession")}: {overview?.session.description || "-"}</div>
+          <div className="asset-header-actions">
+            <button className="btn btn-sm" onClick={() => { window.location.hash = "command"; }}>{t("asset.backCommand")}</button>
+            <button className="btn btn-sm" onClick={() => { window.location.hash = "trend"; }}>{t("asset.backIntel")}</button>
+          </div>
+        </div>
+      </section>
+
+      <section className="card asset-range-strip">
+        <div className="asset-range-group">
+          {(Object.keys(RANGE_CONFIG) as RangeKey[]).map((key) => (
+            <button
+              key={key}
+              className={`asset-range-chip ${range === key ? "is-active" : ""}`}
+              onClick={() => setRange(key)}
+            >
+              {t(`asset.range.${key}`)}
+            </button>
+          ))}
+        </div>
+        <div className="asset-chart-controls">
+          <button className={`asset-toggle-chip ${chartMode === "line" ? "is-active" : ""}`} onClick={() => setChartMode("line")}>
+            {t("asset.chartType.line")}
+          </button>
+          <button className={`asset-toggle-chip ${chartMode === "candles" ? "is-active" : ""}`} onClick={() => setChartMode("candles")}>
+            {t("asset.chartType.candles")}
+          </button>
+          <button className={`asset-toggle-chip ${showMa20 ? "is-active" : ""}`} onClick={() => setShowMa20((value) => !value)}>
+            {t("asset.overlay.ma20")}
+          </button>
+          <button className={`asset-toggle-chip ${showMa50 ? "is-active" : ""}`} onClick={() => setShowMa50((value) => !value)}>
+            {t("asset.overlay.ma50")}
+          </button>
+        </div>
+      </section>
+
+      <section className="card asset-compare-strip">
+        <div className="asset-compare-form">
+          <div className="asset-compare-label">{t("asset.compare")}</div>
+          <input
+            className="input asset-compare-input"
+            value={compareInput}
+            onChange={(e) => setCompareInput(e.target.value.trim())}
+            placeholder={t("asset.comparePlaceholder")}
+          />
+          <button
+            className="btn btn-sm"
+            onClick={() => {
+              if (!compareInput || compareInput === stockCode) return;
+              setCompareCode(compareInput);
+              setChartMode("line");
+            }}
+          >
+            {t("asset.compareAdd")}
+          </button>
+          {compareCode ? (
+            <button
+              className="btn btn-sm btn-secondary"
+              onClick={() => {
+                setCompareCode("");
+                setCompareInput("");
+              }}
+            >
+              {t("asset.compareClear")}
+            </button>
+          ) : null}
+        </div>
+        <div className="asset-compare-summary">
+          <span className="asset-compare-pill asset-compare-pill-primary">
+            {overview?.stock_name || stockCode} ({stockCode})
+          </span>
+          {compareOverview ? (
+            <span className="asset-compare-pill asset-compare-pill-compare">
+              {compareOverview.stock_name} ({compareOverview.stock_code})
+            </span>
+          ) : (
+            <span className="text-secondary">{t("asset.compareHint")}</span>
+          )}
+        </div>
+      </section>
+
+      <section className="asset-main-grid">
+        <div className="card asset-chart-card">
+          <div className="asset-section-header">
+            <h3 className="card-title">{t("asset.chart")}</h3>
+          </div>
+          <ResponsiveContainer width="100%" height={420}>
+            <ComposedChart data={chartPoints}>
+              <defs>
+                <linearGradient id="assetChartFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={isPositiveRange ? "var(--color-profit)" : "var(--color-loss)"} stopOpacity={0.24} />
+                  <stop offset="100%" stopColor={isPositiveRange ? "var(--color-profit)" : "var(--color-loss)"} stopOpacity={0.02} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-light)" />
+              <XAxis dataKey="label" fontSize={11} minTickGap={24} />
+              <YAxis
+                yAxisId="price"
+                fontSize={11}
+                domain={chartMode === "line" && compareCode ? ["auto", "auto"] : ["auto", "auto"]}
+                tickFormatter={(value: number) => (chartMode === "line" && compareCode ? `${value.toFixed(1)}%` : `${(value / 1000).toFixed(0)}k`)}
+              />
+              <YAxis yAxisId="volume" orientation="right" hide />
+              <Tooltip
+                content={({ active, payload, label }) => {
+                  if (!active || !payload?.length) return null;
+                  const point = payload[0]?.payload;
+                  if (!point) return null;
+
+                  return (
+                    <div className="asset-chart-tooltip">
+                      <div className="asset-chart-tooltip-time">{label ? new Date(point.time).toLocaleString("ko-KR") : ""}</div>
+                      <div className="asset-chart-tooltip-grid">
+                        <span>{t("asset.open")}</span><strong>{point.open.toLocaleString()}</strong>
+                        <span>{t("asset.high")}</span><strong>{point.high.toLocaleString()}</strong>
+                        <span>{t("asset.low")}</span><strong>{point.low.toLocaleString()}</strong>
+                        <span>{t("asset.close")}</span><strong>{point.close.toLocaleString()}</strong>
+                        <span>{t("asset.volume")}</span><strong>{point.volume.toLocaleString()}</strong>
+                        {compareCode && chartMode === "line" ? (
+                          <>
+                            <span>{t("asset.compareBase")}</span><strong>{`${point.primaryNormalized?.toFixed(2) ?? "0.00"}%`}</strong>
+                            <span>{t("asset.compareTarget")}</span><strong>{point.compareNormalized != null ? `${point.compareNormalized.toFixed(2)}%` : "-"}</strong>
+                          </>
+                        ) : null}
+                      </div>
+                    </div>
+                  );
+                }}
+                labelFormatter={(_label, payload) => payload?.[0]?.payload?.time ? new Date(payload[0].payload.time).toLocaleString("ko-KR") : ""}
+              />
+              {overview?.current_price ? <ReferenceLine yAxisId="price" y={overview.current_price - overview.change} stroke="#94a3b8" strokeDasharray="4 4" /> : null}
+              <Bar yAxisId="volume" dataKey="volume" fill="#cbd5e1" opacity={0.45} />
+              {chartMode === "line" ? (
+                <>
+                  <Area
+                    yAxisId="price"
+                    type="monotone"
+                    dataKey={compareCode ? "primaryNormalized" : "close"}
+                    stroke={isPositiveRange ? "var(--color-profit)" : "var(--color-loss)"}
+                    fill="url(#assetChartFill)"
+                    strokeWidth={2.5}
+                  />
+                  {compareCode ? (
+                    <Line
+                      yAxisId="price"
+                      type="monotone"
+                      dataKey="compareNormalized"
+                      stroke="#7c3aed"
+                      strokeWidth={2.2}
+                      dot={false}
+                      connectNulls
+                      name={compareOverview?.stock_name || compareCode}
+                    />
+                  ) : null}
+                </>
+              ) : (
+                <Customized component={(props: any) => <CandlestickLayer {...props} data={chartPoints} />} />
+              )}
+              {showMa20 ? <Line yAxisId="price" type="monotone" dataKey="ma20" stroke="#2563eb" strokeWidth={1.75} dot={false} connectNulls name={t("asset.overlay.ma20")} /> : null}
+              {showMa50 ? <Line yAxisId="price" type="monotone" dataKey="ma50" stroke="#f59e0b" strokeWidth={1.75} dot={false} connectNulls name={t("asset.overlay.ma50")} /> : null}
+            </ComposedChart>
+          </ResponsiveContainer>
+        </div>
+
+        <div className="card asset-side-card">
+          <div className="asset-section-header">
+            <h3 className="card-title">{t("asset.keyStats")}</h3>
+          </div>
+          <div className="asset-stats-list">
+            <AssetStat label={t("asset.currentSignal")} value={executionContext?.signal_summary.overall_signal?.toUpperCase() || "-"} />
+            <AssetStat label={t("asset.signalStrength")} value={executionContext ? `${(executionContext.signal_summary.confidence * 100).toFixed(0)}%` : "-"} />
+            <AssetStat label={t("asset.trendScore")} value={executionContext?.signal_summary.trend_score?.toFixed(3) || "-"} />
+            <AssetStat label={t("asset.momentumScore")} value={executionContext?.signal_summary.momentum_score?.toFixed(3) || "-"} />
+            <AssetStat label={t("asset.volume")} value={overview?.volume?.toLocaleString() || "-"} />
+            <AssetStat label={t("asset.latestOrder")} value={latestOrder ? orderStatusLabel(latestOrder.status, t) : "-"} />
+          </div>
+        </div>
+      </section>
+
+      <section className="card">
+        <div className="asset-section-header">
+          <h3 className="card-title">{t("asset.periodReturns")}</h3>
+        </div>
+        <div className="asset-return-strip">
+          {periodReturns.map((item) => (
+            <div key={item.key} className="asset-return-card">
+              <div className="asset-return-label">{t(`asset.range.${item.key}`)}</div>
+              <DirectionValue value={item.value} suffix="%" />
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="asset-bottom-grid">
+        <div className="card">
+          <div className="asset-section-header">
+            <h3 className="card-title">{t("asset.latestNews")}</h3>
+          </div>
+          <div className="asset-news-list">
+            {executionContext?.recent_news.length === 0 && <div className="text-secondary">{t("asset.noNews")}</div>}
+            {executionContext?.recent_news.map((item, index) => (
+              <a key={`${item.time}-${index}`} href={item.url} target="_blank" rel="noreferrer" className="asset-news-item">
+                <div className="asset-news-title">{item.title}</div>
+                <div className="asset-news-meta">{item.source} · {new Date(item.time).toLocaleString("ko-KR")}</div>
+              </a>
+            ))}
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="asset-section-header">
+            <h3 className="card-title">{t("asset.executionContext")}</h3>
+          </div>
+          <div className="asset-orders-list">
+            {executionContext?.recent_orders.length === 0 && <div className="text-secondary">{t("asset.noOrders")}</div>}
+            {executionContext?.recent_orders.map((order) => (
+              <div key={order.order_id} className="asset-order-item">
+                <div className="asset-order-top">
+                  <span>{orderStatusLabel(order.status, t)}</span>
+                  <span className="text-secondary">{new Date(order.time).toLocaleString("ko-KR")}</span>
+                </div>
+                <div className="asset-order-main">
+                  <span>{t(order.side === "BUY" ? "signal.buy" : "signal.sell")} {order.quantity}</span>
+                  <span>{order.filled_qty}/{order.quantity}</span>
+                </div>
+              </div>
+            ))}
+            {executionContext?.signal_summary.top_signals.slice(0, 3).map((signal, index) => (
+              <div key={`${signal.indicator}-${index}`} className="asset-order-item">
+                <div className="asset-order-top">
+                  <span>{signal.indicator}</span>
+                  <span className="text-secondary">{signal.signal}</span>
+                </div>
+                <div className="asset-order-main">
+                  <span>{signal.description}</span>
+                  <span>{(signal.strength * 100).toFixed(0)}%</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function AssetStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="asset-stat-row">
+      <span className="text-secondary">{label}</span>
+      <span className="font-heavy">{value}</span>
+    </div>
+  );
+}
+
+function formatChartLabel(value: string, range: RangeKey) {
+  const date = new Date(value);
+  if (range === "1D" || range === "5D") return date.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
+  return date.toLocaleDateString("ko-KR", { month: "short", day: "numeric" });
+}
+
+function computeMovingAverage(data: AssetChartPoint[], period: number) {
+  return data.map((_, index) => {
+    if (index + 1 < period) return null;
+    const slice = data.slice(index + 1 - period, index + 1);
+    const total = slice.reduce((sum, item) => sum + item.close, 0);
+    return Number((total / period).toFixed(2));
+  });
+}
+
+function normalizeSeries(data: AssetChartPoint[]) {
+  const base = data[0]?.close ?? 0;
+  if (!base) return data.map(() => null);
+  return data.map((item) => Number((((item.close / base) - 1) * 100).toFixed(2)));
+}
+
+function CandlestickLayer({ data, xAxisMap, yAxisMap }: { data: Array<AssetChartPoint & { label: string }>; xAxisMap?: Record<string, any>; yAxisMap?: Record<string, any> }) {
+  const xAxis = xAxisMap ? Object.values(xAxisMap)[0] : null;
+  const yAxis = yAxisMap ? Object.values(yAxisMap)[0] : null;
+
+  if (!xAxis?.scale || !yAxis?.scale || !data.length) return null;
+
+  const xScale = xAxis.scale;
+  const yScale = yAxis.scale;
+  const band = typeof xScale.bandwidth === "function" ? xScale.bandwidth() : Math.max(4, 520 / data.length);
+  const candleWidth = Math.max(3, Math.min(12, band * 0.55));
+
+  return (
+    <g className="asset-candles-layer">
+      {data.map((point) => {
+        const x = xScale(point.label) + band / 2;
+        const openY = yScale(point.open);
+        const closeY = yScale(point.close);
+        const highY = yScale(point.high);
+        const lowY = yScale(point.low);
+        const bodyTop = Math.min(openY, closeY);
+        const bodyHeight = Math.max(1.5, Math.abs(closeY - openY));
+        const rising = point.close >= point.open;
+
+        return (
+          <g key={point.time}>
+            <line
+              x1={x}
+              x2={x}
+              y1={highY}
+              y2={lowY}
+              stroke={rising ? "var(--color-profit)" : "var(--color-loss)"}
+              strokeWidth={1.25}
+              opacity={0.9}
+            />
+            <rect
+              x={x - candleWidth / 2}
+              y={bodyTop}
+              width={candleWidth}
+              height={bodyHeight}
+              rx={1}
+              fill={rising ? "var(--color-profit-soft)" : "var(--color-loss-soft)"}
+              stroke={rising ? "var(--color-profit)" : "var(--color-loss)"}
+              strokeWidth={1.1}
+            />
+          </g>
+        );
+      })}
+    </g>
+  );
+}

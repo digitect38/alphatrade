@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import DirectionValue from "../components/DirectionValue";
 import { apiGet, apiPost } from "../hooks/useApi";
 import { useWebSocket } from "../hooks/useWebSocket";
 import { eventTypeLabel, orderStatusLabel } from "../lib/labels";
@@ -70,6 +71,10 @@ export default function CommandCenterPage({ t: _t }: { t: (k: string) => string 
   const [newsItems, setNewsItems] = useState<NewsItem[]>([]);
   const [newsLoading, setNewsLoading] = useState(false);
   const [scanning, setScanning] = useState(false);
+
+  const openAsset = (code: string) => {
+    window.location.hash = `asset/${code}`;
+  };
 
   const { connected, lastTick } = useWebSocket({
     onTick: (tick) => {
@@ -411,7 +416,7 @@ export default function CommandCenterPage({ t: _t }: { t: (k: string) => string 
                   <div className="command-row-rank">{index + 1}</div>
                   <div className="command-row-main">
                     <div className="command-row-title">
-                      <span className="font-bold">{item.stock_name || item.stock_code}</span>
+                      <button className="link-button font-bold" onClick={(e) => { e.stopPropagation(); openAsset(item.stock_code); }}>{item.stock_name || item.stock_code}</button>
                       <span className="text-secondary">{item.stock_code}</span>
                     </div>
                     <div className="command-row-meta">
@@ -421,9 +426,7 @@ export default function CommandCenterPage({ t: _t }: { t: (k: string) => string 
                     </div>
                   </div>
                   <div className="command-row-change">
-                    <span className={toNumber(item.change_pct) >= 0 ? "text-up font-heavy" : "text-down font-heavy"}>
-                      {formatSigned(toNumber(item.change_pct))}%
-                    </span>
+                    <DirectionValue value={toNumber(item.change_pct)} suffix="%" />
                     <span className="text-secondary">{formatNumber(toNumber(item.price))}</span>
                   </div>
                   <div className="command-row-badges">
@@ -490,7 +493,7 @@ export default function CommandCenterPage({ t: _t }: { t: (k: string) => string 
             >
               <div className="candidate-card-header">
                 <div>
-                  <div className="candidate-card-title">{candidate.stock_name || candidate.stock_code}</div>
+                  <div className="candidate-card-title"><button className="link-button font-bold" onClick={(e) => { e.stopPropagation(); openAsset(candidate.stock_code); }}>{candidate.stock_name || candidate.stock_code}</button></div>
                   <div className="candidate-card-subtitle">{candidate.stock_code} · {candidate.priority.toFixed(0)} {_t("command.priority")}</div>
                 </div>
                 <Badge tone={toneForLane(candidate.lane)} label={_t(`state.${candidate.lane}`)} />
@@ -522,9 +525,7 @@ export default function CommandCenterPage({ t: _t }: { t: (k: string) => string 
             <div className="detail-card">
               <div className="detail-card-label">{_t("command.price")}</div>
               <div className="detail-card-value">{selectedMover ? formatNumber(toNumber(selectedMover.price)) : "-"}</div>
-              <div className={selectedMover && toNumber(selectedMover.change_pct) >= 0 ? "text-up font-heavy" : "text-down font-heavy"}>
-                {selectedMover ? `${formatSigned(toNumber(selectedMover.change_pct))}%` : "-"}
-              </div>
+              <div>{selectedMover ? <DirectionValue value={toNumber(selectedMover.change_pct)} suffix="%" /> : "-"}</div>
             </div>
             <div className="detail-card">
               <div className="detail-card-label">{_t("command.catalyst")}</div>

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import DirectionValue from "../components/DirectionValue";
 import { apiGet, apiPost } from "../hooks/useApi";
 import { eventTypeLabel, orderStatusLabel } from "../lib/labels";
 import type { OrderHistoryItem } from "../types";
@@ -78,6 +79,10 @@ export default function TrendPage({ t }: { t: (k: string) => string }) {
   const [orders, setOrders] = useState<OrderHistoryItem[]>([]);
   const [selectedSector, setSelectedSector] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const openAsset = (code: string) => {
+    window.location.hash = `asset/${code}`;
+  };
 
   useEffect(() => {
     setLoading(true);
@@ -303,12 +308,10 @@ export default function TrendPage({ t }: { t: (k: string) => string }) {
                     <div className="trend-sector-rank">#{index + 1}</div>
                     <div className="trend-sector-title">{sector.sector}</div>
                   </div>
-                  <div className={sector.avgChange >= 0 ? "text-up font-heavy" : "text-down font-heavy"}>
-                    {formatSigned(sector.avgChange)}%
-                  </div>
+                  <DirectionValue value={sector.avgChange} suffix="%" />
                 </div>
                 <div className="trend-sector-metrics">
-                  <span>cum {formatSigned(sector.cumulativeReturn)}%</span>
+                  <span>cum <DirectionValue value={sector.cumulativeReturn} suffix="%" /></span>
                   <span>{sector.stockCount} {t("common.stocks")}</span>
                   <span>{sector.positiveBreadth} up / {sector.negativeBreadth} down</span>
                 </div>
@@ -321,7 +324,7 @@ export default function TrendPage({ t }: { t: (k: string) => string }) {
                 <div className="trend-sector-stock-strip">
                   {sector.strongestStocks.map((stock) => (
                     <span key={stock.stock_code} className="trend-stock-chip">
-                      {stock.stock_name}
+                      <button className="link-button" onClick={(e) => { e.stopPropagation(); openAsset(stock.stock_code); }}>{stock.stock_name}</button>
                     </span>
                   ))}
                 </div>
@@ -387,14 +390,14 @@ export default function TrendPage({ t }: { t: (k: string) => string }) {
               <div className="trend-detail-metrics">
                 <div className="trend-detail-card">
                   <div className="trend-detail-label">{t("trend.averageMove")}</div>
-                  <div className={selectedIntel.avgChange >= 0 ? "trend-detail-value text-up" : "trend-detail-value text-down"}>
-                    {formatSigned(selectedIntel.avgChange)}%
+                  <div className="trend-detail-value">
+                    <DirectionValue value={selectedIntel.avgChange} suffix="%" />
                   </div>
                 </div>
                 <div className="trend-detail-card">
                   <div className="trend-detail-label">{t("trend.cumulative")}</div>
-                  <div className={selectedIntel.cumulativeReturn >= 0 ? "trend-detail-value text-up" : "trend-detail-value text-down"}>
-                    {formatSigned(selectedIntel.cumulativeReturn)}%
+                  <div className="trend-detail-value">
+                    <DirectionValue value={selectedIntel.cumulativeReturn} suffix="%" />
                   </div>
                 </div>
                 <div className="trend-detail-card">
@@ -420,7 +423,13 @@ export default function TrendPage({ t }: { t: (k: string) => string }) {
                       <XAxis dataKey="date" fontSize={11} tickMargin={8} />
                       <YAxis fontSize={11} tickFormatter={(value: number) => `${value}%`} />
                       <Tooltip formatter={(value: number) => `${Number(value).toFixed(2)}%`} />
-                      <Area type="monotone" dataKey="cumulative" stroke="#1a1a2e" fill="url(#sectorTrendFill)" strokeWidth={2.5} />
+                      <Area
+                        type="monotone"
+                        dataKey="cumulative"
+                        stroke={selectedIntel.cumulativeReturn >= 0 ? "var(--color-profit)" : "var(--color-loss)"}
+                        fill="url(#sectorTrendFill)"
+                        strokeWidth={2.5}
+                      />
                     </AreaChart>
                   </ResponsiveContainer>
                 ) : (
@@ -449,12 +458,12 @@ export default function TrendPage({ t }: { t: (k: string) => string }) {
               <div key={stock.stock_code} className="trend-candidate-row">
                 <div className="trend-candidate-main">
                   <div className="trend-candidate-title">
-                    <span className="font-bold">{stock.stock_name}</span>
+                    <button className="link-button font-bold" onClick={() => openAsset(stock.stock_code)}>{stock.stock_name}</button>
                     <span className="text-secondary">{stock.stock_code}</span>
                   </div>
                   <div className="trend-candidate-meta">
                     <span className={stock.change_pct >= 0 ? "text-up font-heavy" : "text-down font-heavy"}>
-                      {formatSigned(stock.change_pct)}%
+                      <DirectionValue value={stock.change_pct} suffix="%" />
                     </span>
                     <span>{stock.price.toLocaleString()}{t("common.won")}</span>
                     <span>Vol {formatCompact(stock.volume)}</span>
@@ -488,7 +497,7 @@ export default function TrendPage({ t }: { t: (k: string) => string }) {
           {quietSectors.map((sector) => (
             <button key={sector.sector} className="trend-quiet-chip" onClick={() => setSelectedSector(sector.sector)}>
               <span>{sector.sector}</span>
-              <span className="text-secondary">{formatSigned(sector.avgChange)}%</span>
+              <DirectionValue value={sector.avgChange} suffix="%" className="text-secondary" />
             </button>
           ))}
           {quietSectors.length === 0 && <div className="trend-empty">{t("trend.noQuietSectors")}</div>}

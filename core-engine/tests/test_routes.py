@@ -561,6 +561,77 @@ class TestMarketRoutes:
         assert resp.status_code == 200
 
 
+# ========== Asset Routes ==========
+
+
+class TestAssetRoutes:
+    def test_asset_overview(self, client):
+        from app.routes import asset as asset_route
+
+        async def fake_profile(pool, stock_code):
+            return {"stock_name": "삼성전자", "market": "KOSPI", "sector": "반도체"}
+
+        async def fake_state(redis, pool, stock_code):
+            return {"current_price": 70100, "change": 1200, "change_pct": 1.74, "volume": 1234567, "updated_at": "2026-03-31T00:00:00Z"}
+
+        with patch.object(asset_route, "_load_profile", fake_profile), patch.object(asset_route, "_load_market_state", fake_state):
+            resp = client.get("/asset/005930/overview")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["stock_code"] == "005930"
+        assert data["stock_name"] == "삼성전자"
+        assert data["current_price"] == 70100
+        assert "session" in data
+
+    def test_asset_chart(self, client):
+        _set_fetch_data([
+            {"time": datetime.now(timezone.utc), "open": Decimal("68000"), "high": Decimal("70500"), "low": Decimal("67900"), "close": Decimal("70100"), "volume": 1234567},
+            {"time": datetime.now(timezone.utc), "open": Decimal("67000"), "high": Decimal("68100"), "low": Decimal("66800"), "close": Decimal("68000"), "volume": 1111111},
+        ])
+        resp = client.get("/asset/005930/chart?range=1M")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["stock_code"] == "005930"
+        assert data["range"] == "1M"
+        assert len(data["points"]) == 2
+
+    def test_asset_period_returns(self, client):
+        _set_fetch_data([
+            {"time": datetime(2025, 12, 30, tzinfo=timezone.utc), "close": Decimal("100")},
+            {"time": datetime(2026, 1, 2, tzinfo=timezone.utc), "close": Decimal("110")},
+            {"time": datetime(2026, 3, 31, tzinfo=timezone.utc), "close": Decimal("121")},
+        ])
+        resp = client.get("/asset/005930/period-returns")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["stock_code"] == "005930"
+        assert "1D" in data["returns"]
+        assert "YTD" in data["returns"]
+        assert data["returns"]["YTD"] == 10.0
+
+    def test_asset_execution_context(self, client):
+        from app.routes import asset as asset_route
+
+        async def fake_orders(pool, stock_code, limit=8):
+            return [{"order_id": "o1", "time": "2026-03-31T00:00:00Z", "stock_code": stock_code, "side": "BUY", "order_type": "market", "quantity": 10, "price": None, "filled_qty": 10, "filled_price": 70100.0, "status": "FILLED", "slippage": 0.1, "commission": 100.0}]
+
+        async def fake_news(pool, stock_code, limit=5):
+            return [{"time": "2026-03-31T00:00:00Z", "source": "naver", "title": "Test News", "content": "body", "url": "http://example.com"}]
+
+        async def fake_signal(pool, redis, stock_code):
+            return {"overall_signal": "buy", "confidence": 0.75, "trend_score": 0.4, "momentum_score": 0.3, "overall_score": 0.35, "top_signals": []}
+
+        with patch.object(asset_route, "_load_recent_orders", fake_orders), patch.object(asset_route, "_load_recent_news", fake_news), patch.object(asset_route, "_load_signal_summary", fake_signal):
+            resp = client.get("/asset/005930/execution-context")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["stock_code"] == "005930"
+        assert data["latest_order"]["status"] == "FILLED"
+        assert data["signal_summary"]["overall_signal"] == "buy"
+
+
 # ========== Index Routes ==========
 
 

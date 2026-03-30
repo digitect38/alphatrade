@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
+import DirectionValue from "../components/DirectionValue";
 import StockSearch from "../components/StockSearch";
 import { apiPost } from "../hooks/useApi";
 
@@ -114,12 +115,12 @@ export default function BacktestPage({ t: _t }: { t: (k: string) => string }) {
           <div className="metrics-grid metrics-grid-5">
             <MetricCard
               label={_t("bt.totalReturn")}
-              value={formatPercent(result.total_return)}
+              valueNode={<DirectionValue value={result.total_return} suffix="%" />}
               colorClass={result.total_return >= 0 ? "text-profit" : "text-loss"}
             />
             <MetricCard
               label={_t("bt.edgeVsBenchmark")}
-              value={edgeVsBenchmark != null ? formatPercent(edgeVsBenchmark) : "-"}
+              valueNode={edgeVsBenchmark != null ? <DirectionValue value={edgeVsBenchmark} suffix="%" /> : "-"}
               colorClass={edgeVsBenchmark != null ? (edgeVsBenchmark >= 0 ? "text-profit" : "text-loss") : "text-neutral"}
             />
             <MetricCard
@@ -236,17 +237,23 @@ export default function BacktestPage({ t: _t }: { t: (k: string) => string }) {
   );
 }
 
-function MetricCard({ label, value, colorClass }: { label: string; value: string; colorClass?: string }) {
+function MetricCard({
+  label,
+  value,
+  valueNode,
+  colorClass,
+}: {
+  label: string;
+  value?: string;
+  valueNode?: ReactNode | string;
+  colorClass?: string;
+}) {
   return (
     <div className="card">
       <div className="metric-label">{label}</div>
-      <div className={"metric-value " + (colorClass || "")}>{value}</div>
+      <div className={"metric-value " + (colorClass || "")}>{valueNode ?? value}</div>
     </div>
   );
-}
-
-function formatPercent(value: number) {
-  return `${value >= 0 ? "+" : ""}${value}%`;
 }
 
 function formatWon(value: number, t: (k: string) => string) {

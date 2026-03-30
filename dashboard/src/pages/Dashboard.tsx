@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { XAxis, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from "recharts";
+import DirectionValue from "../components/DirectionValue";
 import { apiGet, apiPost } from "../hooks/useApi";
 import type { BatchSignalResult, PortfolioStatus, StrategySignal } from "../types";
 
@@ -73,14 +74,14 @@ export default function DashboardPage({ t }: { t: (k: string) => string }) {
         <div className="card">
           <div className="metric-label">{t("dash.dailyPnl")}</div>
           <div className={"metric-value " + (dailyPnl >= 0 ? "text-profit" : "text-loss")}>
-            {dailyPnl >= 0 ? "+" : ""}{fmt(dailyPnl)}
+            <DirectionValue value={dailyPnl} precision={0} />
           </div>
           <div className="metric-unit">{t("common.won")}</div>
         </div>
         <div className="card">
           <div className="metric-label">{t("dash.return")}</div>
           <div className={"metric-value " + (totalReturn >= 0 ? "text-profit" : "text-loss")}>
-            {totalReturn >= 0 ? "+" : ""}{totalReturn.toFixed(2)}%
+            <DirectionValue value={totalReturn} suffix="%" />
           </div>
         </div>
         <div className="card">
@@ -120,7 +121,7 @@ export default function DashboardPage({ t }: { t: (k: string) => string }) {
                   <div className="flex gap-lg items-center">
                     <span>{fmt(p.value)}{t("common.won")}</span>
                     <span className={"font-heavy " + (p.pnl >= 0 ? "text-profit" : "text-loss")} style={{ minWidth: "60px", textAlign: "right" }}>
-                      {p.pnl >= 0 ? "+" : ""}{p.pnl.toFixed(2)}%
+                      <DirectionValue value={p.pnl} suffix="%" />
                     </span>
                   </div>
                 </div>
@@ -223,7 +224,7 @@ export default function DashboardPage({ t }: { t: (k: string) => string }) {
                   <td className="text-right">{fmt(p.avg_price)}</td>
                   <td className="text-right">{p.current_price ? fmt(p.current_price) : "-"}</td>
                   <td className={"text-right font-heavy " + ((p.unrealized_pnl_pct ?? 0) >= 0 ? "text-profit" : "text-loss")}>
-                    {p.unrealized_pnl_pct != null ? `${p.unrealized_pnl_pct >= 0 ? "+" : ""}${p.unrealized_pnl_pct}%` : "-"}
+                    {p.unrealized_pnl_pct != null ? <DirectionValue value={p.unrealized_pnl_pct} suffix="%" /> : "-"}
                   </td>
                   <td className="text-right">{p.weight ? `${(p.weight * 100).toFixed(1)}%` : "-"}</td>
                 </tr>

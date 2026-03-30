@@ -13,6 +13,7 @@ from app.middleware import RequestMiddleware, register_exception_handlers
 from app.security import AuthMiddleware, RateLimitMiddleware
 from app.execution.risk_manager import RiskManager
 from app.routes.analysis import router as analysis_router
+from app.routes.asset import router as asset_router
 from app.routes.collect import router as collect_router
 from app.routes.data import router as data_router
 from app.routes.index import router as index_router
@@ -126,6 +127,7 @@ register_exception_handlers(app)
 app.include_router(collect_router, prefix="/collect", tags=["collection"])
 app.include_router(data_router, prefix="/data", tags=["data"])
 app.include_router(analysis_router, prefix="/analyze", tags=["analysis"])
+app.include_router(asset_router, prefix="/asset", tags=["asset"])
 app.include_router(strategy_router, prefix="/strategy", tags=["strategy"])
 app.include_router(webhook_router, prefix="/webhook", tags=["webhook"])
 app.include_router(order_router, prefix="/order", tags=["order"])

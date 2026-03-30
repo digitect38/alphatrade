@@ -78,7 +78,8 @@
       "Bash(./scripts/backup.sh status:*)",
       "Bash(grep -v \"^$\")",
       "Bash(make test:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(git config:*)"
     ]
   }
 }

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import DirectionValue from "../components/DirectionValue";
 import { apiGet, apiPost } from "../hooks/useApi";
 import { useWebSocket } from "../hooks/useWebSocket";
 
@@ -80,6 +81,10 @@ export default function MarketPage({ t }: { t: (k: string) => string }) {
       .finally(() => setNewsLoading(false));
   };
 
+  const openAsset = (code: string) => {
+    window.location.hash = `asset/${code}`;
+  };
+
   useEffect(() => {
     fetchPrices();
   }, []);
@@ -134,7 +139,7 @@ export default function MarketPage({ t }: { t: (k: string) => string }) {
                 return (
                   <tr key={s.stock_code}>
                     <td>
-                      <span className="font-bold">{s.stock_name}</span>
+                      <button className="link-button font-bold" onClick={() => openAsset(s.stock_code)}>{s.stock_name}</button>
                       <span className="text-secondary" style={{ fontSize: "11px", marginLeft: "6px" }}>{s.stock_code}</span>
                       {s.stale && <span className="text-warning" style={{ fontSize: "10px", marginLeft: "4px" }}>{t("market.stale")}</span>}
                     </td>
@@ -143,10 +148,10 @@ export default function MarketPage({ t }: { t: (k: string) => string }) {
                       {s.price.toLocaleString()}
                     </td>
                     <td className={"text-right font-bold " + colorClass}>
-                      {s.change > 0 ? "+" : ""}{s.change.toLocaleString()}
+                      <DirectionValue value={s.change} precision={0} />
                     </td>
                     <td className={"text-right font-heavy " + colorClass}>
-                      {s.change_pct > 0 ? "+" : ""}{s.change_pct}%
+                      <DirectionValue value={s.change_pct} suffix="%" />
                     </td>
                     <td className="text-right" style={{ fontSize: "12px" }}>
                       {s.volume.toLocaleString()}
