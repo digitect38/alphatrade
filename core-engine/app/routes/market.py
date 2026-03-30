@@ -6,8 +6,11 @@ from fastapi import APIRouter, Depends
 
 from fastapi import Query
 
-from app.deps import get_db, get_kis_client
+import redis.asyncio as aioredis
+
+from app.deps import get_db, get_redis, get_kis_client
 from app.services.kis_api import KISClient
+from app.services.market_state import MarketStateCache
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -154,3 +157,75 @@ async def api_stock_search(
         }
         for r in rows
     ]
+
+
+@router.get("/state")
+async def api_market_state(
+    redis: aioredis.Redis = Depends(get_redis),
+    pool: asyncpg.Pool = Depends(get_db),
+):
+    """Get live market state from cache (zero remote fetch).
+
+    Returns all stocks with cached prices, updated by WebSocket ticks.
+    Falls back to DB seed if no live data.
+    """
+    cache = MarketStateCache(redis)
+    states = await cache.get_all_states()
+
+    # If cache empty, seed from universe
+    if not states:
+        async with pool.acquire() as conn:
+            universe = await conn.fetch(
+                "SELECT stock_code FROM universe WHERE is_active = TRUE"
+            )
+        for row in universe:
+            await cache.update_from_db(pool, row["stock_code"])
+        states = await cache.get_all_states()
+
+    # Enrich with stock names from DB
+    codes = [s["stock_code"] for s in states]
+    if codes:
+        async with pool.acquire() as conn:
+            names = await conn.fetch(
+                "SELECT stock_code, stock_name, sector FROM stocks WHERE stock_code = ANY($1::text[])",
+                codes,
+            )
+        name_map = {r["stock_code"]: r for r in names}
+        for s in states:
+            info = name_map.get(s["stock_code"], {})
+            s["stock_name"] = info.get("stock_name", "")
+            s["sector"] = info.get("sector", "")
+
+    updated_at = await cache.get_updated_at()
+    return {
+        "updated_at": updated_at,
+        "count": len(states),
+        "stocks": sorted(states, key=lambda x: abs(float(x.get("change_pct", 0))), reverse=True),
+    }
+
+
+@router.get("/movers")
+async def api_market_movers(
+    redis: aioredis.Redis = Depends(get_redis),
+    pool: asyncpg.Pool = Depends(get_db),
+    limit: int = Query(default=20, le=50),
+):
+    """Get top movers by absolute change percentage (from cache)."""
+    cache = MarketStateCache(redis)
+    movers = await cache.get_top_movers(limit)
+
+    # Enrich with names
+    codes = [m["stock_code"] for m in movers]
+    if codes:
+        async with pool.acquire() as conn:
+            names = await conn.fetch(
+                "SELECT stock_code, stock_name, sector FROM stocks WHERE stock_code = ANY($1::text[])",
+                codes,
+            )
+        name_map = {r["stock_code"]: r for r in names}
+        for m in movers:
+            info = name_map.get(m["stock_code"], {})
+            m["stock_name"] = info.get("stock_name", "")
+            m["sector"] = info.get("sector", "")
+
+    return {"count": len(movers), "movers": movers}

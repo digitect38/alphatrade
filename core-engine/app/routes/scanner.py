@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends
 from app.deps import get_db, get_redis, get_kis_client, get_broker, get_risk_manager, get_notifier
 from app.execution.broker import BrokerClient
 from app.execution.risk_manager import RiskManager
+from app.scanner.event_scanner import run_event_scan
 from app.scanner.morning import run_morning_scan
 from app.services.kis_api import KISClient
 from app.services.notification import NotificationService
@@ -36,6 +37,20 @@ async def api_morning_scan(
         pool=pool, redis=redis, kis_client=kis_client,
         broker=broker, risk_mgr=risk_mgr, notifier=notifier,
     )
+
+
+@router.post("/events")
+async def api_event_scan(
+    pool: asyncpg.Pool = Depends(get_db),
+    redis: aioredis.Redis = Depends(get_redis),
+):
+    """Event-driven scan — fast path for market-move detection.
+
+    Reads from cache, classifies events (price spike, volume surge,
+    news cluster, disclosure), returns prioritized candidates.
+    Unlike /morning (full universe), this is cache-first and event-first.
+    """
+    return await run_event_scan(redis=redis, pool=pool)
 
 
 @router.get("/universe")

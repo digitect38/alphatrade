@@ -1,11 +1,13 @@
 import type { Locale } from "../hooks/useLocale";
 
 const menuItems = [
+  { key: "command", labelKey: "nav.command", icon: "🎯" },
   { key: "dashboard", labelKey: "nav.dashboard", icon: "📊" },
   { key: "market", labelKey: "nav.market", icon: "💹" },
   { key: "trend", labelKey: "nav.trend", icon: "📉" },
   { key: "analysis", labelKey: "nav.analysis", icon: "📈" },
   { key: "backtest", labelKey: "nav.backtest", icon: "🧪" },
+  { key: "execution", labelKey: "nav.execution", icon: "⚡" },
   { key: "orders", labelKey: "nav.orders", icon: "📋" },
 ];
 

@@ -140,13 +140,16 @@ class KISWebSocketClient:
             return None
 
     async def _publish_tick(self, tick: dict):
-        """Publish parsed tick to Redis Pub/Sub."""
+        """Publish parsed tick to Redis Pub/Sub and update market state cache."""
         channel = f"realtime:{tick['stock_code']}"
         payload = json.dumps(tick, default=str)
         await self.redis.publish(channel, payload)
-
-        # Also publish to generic channel for broadcast
         await self.redis.publish("realtime:all", payload)
+
+        # Update market state cache (zero-fetch API reads from this)
+        from app.services.market_state import MarketStateCache
+        cache = MarketStateCache(self.redis)
+        await cache.update_tick(tick)
 
     async def subscribe(self, stock_codes: list[str]):
         """Subscribe to real-time prices for given stock codes."""

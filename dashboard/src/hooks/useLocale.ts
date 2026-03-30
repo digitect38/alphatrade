@@ -6,19 +6,23 @@ const STORAGE_KEY = "alphatrade_locale";
 
 const translations: Record<string, Record<Locale, string>> = {
   // Sidebar
+  "nav.command": { en: "Command Center", ko: "커맨드 센터" },
   "nav.dashboard": { en: "Dashboard", ko: "대시보드" },
   "nav.market": { en: "Market", ko: "시세" },
   "nav.trend": { en: "Trend", ko: "추세" },
   "nav.analysis": { en: "Analysis", ko: "분석" },
   "nav.backtest": { en: "Backtest", ko: "백테스트" },
+  "nav.execution": { en: "Execution", ko: "체결" },
   "nav.orders": { en: "Orders", ko: "주문" },
 
   // Page titles
+  "title.command": { en: "Command Center", ko: "커맨드 센터" },
   "title.dashboard": { en: "Dashboard", ko: "대시보드" },
   "title.market": { en: "Market", ko: "시세 현황" },
   "title.trend": { en: "Sector Trend", ko: "섹터 추세" },
   "title.analysis": { en: "Technical Analysis", ko: "기술적 분석" },
   "title.backtest": { en: "Backtest", ko: "백테스트" },
+  "title.execution": { en: "Execution", ko: "체결 관리" },
   "title.orders": { en: "Orders", ko: "주문 관리" },
 
   // Dashboard
