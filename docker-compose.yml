@@ -4,7 +4,7 @@ services:
   # ===========================================
 
   timescaledb:
-    image: timescale/timescaledb:2.19.3-pg16
+    image: timescale/timescaledb:latest-pg16
     container_name: alphatrade-timescaledb
     restart: always
     environment:
