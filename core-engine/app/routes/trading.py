@@ -206,61 +206,70 @@ async def api_pre_launch_check(
     """Pre-launch readiness checklist for live trading.
 
     Validates all systems before allowing real-money trading.
-    Returns pass/fail for each check with details.
+    All checks run in parallel for fast response.
     """
-    checks = []
+    import asyncio
 
-    # 1. KIS API connectivity
-    try:
-        balance = await kis_client.get_account_balance()
-        checks.append({"name": "KIS API 연결", "status": "PASS" if balance else "FAIL",
-                        "detail": f"잔고 조회 {'성공' if balance else '실패'}"})
-    except Exception as e:
-        checks.append({"name": "KIS API 연결", "status": "FAIL", "detail": str(e)})
+    # Run all checks in parallel
+    async def _check_kis():
+        try:
+            balance = await kis_client.get_account_balance()
+            return {"name": "KIS API 연결", "status": "PASS" if balance else "FAIL",
+                    "detail": f"잔고 조회 {'성공' if balance else '실패'}"}
+        except Exception as e:
+            return {"name": "KIS API 연결", "status": "FAIL", "detail": str(e)}
 
-    # 2. Kill switch is OFF
-    ks_active = await guard.is_kill_switch_active()
-    checks.append({"name": "킬 스위치 해제", "status": "PASS" if not ks_active else "FAIL",
-                    "detail": "활성" if ks_active else "비활성"})
+    async def _check_kill_switch():
+        ks_active = await guard.is_kill_switch_active()
+        return {"name": "킬 스위치 해제", "status": "PASS" if not ks_active else "FAIL",
+                "detail": "활성" if ks_active else "비활성"}
 
-    # 3. DB health
-    try:
+    async def _check_db():
+        try:
+            async with pool.acquire() as conn:
+                await conn.fetchval("SELECT 1")
+            return {"name": "데이터베이스", "status": "PASS", "detail": "연결 정상"}
+        except Exception as e:
+            return {"name": "데이터베이스", "status": "FAIL", "detail": str(e)}
+
+    async def _check_redis():
+        try:
+            await redis.ping()
+            return {"name": "Redis", "status": "PASS", "detail": "연결 정상"}
+        except Exception as e:
+            return {"name": "Redis", "status": "FAIL", "detail": str(e)}
+
+    async def _check_data():
         async with pool.acquire() as conn:
-            await conn.fetchval("SELECT 1")
-        checks.append({"name": "데이터베이스", "status": "PASS", "detail": "연결 정상"})
-    except Exception as e:
-        checks.append({"name": "데이터베이스", "status": "FAIL", "detail": str(e)})
+            recent = await conn.fetchval("SELECT COUNT(*) FROM ohlcv WHERE time > NOW() - INTERVAL '3 days'")
+        return {"name": "최근 시세 데이터", "status": "PASS" if recent > 0 else "WARN",
+                "detail": f"{recent}건 (최근 3일)"}
 
-    # 4. Redis health
-    try:
-        await redis.ping()
-        checks.append({"name": "Redis", "status": "PASS", "detail": "연결 정상"})
-    except Exception as e:
-        checks.append({"name": "Redis", "status": "FAIL", "detail": str(e)})
+    async def _check_db_counts():
+        async with pool.acquire() as conn:
+            pos_count = await conn.fetchval("SELECT COUNT(*) FROM portfolio_positions WHERE quantity > 0")
+            recon_count = await conn.fetchval(
+                "SELECT COUNT(*) FROM audit_log WHERE source = 'reconciliation' AND event_time > NOW() - INTERVAL '14 days'"
+            )
+        return pos_count, recon_count
 
-    # 5. Recent OHLCV data exists
-    async with pool.acquire() as conn:
-        recent = await conn.fetchval(
-            "SELECT COUNT(*) FROM ohlcv WHERE time > NOW() - INTERVAL '3 days'"
-        )
-    checks.append({"name": "최근 시세 데이터", "status": "PASS" if recent > 0 else "WARN",
-                    "detail": f"{recent}건 (최근 3일)"})
+    results = await asyncio.gather(
+        _check_kis(), _check_kill_switch(), _check_db(), _check_redis(),
+        _check_data(), _check_db_counts(),
+    )
+
+    checks = list(results[:5])  # first 5 are dicts
+    pos_count, recon_count = results[5]
 
     # 6. Trading mode
     is_live = settings.kis_mode == "live"
     checks.append({"name": "매매 모드", "status": "INFO",
                     "detail": f"{'실전' if is_live else '모의투자'} (KIS_MODE={settings.kis_mode})"})
 
-    # 7. Positions check
-    async with pool.acquire() as conn:
-        pos_count = await conn.fetchval("SELECT COUNT(*) FROM portfolio_positions WHERE quantity > 0")
+    # 7. Positions
     checks.append({"name": "보유 포지션", "status": "INFO", "detail": f"{pos_count}종목"})
 
     # 8. EOD reconciliation history
-    async with pool.acquire() as conn:
-        recon_count = await conn.fetchval(
-            "SELECT COUNT(*) FROM audit_log WHERE source = 'reconciliation' AND event_time > NOW() - INTERVAL '14 days'"
-        )
     checks.append({"name": "EOD 정합성 이력 (14일)", "status": "PASS" if recon_count >= 10 else "WARN",
                     "detail": f"{recon_count}회 실행"})
 

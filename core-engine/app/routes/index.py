@@ -237,46 +237,75 @@ async def api_market_overview(pool: asyncpg.Pool = Depends(get_db)):
     return {"updated_at": datetime.now(timezone.utc).isoformat(), "sectors": sector_list}
 
 
+import asyncio as _asyncio
+import json as _json
+
+_INDEX_CACHE_KEY = "cache:index:realtime"
+_INDEX_CACHE_TTL = 10  # seconds
+
+
 @router.get("/realtime")
-async def api_realtime_indexes():
-    """Get live KOSPI/KOSDAQ quotes for dashboard index bar."""
-    indexes = []
-    for name, url in _NAVER_INDEX_URLS.items():
+async def api_realtime_indexes(
+    redis=Depends(lambda: None),
+):
+    """Get live KOSPI/KOSDAQ/USD-KRW quotes for dashboard index bar.
+
+    Cached for 10 seconds in Redis to avoid hammering external APIs.
+    All external fetches run in parallel (asyncio.gather).
+    """
+    # Try Redis cache
+    from app.database import get_redis as _get_redis
+    redis_pool = None
+    try:
+        redis_pool = _get_redis()
+        cached = await redis_pool.get(_INDEX_CACHE_KEY)
+        if cached:
+            return _json.loads(cached)
+    except Exception:
+        redis_pool = None
+
+    # Parallel fetch: KOSPI, KOSDAQ, USD/KRW all at once
+    async def _safe_fetch_index(name: str, url: str) -> dict:
         try:
             quote = await _fetch_index_quote(name, url)
             quote["updated_at"] = datetime.now(timezone.utc).isoformat()
-            indexes.append(quote)
+            return quote
         except Exception as exc:
             logger.error("Realtime index fetch failed for %s: %s", name, exc)
-            indexes.append(
-                {
-                    "name": name,
-                    "price": 0.0,
-                    "change": 0.0,
-                    "change_pct": 0.0,
-                    "open": 0.0,
-                    "high": 0.0,
-                    "low": 0.0,
-                    "updated_at": None,
-                    "error": str(exc),
-                }
-            )
+            return {
+                "name": name, "price": 0.0, "change": 0.0, "change_pct": 0.0,
+                "open": 0.0, "high": 0.0, "low": 0.0,
+                "updated_at": None, "error": str(exc),
+            }
 
-    # USD/KRW exchange rate
-    try:
-        fx = await _fetch_fx_rate()
-        fx["updated_at"] = datetime.now(timezone.utc).isoformat()
-        indexes.append(fx)
-    except Exception as exc:
-        logger.error("FX rate fetch failed: %s", exc)
-        indexes.append({
-            "name": "USD/KRW",
-            "price": 0.0, "change": 0.0, "change_pct": 0.0,
-            "open": 0.0, "high": 0.0, "low": 0.0,
-            "updated_at": None, "error": str(exc),
-        })
+    async def _safe_fetch_fx() -> dict:
+        try:
+            fx = await _fetch_fx_rate()
+            fx["updated_at"] = datetime.now(timezone.utc).isoformat()
+            return fx
+        except Exception as exc:
+            logger.error("FX rate fetch failed: %s", exc)
+            return {
+                "name": "USD/KRW", "price": 0.0, "change": 0.0, "change_pct": 0.0,
+                "open": 0.0, "high": 0.0, "low": 0.0,
+                "updated_at": None, "error": str(exc),
+            }
 
-    return {"updated_at": datetime.now(timezone.utc).isoformat(), "indexes": indexes}
+    tasks = [_safe_fetch_index(name, url) for name, url in _NAVER_INDEX_URLS.items()]
+    tasks.append(_safe_fetch_fx())
+
+    indexes = await _asyncio.gather(*tasks)
+
+    result = {"updated_at": datetime.now(timezone.utc).isoformat(), "indexes": list(indexes)}
+
+    # Cache result
+    if redis_pool:
+        try:
+            await redis_pool.setex(_INDEX_CACHE_KEY, _INDEX_CACHE_TTL, _json.dumps(result, default=str))
+        except Exception:
+            pass
+
+    return result
 
 
 async def _fetch_fx_rate() -> dict:
