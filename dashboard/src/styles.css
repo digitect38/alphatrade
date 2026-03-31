@@ -2150,3 +2150,220 @@ body {
 .recharts-wrapper svg {
   overflow: hidden !important;
 }
+
+/* ===========================================
+   Mobile Responsive (added for phone access)
+   =========================================== */
+
+/* --- Core Layout --- */
+@media (max-width: 768px) {
+  .app-layout {
+    flex-direction: column;
+  }
+
+  .app-main {
+    padding: var(--space-md);
+    max-height: none;
+    overflow-y: visible;
+  }
+
+  .page-title {
+    font-size: var(--font-lg);
+    margin-bottom: var(--space-md);
+  }
+
+  .page-content {
+    gap: var(--space-md);
+  }
+}
+
+/* --- Grids → Stack on mobile --- */
+@media (max-width: 768px) {
+  .metrics-grid,
+  .metrics-grid-2,
+  .metrics-grid-3,
+  .metrics-grid-4,
+  .metrics-grid-5 {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: var(--space-sm);
+  }
+
+  .command-pulse-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+
+  .command-main-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .command-strip {
+    grid-template-columns: 1fr !important;
+    gap: var(--space-sm);
+    padding: var(--space-md);
+  }
+
+  .command-strip-actions {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 480px) {
+  .metrics-grid,
+  .metrics-grid-2,
+  .metrics-grid-3,
+  .metrics-grid-4,
+  .metrics-grid-5 {
+    grid-template-columns: 1fr !important;
+  }
+
+  .command-pulse-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* --- Cards compact on mobile --- */
+@media (max-width: 768px) {
+  .card {
+    padding: var(--space-md);
+    border-radius: var(--radius-md);
+  }
+
+  .card-title {
+    font-size: var(--font-md);
+    margin-bottom: var(--space-md);
+  }
+
+  .metric-value {
+    font-size: var(--font-xl);
+  }
+
+  .metric-label {
+    font-size: var(--font-xs);
+  }
+}
+
+/* --- Tables horizontal scroll on mobile --- */
+@media (max-width: 768px) {
+  .data-table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    white-space: nowrap;
+  }
+
+  .data-table th,
+  .data-table td {
+    padding: 6px;
+    font-size: var(--font-sm);
+  }
+}
+
+/* --- Buttons compact --- */
+@media (max-width: 768px) {
+  .btn {
+    padding: 6px var(--space-md);
+    font-size: var(--font-sm);
+  }
+
+  .btn-sm {
+    padding: 4px 8px;
+    font-size: var(--font-xs);
+  }
+
+  .action-btn {
+    padding: 8px var(--space-md);
+    font-size: var(--font-sm);
+  }
+
+  .filter-btn {
+    padding: 3px 8px;
+    font-size: var(--font-xs);
+  }
+}
+
+/* --- Forms compact --- */
+@media (max-width: 768px) {
+  .input, .select {
+    padding: 6px 10px;
+    font-size: var(--font-sm);
+  }
+
+  .flex.gap-md {
+    gap: var(--space-sm);
+  }
+
+  .flex.gap-lg {
+    gap: var(--space-md);
+  }
+
+  .flex.gap-xl {
+    gap: var(--space-md);
+  }
+}
+
+/* --- Modal full-screen on mobile --- */
+@media (max-width: 768px) {
+  .modal-content {
+    width: 95vw;
+    max-height: 90vh;
+    padding: var(--space-lg);
+  }
+}
+
+/* --- Analysis toolbar wrap --- */
+@media (max-width: 768px) {
+  .analysis-toolbar-row {
+    flex-wrap: wrap;
+  }
+
+  .asset-range-group {
+    flex-wrap: wrap;
+  }
+
+  .asset-range-chip {
+    padding: 4px 8px;
+    font-size: var(--font-xs);
+  }
+}
+
+/* --- Command center mobile tweaks --- */
+@media (max-width: 768px) {
+  .command-row {
+    grid-template-columns: 24px 1fr auto !important;
+    padding: 10px;
+  }
+
+  .command-row-badges {
+    display: none;
+  }
+
+  .candidate-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .incident-card {
+    padding: 10px;
+  }
+}
+
+/* --- Recharts responsive --- */
+@media (max-width: 768px) {
+  .recharts-wrapper {
+    font-size: 10px;
+  }
+}
+
+/* --- Risk meter compact --- */
+@media (max-width: 768px) {
+  .risk-meter-header {
+    font-size: var(--font-xs);
+  }
+}
+
+/* --- Execution filters wrap --- */
+@media (max-width: 768px) {
+  .card.flex.gap-md.items-center.flex-wrap {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
