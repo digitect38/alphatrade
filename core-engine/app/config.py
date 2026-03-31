@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     kis_account_no: str = ""
     kis_cano: str = ""
     kis_acnt_prdt_cd: str = "01"
+    kis_mode: str = "paper"  # "paper" = 모의투자, "live" = 실전
     kis_base_url: str = "https://openapivts.koreainvestment.com:29443"  # 모의투자
     kis_ws_url: str = "ws://ops.koreainvestment.com:31000"  # 모의투자 WebSocket (실전: 21000)
 

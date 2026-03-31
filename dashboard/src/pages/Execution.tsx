@@ -35,14 +35,38 @@ const STATUS_BADGES: Record<string, string> = {
   CANCELLED: "🚪", EXPIRED: "⏰", CREATED: "📝", VALIDATED: "✔️",
 };
 
+interface ExecQuality {
+  total_fills: number;
+  avg_slippage_bps?: number;
+  median_slippage_bps?: number;
+  p95_slippage_bps?: number;
+  avg_fill_delay_sec?: number;
+  high_slippage_count?: number;
+  message?: string;
+}
+
+interface DailySummary {
+  total_orders: number;
+  filled: number;
+  rejected: number;
+  blocked: number;
+  expired: number;
+  fill_rate_pct: number;
+  execution_quality: { avg_slippage_bps: number | null; avg_fill_delay_sec: number | null };
+}
+
 export default function ExecutionPage({ t: _t }: { t: (k: string) => string }) {
   const [orders, setOrders] = useState<Order[]>([]);
   const [filter, setFilter] = useState<string>("all");
   const [reconciling, setReconciling] = useState(false);
   const [reconcileResult, setReconcileResult] = useState<Record<string, unknown> | null>(null);
+  const [quality, setQuality] = useState<ExecQuality | null>(null);
+  const [summary, setSummary] = useState<DailySummary | null>(null);
 
   const loadOrders = () => {
     apiGet<Order[]>("/order/history?limit=100").then(setOrders).catch(console.error);
+    apiGet<ExecQuality>("/trading/execution-quality?days=30").then(setQuality).catch(() => {});
+    apiGet<DailySummary>("/trading/order-summary").then(setSummary).catch(() => {});
   };
 
   const runReconcile = async () => {
@@ -92,6 +116,31 @@ export default function ExecutionPage({ t: _t }: { t: (k: string) => string }) {
           {reconciling ? _t("exec.reconciling") : _t("exec.eodReconcile")}
         </button>
       </div>
+
+      {/* Execution Quality Summary */}
+      {(summary || quality) && (
+        <div className="card">
+          <h3 className="card-title">{_t("exec.qualityTitle")}</h3>
+          <div className="metrics-grid metrics-grid-4" style={{ fontSize: 13 }}>
+            {summary && (
+              <>
+                <div><div className="metric-label">{_t("exec.todayOrders")}</div><div className="font-bold">{summary.total_orders}</div></div>
+                <div><div className="metric-label">{_t("exec.fillRate")}</div><div className={`font-bold ${summary.fill_rate_pct >= 90 ? "text-profit" : summary.fill_rate_pct >= 50 ? "text-warning" : "text-loss"}`}>{summary.fill_rate_pct}%</div></div>
+                <div><div className="metric-label">{_t("exec.todaySlippage")}</div><div className="font-bold">{summary.execution_quality.avg_slippage_bps != null ? `${summary.execution_quality.avg_slippage_bps} bps` : "-"}</div></div>
+                <div><div className="metric-label">{_t("exec.todayDelay")}</div><div className="font-bold">{summary.execution_quality.avg_fill_delay_sec != null ? `${summary.execution_quality.avg_fill_delay_sec}s` : "-"}</div></div>
+              </>
+            )}
+            {quality && quality.total_fills > 0 && (
+              <>
+                <div><div className="metric-label">{_t("exec.totalFills30d")}</div><div className="font-bold">{quality.total_fills}</div></div>
+                <div><div className="metric-label">{_t("exec.avgSlippage30d")}</div><div className="font-bold">{quality.avg_slippage_bps?.toFixed(1)} bps</div></div>
+                <div><div className="metric-label">{_t("exec.p95Slippage")}</div><div className="font-bold">{quality.p95_slippage_bps?.toFixed(1)} bps</div></div>
+                <div><div className="metric-label">{_t("exec.highSlippage")}</div><div className={`font-bold ${(quality.high_slippage_count || 0) > 0 ? "text-loss" : "text-profit"}`}>{quality.high_slippage_count || 0}{_t("common.count")}</div></div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Orders table */}
       <div className="card">

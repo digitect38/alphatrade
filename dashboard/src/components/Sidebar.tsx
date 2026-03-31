@@ -7,6 +7,7 @@ const menuItems = [
   { key: "trend", labelKey: "nav.trend", icon: "📉" },
   { key: "analysis", labelKey: "nav.analysis", icon: "📈" },
   { key: "backtest", labelKey: "nav.backtest", icon: "🧪" },
+  { key: "risk", labelKey: "nav.risk", icon: "🛡️" },
   { key: "execution", labelKey: "nav.execution", icon: "⚡" },
   { key: "orders", labelKey: "nav.orders", icon: "📋" },
 ];

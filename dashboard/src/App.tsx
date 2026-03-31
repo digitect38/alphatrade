@@ -10,6 +10,7 @@ import DashboardPage from "./pages/Dashboard";
 import ExecutionPage from "./pages/Execution";
 import MarketPage from "./pages/Market";
 import OrdersPage from "./pages/Orders";
+import RiskPage from "./pages/Risk";
 import TrendPage from "./pages/Trend";
 
 const titleKeys: Record<string, string> = {
@@ -19,6 +20,7 @@ const titleKeys: Record<string, string> = {
   trend: "title.trend",
   analysis: "title.analysis",
   backtest: "title.backtest",
+  risk: "title.risk",
   execution: "title.execution",
   orders: "title.orders",
   asset: "title.asset",
@@ -74,6 +76,7 @@ export default function App() {
           {page === "trend" && <TrendPage t={t} />}
           {page === "analysis" && <AnalysisPage t={t} />}
           {page === "backtest" && <BacktestPage t={t} />}
+          {page === "risk" && <RiskPage t={t} />}
           {page === "execution" && <ExecutionPage t={t} />}
           {page === "orders" && <OrdersPage t={t} />}
           {page.startsWith("asset") && <AssetDetailPage t={t} route={page} />}

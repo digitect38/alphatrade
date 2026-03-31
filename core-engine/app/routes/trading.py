@@ -119,6 +119,95 @@ async def api_kill_switch_status(guard: TradingGuard = Depends(get_trading_guard
     }
 
 
+@router.get("/pre-launch-check")
+async def api_pre_launch_check(
+    pool: asyncpg.Pool = Depends(get_db),
+    redis: aioredis.Redis = Depends(get_redis),
+    kis_client: KISClient = Depends(get_kis_client),
+    guard: TradingGuard = Depends(get_trading_guard),
+):
+    """Pre-launch readiness checklist for live trading.
+
+    Validates all systems before allowing real-money trading.
+    Returns pass/fail for each check with details.
+    """
+    checks = []
+
+    # 1. KIS API connectivity
+    try:
+        balance = await kis_client.get_account_balance()
+        checks.append({"name": "KIS API 연결", "status": "PASS" if balance else "FAIL",
+                        "detail": f"잔고 조회 {'성공' if balance else '실패'}"})
+    except Exception as e:
+        checks.append({"name": "KIS API 연결", "status": "FAIL", "detail": str(e)})
+
+    # 2. Kill switch is OFF
+    ks_active = await guard.is_kill_switch_active()
+    checks.append({"name": "킬 스위치 해제", "status": "PASS" if not ks_active else "FAIL",
+                    "detail": "활성" if ks_active else "비활성"})
+
+    # 3. DB health
+    try:
+        async with pool.acquire() as conn:
+            await conn.fetchval("SELECT 1")
+        checks.append({"name": "데이터베이스", "status": "PASS", "detail": "연결 정상"})
+    except Exception as e:
+        checks.append({"name": "데이터베이스", "status": "FAIL", "detail": str(e)})
+
+    # 4. Redis health
+    try:
+        await redis.ping()
+        checks.append({"name": "Redis", "status": "PASS", "detail": "연결 정상"})
+    except Exception as e:
+        checks.append({"name": "Redis", "status": "FAIL", "detail": str(e)})
+
+    # 5. Recent OHLCV data exists
+    async with pool.acquire() as conn:
+        recent = await conn.fetchval(
+            "SELECT COUNT(*) FROM ohlcv WHERE time > NOW() - INTERVAL '3 days'"
+        )
+    checks.append({"name": "최근 시세 데이터", "status": "PASS" if recent > 0 else "WARN",
+                    "detail": f"{recent}건 (최근 3일)"})
+
+    # 6. Trading mode
+    is_live = settings.kis_mode == "live"
+    checks.append({"name": "매매 모드", "status": "INFO",
+                    "detail": f"{'실전' if is_live else '모의투자'} (KIS_MODE={settings.kis_mode})"})
+
+    # 7. Positions check
+    async with pool.acquire() as conn:
+        pos_count = await conn.fetchval("SELECT COUNT(*) FROM portfolio_positions WHERE quantity > 0")
+    checks.append({"name": "보유 포지션", "status": "INFO", "detail": f"{pos_count}종목"})
+
+    # 8. EOD reconciliation history
+    async with pool.acquire() as conn:
+        recon_count = await conn.fetchval(
+            "SELECT COUNT(*) FROM audit_log WHERE source = 'reconciliation' AND event_time > NOW() - INTERVAL '14 days'"
+        )
+    checks.append({"name": "EOD 정합성 이력 (14일)", "status": "PASS" if recon_count >= 10 else "WARN",
+                    "detail": f"{recon_count}회 실행"})
+
+    # 9. Backup exists
+    import os
+    backup_dir = os.environ.get("BACKUP_DIR", "/Users/woosj/DevelopMac/alpha_trade/data/backups")
+    backup_exists = os.path.isdir(backup_dir) and bool(os.listdir(backup_dir)) if os.path.isdir(backup_dir) else False
+    checks.append({"name": "백업 존재", "status": "PASS" if backup_exists else "WARN",
+                    "detail": backup_dir})
+
+    # Overall
+    fail_count = sum(1 for c in checks if c["status"] == "FAIL")
+    warn_count = sum(1 for c in checks if c["status"] == "WARN")
+    overall = "READY" if fail_count == 0 and warn_count == 0 else ("NOT_READY" if fail_count > 0 else "CAUTION")
+
+    return {
+        "overall": overall,
+        "fail_count": fail_count,
+        "warn_count": warn_count,
+        "checks": checks,
+        "kis_mode": settings.kis_mode,
+    }
+
+
 @router.post("/check-fills")
 async def api_check_fills(
     pool: asyncpg.Pool = Depends(get_db),
