@@ -30,6 +30,7 @@ from app.services.dart_api import DARTClient
 from app.services.kis_api import KISClient
 from app.services.naver_news import NaverNewsClient
 from app.services.notification import NotificationService
+from app.services.market_poller import market_state_fallback_loop
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -69,6 +70,7 @@ async def lifespan(app: FastAPI):
 
     # Start KIS WebSocket real-time streaming (if API keys configured)
     kis_ws_task = None
+    market_poll_task = None
     if settings.kis_app_key and settings.kis_app_secret:
         try:
             from app.services.kis_websocket import KISWebSocketClient
@@ -79,9 +81,21 @@ async def lifespan(app: FastAPI):
             codes = [r["stock_code"] for r in universe]
             if codes:
                 kis_ws_task = asyncio.create_task(kis_ws_client.run(stock_codes=codes))
+                market_poll_task = asyncio.create_task(
+                    market_state_fallback_loop(
+                        pool=db_pool,
+                        redis=redis_client,
+                        kis_client=kis,
+                        interval_seconds=settings.market_state_poll_interval_sec,
+                    )
+                )
                 app.state.kis_ws_client = kis_ws_client
                 import logging
                 logging.getLogger(__name__).info("KIS WebSocket started for %d stocks", len(codes))
+                logging.getLogger(__name__).info(
+                    "Market fallback poller started (%ds interval)",
+                    settings.market_state_poll_interval_sec,
+                )
         except Exception as e:
             import logging
             logging.getLogger(__name__).error("KIS WebSocket startup failed: %s", e)
@@ -93,6 +107,8 @@ async def lifespan(app: FastAPI):
     if kis_ws_task:
         app.state.kis_ws_client.stop()
         kis_ws_task.cancel()
+    if market_poll_task:
+        market_poll_task.cancel()
 
     # Shutdown
     await app.state.notifier.close()

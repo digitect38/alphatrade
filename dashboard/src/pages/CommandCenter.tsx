@@ -57,6 +57,18 @@ interface IncidentItem {
   action: string;
 }
 
+interface MarketIndex {
+  name: string;
+  price: number;
+  change: number;
+  change_pct: number;
+  open: number;
+  high: number;
+  low: number;
+  updated_at: string | null;
+  error?: string;
+}
+
 const EXECUTION_ISSUE_STATUSES = new Set(["REJECTED", "BLOCKED", "FAILED", "UNKNOWN"]);
 const EXECUTION_ACTIVE_STATUSES = new Set(["SUBMITTED", "ACKED", "PARTIALLY_FILLED", "FILLED"]);
 
@@ -65,6 +77,7 @@ export default function CommandCenterPage({ t: _t }: { t: (k: string) => string 
   const [candidates, setCandidates] = useState<EventCandidate[]>([]);
   const [killStatus, setKillStatus] = useState<KillSwitchStatus | null>(null);
   const [health, setHealth] = useState<HealthStatus | null>(null);
+  const [marketIndexes, setMarketIndexes] = useState<MarketIndex[]>([]);
   const [orders, setOrders] = useState<OrderHistoryItem[]>([]);
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
   const [selectedLane, setSelectedLane] = useState<CandidateLane>("eligible");
@@ -107,16 +120,18 @@ export default function CommandCenterPage({ t: _t }: { t: (k: string) => string 
 
   const loadData = async () => {
     try {
-      const [moversData, ksData, healthData, orderData] = await Promise.all([
+      const [moversData, ksData, healthData, orderData, indexData] = await Promise.all([
         apiGet<{ movers: Mover[] }>("/market/movers?limit=20"),
         apiGet<KillSwitchStatus>("/trading/kill-switch/status"),
         apiGet<HealthStatus>("/health"),
         apiGet<OrderHistoryItem[]>("/order/history?limit=50"),
+        apiGet<{ indexes: MarketIndex[] }>("/index/realtime"),
       ]);
       setMovers(moversData.movers || []);
       setKillStatus(ksData);
       setHealth(healthData);
       setOrders(orderData || []);
+      setMarketIndexes(indexData.indexes || []);
     } catch {
       // keep previous state on transient failures
     }
@@ -382,6 +397,27 @@ export default function CommandCenterPage({ t: _t }: { t: (k: string) => string 
             </button>
           )}
         </div>
+      </section>
+
+      <section className="command-index-grid">
+        {marketIndexes.map((item) => (
+          <div key={item.name} className="card command-index-card">
+            <div className="command-index-top">
+              <span className="command-index-name">{item.name}</span>
+              <span className="text-secondary">{item.updated_at ? formatTime(item.updated_at) : "-"}</span>
+            </div>
+            <div className="command-index-price">{formatNumber(item.price)}</div>
+            <div className="command-index-change">
+              <DirectionValue value={item.change} precision={2} />
+              <DirectionValue value={item.change_pct} suffix="%" />
+            </div>
+            <div className="command-index-meta">
+              <span>{_t("command.indexOpen")} {formatNumber(item.open)}</span>
+              <span>{_t("command.indexHigh")} {formatNumber(item.high)}</span>
+              <span>{_t("command.indexLow")} {formatNumber(item.low)}</span>
+            </div>
+          </div>
+        ))}
       </section>
 
       <section className="command-pulse-grid">

@@ -79,7 +79,8 @@
       "Bash(grep -v \"^$\")",
       "Bash(make test:*)",
       "Bash(ls:*)",
-      "Bash(git config:*)"
+      "Bash(git config:*)",
+      "Bash(docker compose exec core-engine python -c \":*)"
     ]
   }
 }

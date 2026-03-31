@@ -3,9 +3,11 @@ import {
   Area,
   Bar,
   CartesianGrid,
+  Cell,
   ComposedChart,
   Customized,
   Line,
+  LineChart,
   ReferenceLine,
   ResponsiveContainer,
   Tooltip,
@@ -86,6 +88,13 @@ interface AssetExecutionContext {
   signal_summary: AssetSignalSummary;
 }
 
+interface UniverseItem {
+  stock_code: string;
+  stock_name: string;
+  market: string;
+  sector: string;
+}
+
 const RANGE_CONFIG: Record<RangeKey, { interval: string; limit: number }> = {
   "1D": { interval: "1m", limit: 240 },
   "5D": { interval: "1m", limit: 600 },
@@ -110,6 +119,8 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
   const [compareChartData, setCompareChartData] = useState<AssetChartPoint[]>([]);
   const [periodReturns, setPeriodReturns] = useState<Array<{ key: RangeKey; value: number }>>([]);
   const [executionContext, setExecutionContext] = useState<AssetExecutionContext | null>(null);
+  const [peerCandidates, setPeerCandidates] = useState<UniverseItem[]>([]);
+  const [hoverPoint, setHoverPoint] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -153,12 +164,26 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
       });
   }, [compareCode, range]);
 
+  useEffect(() => {
+    if (!overview?.sector) return;
+    apiGet<UniverseItem[]>("/scanner/universe")
+      .then((items) => {
+        const peers = items
+          .filter((item) => item.stock_code !== stockCode && item.sector === overview.sector)
+          .slice(0, 4);
+        setPeerCandidates(peers);
+      })
+      .catch(() => setPeerCandidates([]));
+  }, [overview?.sector, stockCode]);
+
   const chartPoints = useMemo(() => {
     const ma20Values = computeMovingAverage(chartData, 20);
     const ma50Values = computeMovingAverage(chartData, 50);
     const primaryNormalized = normalizeSeries(chartData);
     const compareNormalized = normalizeSeries(compareChartData);
     const compareByTime = new Map(compareChartData.map((bar, index) => [bar.time, compareNormalized[index]]));
+    const rsi14 = computeRsi(chartData, 14);
+    const macd = computeMacd(chartData);
 
     return chartData.map((bar, index) => ({
       label: formatChartLabel(bar.time, range, chartInterval),
@@ -173,6 +198,11 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
       ma50: ma50Values[index],
       primaryNormalized: primaryNormalized[index],
       compareNormalized: compareByTime.get(bar.time) ?? null,
+      rsi14: rsi14[index],
+      macd: macd.macd[index],
+      macdSignal: macd.signal[index],
+      macdHist: macd.histogram[index],
+      isUpBar: index === 0 ? true : bar.close >= chartData[index - 1].close,
     }));
   }, [chartData, compareChartData, chartInterval, range]);
 
@@ -186,6 +216,7 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
     return Math.round(chartData.reduce((sum, item) => sum + item.volume, 0) / chartData.length);
   }, [chartData]);
   const relativeVolume = averageVolume > 0 && overview ? overview.volume / averageVolume : 0;
+  const activePoint = hoverPoint ?? chartPoints[chartPoints.length - 1] ?? null;
 
   if (!stockCode) return <div className="card">{t("asset.noCode")}</div>;
   if (loading) return <p className="text-secondary p-xl">{t("asset.loading")}</p>;
@@ -237,6 +268,7 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
           <div className="asset-hero-value">{relativeVolume ? `${relativeVolume.toFixed(2)}x` : "-"}</div>
         </div>
       </section>
+      <div className="asset-swipe-hint">{t("asset.swipeHint")}</div>
 
       <section className="card asset-range-strip">
         <div className="asset-range-group">
@@ -304,14 +336,63 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
         </div>
       </section>
 
+      {peerCandidates.length > 0 ? (
+        <section className="card asset-peer-strip">
+          <div className="asset-compare-label">{t("asset.quickCompare")}</div>
+          <div className="asset-peer-buttons">
+            {peerCandidates.map((peer) => (
+              <button
+                key={peer.stock_code}
+                className={`asset-toggle-chip ${compareCode === peer.stock_code ? "is-active" : ""}`}
+                onClick={() => {
+                  setCompareCode(peer.stock_code);
+                  setChartMode("line");
+                }}
+              >
+                {peer.stock_name}
+              </button>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      <div className="asset-swipe-hint">{t("asset.swipePanelsHint")}</div>
       <section className="asset-main-grid">
         <div className="card asset-chart-card">
           <div className="asset-section-header">
-            <h3 className="card-title">{t("asset.chart")}</h3>
-            <div className="asset-chart-note">{compareCode && chartMode === "line" ? t("asset.compareModeNote") : t("asset.chartModeNote")}</div>
+            <div>
+              <h3 className="card-title">{t("asset.chart")}</h3>
+              <div className="asset-chart-note">{compareCode && chartMode === "line" ? t("asset.compareModeNote") : t("asset.chartModeNote")}</div>
+            </div>
+            <div className="asset-live-header">
+              <div className="asset-live-price">
+                {(chartMode === "line" && compareCode ? activePoint?.primaryNormalized : activePoint?.close)?.toLocaleString?.() ?? "-"}
+                {chartMode === "line" && compareCode ? "%" : ""}
+              </div>
+              <div className="asset-live-grid">
+                <span>{t("asset.open")}</span><strong>{activePoint?.open?.toLocaleString?.() ?? "-"}</strong>
+                <span>{t("asset.high")}</span><strong>{activePoint?.high?.toLocaleString?.() ?? "-"}</strong>
+                <span>{t("asset.low")}</span><strong>{activePoint?.low?.toLocaleString?.() ?? "-"}</strong>
+                <span>{t("asset.close")}</span><strong>{activePoint?.close?.toLocaleString?.() ?? "-"}</strong>
+                <span>{t("asset.volume")}</span><strong>{activePoint?.volume?.toLocaleString?.() ?? "-"}</strong>
+                {compareCode && chartMode === "line" ? (
+                  <>
+                    <span>{t("asset.compareTarget")}</span><strong>{activePoint?.compareNormalized != null ? `${activePoint.compareNormalized.toFixed(2)}%` : "-"}</strong>
+                  </>
+                ) : null}
+              </div>
+            </div>
           </div>
           <ResponsiveContainer width="100%" height={460}>
-            <ComposedChart data={chartPoints} syncId="asset-detail">
+            <ComposedChart
+              data={chartPoints}
+              syncId="asset-detail"
+              onMouseMove={(state) => {
+                const payload = state?.activePayload?.[0]?.payload;
+                if (payload) setHoverPoint(payload);
+              }}
+              onMouseLeave={() => setHoverPoint(null)}
+            >
               <defs>
                 <linearGradient id="assetChartFill" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor={isPositiveRange ? "var(--color-profit)" : "var(--color-loss)"} stopOpacity={0.24} />
@@ -394,9 +475,46 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
                   formatter={(value: number) => [value.toLocaleString(), t("asset.volume")]}
                   labelFormatter={(_label, payload) => payload?.[0]?.payload?.time ? new Date(payload[0].payload.time).toLocaleString("ko-KR") : ""}
                 />
-                <Bar dataKey="volume" fill="rgba(100, 116, 139, 0.35)" radius={[3, 3, 0, 0]} />
+                <Bar dataKey="volume" radius={[3, 3, 0, 0]}>
+                  {chartPoints.map((point) => (
+                    <Cell
+                      key={point.time}
+                      fill={point.isUpBar ? "rgba(16, 185, 129, 0.35)" : "rgba(239, 68, 68, 0.28)"}
+                    />
+                  ))}
+                </Bar>
               </ComposedChart>
             </ResponsiveContainer>
+          </div>
+          <div className="asset-indicator-stack">
+            <div className="asset-indicator-panel">
+              <div className="asset-volume-label">{t("asset.indicator.rsi")}</div>
+              <ResponsiveContainer width="100%" height={120}>
+                <LineChart data={chartPoints} syncId="asset-detail">
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-light)" />
+                  <XAxis dataKey="label" hide />
+                  <YAxis domain={[0, 100]} hide />
+                  <ReferenceLine y={70} stroke="#ef4444" strokeDasharray="4 4" />
+                  <ReferenceLine y={30} stroke="#10b981" strokeDasharray="4 4" />
+                  <Tooltip formatter={(value: number) => [Number(value).toFixed(2), t("asset.indicator.rsi")]} />
+                  <Line type="monotone" dataKey="rsi14" stroke="#2563eb" strokeWidth={2} dot={false} connectNulls />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="asset-indicator-panel">
+              <div className="asset-volume-label">{t("asset.indicator.macd")}</div>
+              <ResponsiveContainer width="100%" height={140}>
+                <ComposedChart data={chartPoints} syncId="asset-detail">
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-light)" />
+                  <XAxis dataKey="label" hide />
+                  <YAxis hide />
+                  <Tooltip formatter={(value: number) => [Number(value).toFixed(2), "MACD"]} />
+                  <Bar dataKey="macdHist" fill="rgba(14, 165, 233, 0.24)" />
+                  <Line type="monotone" dataKey="macd" stroke="#7c3aed" strokeWidth={2} dot={false} connectNulls />
+                  <Line type="monotone" dataKey="macdSignal" stroke="#f59e0b" strokeWidth={2} dot={false} connectNulls />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
           </div>
         </div>
 
@@ -429,6 +547,7 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
         </div>
       </section>
 
+      <div className="asset-swipe-hint">{t("asset.swipePanelsHint")}</div>
       <section className="asset-bottom-grid">
         <div className="card">
           <div className="asset-section-header">
@@ -512,6 +631,74 @@ function normalizeSeries(data: AssetChartPoint[]) {
   const base = data[0]?.close ?? 0;
   if (!base) return data.map(() => null);
   return data.map((item) => Number((((item.close / base) - 1) * 100).toFixed(2)));
+}
+
+function computeRsi(data: AssetChartPoint[], period: number) {
+  if (data.length < period + 1) return data.map(() => null);
+
+  const closes = data.map((item) => item.close);
+  const result = Array<number | null>(data.length).fill(null);
+  let avgGain = 0;
+  let avgLoss = 0;
+
+  for (let i = 1; i <= period; i++) {
+    const delta = closes[i] - closes[i - 1];
+    if (delta >= 0) avgGain += delta;
+    else avgLoss += Math.abs(delta);
+  }
+
+  avgGain /= period;
+  avgLoss /= period;
+  result[period] = avgLoss === 0 ? 100 : Number((100 - (100 / (1 + avgGain / avgLoss))).toFixed(2));
+
+  for (let i = period + 1; i < closes.length; i++) {
+    const delta = closes[i] - closes[i - 1];
+    const gain = Math.max(delta, 0);
+    const loss = Math.max(-delta, 0);
+    avgGain = ((avgGain * (period - 1)) + gain) / period;
+    avgLoss = ((avgLoss * (period - 1)) + loss) / period;
+    result[i] = avgLoss === 0 ? 100 : Number((100 - (100 / (1 + avgGain / avgLoss))).toFixed(2));
+  }
+
+  return result;
+}
+
+function computeMacd(data: AssetChartPoint[]) {
+  const closes = data.map((item) => item.close);
+  const ema12 = computeEma(closes, 12);
+  const ema26 = computeEma(closes, 26);
+  const macd = closes.map((_, index) => {
+    if (ema12[index] == null || ema26[index] == null) return null;
+    return Number((ema12[index]! - ema26[index]!).toFixed(2));
+  });
+  const signal = computeEma(macd.map((value) => value ?? 0), 9, macd);
+  const histogram = macd.map((value, index) => {
+    if (value == null || signal[index] == null) return null;
+    return Number((value - signal[index]!).toFixed(2));
+  });
+  return { macd, signal, histogram };
+}
+
+function computeEma(values: number[], period: number, mask?: Array<number | null>) {
+  const result = Array<number | null>(values.length).fill(null);
+  const multiplier = 2 / (period + 1);
+  let previous: number | null = null;
+
+  for (let i = 0; i < values.length; i++) {
+    if (mask && mask[i] == null) {
+      result[i] = null;
+      continue;
+    }
+    if (previous == null) {
+      previous = values[i];
+      result[i] = Number(previous.toFixed(2));
+      continue;
+    }
+    previous = ((values[i] - previous) * multiplier) + previous;
+    result[i] = Number(previous.toFixed(2));
+  }
+
+  return result;
 }
 
 function CandlestickLayer({ data, xAxisMap, yAxisMap }: { data: Array<AssetChartPoint & { label: string }>; xAxisMap?: Record<string, any>; yAxisMap?: Record<string, any> }) {

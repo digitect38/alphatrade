@@ -15,6 +15,8 @@ const translations: Record<string, Record<Locale, string>> = {
   "nav.execution": { en: "Execution", ko: "체결" },
   "nav.orders": { en: "Orders", ko: "주문" },
   "nav.asset": { en: "Asset Detail", ko: "종목 상세" },
+  "nav.menu": { en: "Menu", ko: "메뉴" },
+  "nav.closeMenu": { en: "Close menu", ko: "메뉴 닫기" },
 
   // Page titles
   "title.command": { en: "Command Center", ko: "커맨드 센터" },
@@ -86,6 +88,7 @@ const translations: Record<string, Record<Locale, string>> = {
   "analysis.analyzing": { en: "Analyzing...", ko: "분석 중..." },
   "analysis.currentPrice": { en: "Current Price", ko: "현재가" },
   "analysis.priceChart": { en: "Price Chart", ko: "가격 차트" },
+  "analysis.period": { en: "Period", ko: "기간" },
   "analysis.scores": { en: "Scores", ko: "점수" },
   "analysis.trend": { en: "Trend", ko: "추세" },
   "analysis.momentum": { en: "Momentum", ko: "모멘텀" },
@@ -243,6 +246,9 @@ const translations: Record<string, Record<Locale, string>> = {
   "command.blocked": { en: "Blocked", ko: "차단" },
   "command.executionIssues": { en: "Execution Issues", ko: "체결 이슈" },
   "command.priorityMovers": { en: "Priority Movers", ko: "우선 종목" },
+  "command.indexOpen": { en: "Open", ko: "시가" },
+  "command.indexHigh": { en: "High", ko: "고가" },
+  "command.indexLow": { en: "Low", ko: "저가" },
   "command.priorityMoversSub": { en: "Ranked by move intensity from the live cache.", ko: "실시간 캐시 기준으로 움직임 강도를 정렬했습니다." },
   "command.tracked": { en: "tracked", ko: "추적 중" },
   "command.noLiveMovers": { en: "No live movers available.", ko: "실시간 급등락 종목이 없습니다." },
@@ -361,6 +367,11 @@ const translations: Record<string, Record<Locale, string>> = {
   "asset.dayRange": { en: "Visible Price Range", ko: "표시 구간 가격 범위" },
   "asset.avgVolume": { en: "Average Volume", ko: "평균 거래량" },
   "asset.relativeVolume": { en: "Relative Volume", ko: "상대 거래량" },
+  "asset.quickCompare": { en: "Quick Compare", ko: "빠른 비교" },
+  "asset.swipeHint": { en: "Swipe left or right to browse cards on mobile.", ko: "모바일에서는 좌우로 넘겨 카드들을 볼 수 있습니다." },
+  "asset.swipePanelsHint": { en: "Swipe left or right to move between panels.", ko: "모바일에서는 좌우로 넘겨 패널을 이동할 수 있습니다." },
+  "asset.indicator.rsi": { en: "RSI (14)", ko: "RSI (14)" },
+  "asset.indicator.macd": { en: "MACD", ko: "MACD" },
 
   // Common
   "common.loading": { en: "Loading...", ko: "로딩 중..." },

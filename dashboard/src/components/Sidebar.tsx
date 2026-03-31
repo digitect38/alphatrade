@@ -17,17 +17,22 @@ interface Props {
   locale: Locale;
   onLocaleChange: (l: Locale) => void;
   t: (key: string) => string;
+  isOpen?: boolean;
+  onClose?: () => void;
 }
 
-export default function Sidebar({ current, onNavigate, locale, onLocaleChange, t }: Props) {
+export default function Sidebar({ current, onNavigate, locale, onLocaleChange, t, isOpen = false, onClose }: Props) {
   return (
-    <nav className="sidebar">
+    <nav className={`sidebar ${isOpen ? "is-open" : ""}`}>
       <div className="sidebar-logo">AlphaTrade</div>
       {menuItems.map((m) => (
         <div
           key={m.key}
           className={`sidebar-item ${current === m.key ? "active" : ""}`}
-          onClick={() => onNavigate(m.key)}
+          onClick={() => {
+            onNavigate(m.key);
+            onClose?.();
+          }}
         >
           <span>{m.icon}</span>
           <span>{t(m.labelKey)}</span>

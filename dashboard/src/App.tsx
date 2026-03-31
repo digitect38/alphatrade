@@ -26,10 +26,14 @@ const titleKeys: Record<string, string> = {
 
 export default function App() {
   const [page, setPage] = useState(window.location.hash.slice(1) || "command");
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const { locale, setLocale, t } = useLocale();
 
   useEffect(() => {
-    const onHash = () => setPage(window.location.hash.slice(1) || "command");
+    const onHash = () => {
+      setPage(window.location.hash.slice(1) || "command");
+      setMobileNavOpen(false);
+    };
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
@@ -43,7 +47,25 @@ export default function App() {
   return (
     <ToastProvider>
       <div className="app-layout">
-        <Sidebar current={page} onNavigate={navigate} locale={locale} onLocaleChange={setLocale} t={t} />
+        <button
+          className="mobile-nav-toggle"
+          onClick={() => setMobileNavOpen((open) => !open)}
+          aria-label={t("nav.menu")}
+          aria-expanded={mobileNavOpen}
+        >
+          <span>☰</span>
+          <span>{t("nav.menu")}</span>
+        </button>
+        {mobileNavOpen ? <button className="mobile-nav-backdrop" aria-label={t("nav.closeMenu")} onClick={() => setMobileNavOpen(false)} /> : null}
+        <Sidebar
+          current={page}
+          onNavigate={navigate}
+          locale={locale}
+          onLocaleChange={setLocale}
+          t={t}
+          isOpen={mobileNavOpen}
+          onClose={() => setMobileNavOpen(false)}
+        />
         <main className="app-main">
           <h1 className="page-title">{t(titleKeys[pageKey] || "title.command")}</h1>
           {page === "command" && <CommandCenterPage t={t} />}

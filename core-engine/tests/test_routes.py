@@ -238,6 +238,46 @@ class TestCollectionRoutes:
         assert resp.status_code == 200
 
 
+class TestIndexRoutes:
+    def test_realtime_indexes(self, client):
+        sample_payload = {
+            "resultCode": "success",
+            "result": {
+                "pollingInterval": 70000,
+                "areas": [
+                    {
+                        "name": "SERVICE_INDEX",
+                        "datas": [
+                            {
+                                "cd": "KOSPI",
+                                "nv": 274506,
+                                "cv": 3215,
+                                "cr": 1.19,
+                                "ov": 271200,
+                                "hv": 274800,
+                                "lv": 270900,
+                            }
+                        ],
+                    }
+                ],
+            },
+        }
+
+        async def fake_fetch(name, url):
+            from app.routes.index import _parse_index_quote
+            return _parse_index_quote(sample_payload, name)
+
+        with patch("app.routes.index._fetch_index_quote", new=AsyncMock(side_effect=fake_fetch)):
+            resp = client.get("/index/realtime")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data["indexes"]) == 2
+        assert data["indexes"][0]["price"] == 2745.06
+        assert data["indexes"][0]["change"] == 32.15
+        assert data["indexes"][0]["change_pct"] == 1.19
+
+
 # ========== Analysis Routes ==========
 
 

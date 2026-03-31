@@ -4,12 +4,60 @@ import logging
 from datetime import datetime, timezone
 
 import asyncpg
+import httpx
 from fastapi import APIRouter, Depends, Query
 
 from app.deps import get_db
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+_NAVER_INDEX_URLS = {
+    "KOSPI": "https://polling.finance.naver.com/api/realtime?query=SERVICE_INDEX:KOSPI",
+    "KOSDAQ": "https://polling.finance.naver.com/api/realtime?query=SERVICE_INDEX:KOSDAQ",
+}
+
+
+def _to_number(text: str) -> float:
+    cleaned = (
+        text.replace(",", "")
+        .replace("%", "")
+        .replace("+", "")
+        .replace("\n", " ")
+        .strip()
+    )
+    return float(cleaned) if cleaned else 0.0
+
+
+def _parse_index_quote(payload: dict, name: str) -> dict:
+    areas = payload.get("result", {}).get("areas", [])
+    if not areas:
+        raise ValueError(f"Missing index area for {name}")
+    data = areas[0].get("datas", [])
+    if not data:
+        raise ValueError(f"Missing index data for {name}")
+    item = data[0]
+
+    return {
+        "name": name,
+        "price": float(item.get("nv", 0)) / 100,
+        "change": float(item.get("cv", 0)) / 100,
+        "change_pct": float(item.get("cr", 0)),
+        "open": float(item.get("ov", 0)) / 100,
+        "high": float(item.get("hv", 0)) / 100,
+        "low": float(item.get("lv", 0)) / 100,
+    }
+
+
+async def _fetch_index_quote(name: str, url: str) -> dict:
+    headers = {
+        "User-Agent": "Mozilla/5.0 (compatible; AlphaTrade/1.0; +https://alphatrade.visualfactory.ai)",
+        "Referer": "https://finance.naver.com/",
+    }
+    async with httpx.AsyncClient(timeout=10, headers=headers, follow_redirects=True) as client:
+        response = await client.get(url)
+        response.raise_for_status()
+    return _parse_index_quote(response.json(), name)
 
 
 async def _fetch_sector_trend(conn, sector: str, stock_codes: list[str], days: int) -> dict | None:
@@ -185,3 +233,31 @@ async def api_market_overview(pool: asyncpg.Pool = Depends(get_db)):
 
     sector_list = _group_by_sector(rows)
     return {"updated_at": datetime.now(timezone.utc).isoformat(), "sectors": sector_list}
+
+
+@router.get("/realtime")
+async def api_realtime_indexes():
+    """Get live KOSPI/KOSDAQ quotes for dashboard index bar."""
+    indexes = []
+    for name, url in _NAVER_INDEX_URLS.items():
+        try:
+            quote = await _fetch_index_quote(name, url)
+            quote["updated_at"] = datetime.now(timezone.utc).isoformat()
+            indexes.append(quote)
+        except Exception as exc:
+            logger.error("Realtime index fetch failed for %s: %s", name, exc)
+            indexes.append(
+                {
+                    "name": name,
+                    "price": 0.0,
+                    "change": 0.0,
+                    "change_pct": 0.0,
+                    "open": 0.0,
+                    "high": 0.0,
+                    "low": 0.0,
+                    "updated_at": None,
+                    "error": str(exc),
+                }
+            )
+
+    return {"updated_at": datetime.now(timezone.utc).isoformat(), "indexes": indexes}
