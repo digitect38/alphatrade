@@ -60,8 +60,13 @@ class TestEnsembleScoreCalculation:
         ({"momentum": 0.0, "mean_reversion": 0.0, "volume": 0.0, "sentiment": 0.0}, None),
     ])
     def test_ensemble_direction(self, scores, expected_positive):
-        from app.strategy.ensemble import _get_weights
-        weights = _get_weights()
+        from app.config import settings
+        weights = {
+            "momentum": settings.strategy_weight_momentum,
+            "mean_reversion": settings.strategy_weight_mean_reversion,
+            "volume": settings.strategy_weight_volume,
+            "sentiment": settings.strategy_weight_sentiment,
+        }
         total = sum(scores[k] * weights[k] for k in scores)
         if expected_positive is True:
             assert total > 0
@@ -77,16 +82,26 @@ class TestEnsembleScoreCalculation:
         ("sentiment", 1.0),
     ])
     def test_single_strong_signal(self, dominant, score):
-        from app.strategy.ensemble import _get_weights
-        weights = _get_weights()
+        from app.config import settings
+        weights = {
+            "momentum": settings.strategy_weight_momentum,
+            "mean_reversion": settings.strategy_weight_mean_reversion,
+            "volume": settings.strategy_weight_volume,
+            "sentiment": settings.strategy_weight_sentiment,
+        }
         scores = {k: 0.0 for k in weights}
         scores[dominant] = score
         total = sum(scores[k] * weights[k] for k in scores)
         assert total > 0
 
     def test_conflicting_signals_cancel(self):
-        from app.strategy.ensemble import _get_weights
-        weights = _get_weights()
+        from app.config import settings
+        weights = {
+            "momentum": settings.strategy_weight_momentum,
+            "mean_reversion": settings.strategy_weight_mean_reversion,
+            "volume": settings.strategy_weight_volume,
+            "sentiment": settings.strategy_weight_sentiment,
+        }
         # momentum bullish, mean_reversion bearish, equal weight
         scores = {"momentum": 0.5, "mean_reversion": -0.5, "volume": 0.0, "sentiment": 0.0}
         total = sum(scores[k] * weights[k] for k in scores)
@@ -95,16 +110,26 @@ class TestEnsembleScoreCalculation:
 
     @pytest.mark.parametrize("all_score", [-1.0, -0.5, 0.0, 0.5, 1.0])
     def test_uniform_scores(self, all_score):
-        from app.strategy.ensemble import _get_weights
-        weights = _get_weights()
+        from app.config import settings
+        weights = {
+            "momentum": settings.strategy_weight_momentum,
+            "mean_reversion": settings.strategy_weight_mean_reversion,
+            "volume": settings.strategy_weight_volume,
+            "sentiment": settings.strategy_weight_sentiment,
+        }
         scores = {k: all_score for k in weights}
         total = sum(scores[k] * weights[k] for k in scores)
         expected = all_score * sum(weights.values())
         assert abs(total - expected) < 0.001
 
     def test_score_bounded(self):
-        from app.strategy.ensemble import _get_weights
-        weights = _get_weights()
+        from app.config import settings
+        weights = {
+            "momentum": settings.strategy_weight_momentum,
+            "mean_reversion": settings.strategy_weight_mean_reversion,
+            "volume": settings.strategy_weight_volume,
+            "sentiment": settings.strategy_weight_sentiment,
+        }
         # Even with max scores, ensemble should be <= 1.0
         scores = {k: 1.0 for k in weights}
         total = sum(scores[k] * weights[k] for k in scores)

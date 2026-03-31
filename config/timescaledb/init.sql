@@ -233,3 +233,20 @@ ALTER TABLE orders ADD CONSTRAINT chk_order_status CHECK (status IN (
     'EXPIRED', 'UNKNOWN', 'BLOCKED', 'FAILED',
     'PARTIAL', 'PENDING'  -- legacy compat
 ));
+
+-- ============================================================
+-- v1.4: Execution Quality Tracking
+-- ============================================================
+CREATE TABLE IF NOT EXISTS execution_quality (
+    time           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    order_id       TEXT NOT NULL,
+    stock_code     TEXT NOT NULL,
+    side           TEXT NOT NULL CHECK (side IN ('BUY', 'SELL')),
+    signal_price   NUMERIC NOT NULL,
+    fill_price     NUMERIC NOT NULL,
+    slippage_bps   NUMERIC NOT NULL,       -- basis points (positive = adverse for the side)
+    fill_delay_seconds NUMERIC DEFAULT 0   -- time from order creation to fill
+);
+SELECT create_hypertable('execution_quality', 'time', if_not_exists => TRUE);
+CREATE INDEX IF NOT EXISTS idx_eq_stock ON execution_quality(stock_code, time DESC);
+CREATE INDEX IF NOT EXISTS idx_eq_order ON execution_quality(order_id);

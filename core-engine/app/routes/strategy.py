@@ -93,6 +93,34 @@ async def api_backtest(
     )
 
 
+@router.post("/walk-forward")
+async def api_walk_forward(
+    request: BacktestRequest,
+    train_days: int = 252,
+    test_days: int = 63,
+    pool: asyncpg.Pool = Depends(get_db),
+):
+    """Run walk-forward out-of-sample strategy validation.
+
+    Splits data into rolling train/test windows and evaluates
+    strategy performance only on unseen (out-of-sample) data.
+
+    Query params:
+    - train_days: Training window size (default 252 = 1 year)
+    - test_days: Test window size (default 63 = 3 months)
+    """
+    from app.strategy.walk_forward import run_walk_forward
+    return await run_walk_forward(
+        stock_code=request.stock_code,
+        initial_capital=request.initial_capital,
+        strategy=request.strategy,
+        interval=request.interval,
+        train_days=train_days,
+        test_days=test_days,
+        pool=pool,
+    )
+
+
 @router.get("/benchmark")
 async def api_benchmark_compare(
     stock_code: str = "005930",

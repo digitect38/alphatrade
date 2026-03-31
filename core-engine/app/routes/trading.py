@@ -119,18 +119,78 @@ async def api_kill_switch_status(guard: TradingGuard = Depends(get_trading_guard
     }
 
 
+@router.post("/check-fills")
+async def api_check_fills(
+    pool: asyncpg.Pool = Depends(get_db),
+    redis: aioredis.Redis = Depends(get_redis),
+    kis_client: KISClient = Depends(get_kis_client),
+):
+    """Check in-flight orders for fill status updates.
+
+    Polls broker for SUBMITTED/ACKED orders and updates their status.
+    Should be called every 10-30 seconds during trading hours.
+    """
+    from app.execution.fill_monitor import check_inflight_orders
+    return await check_inflight_orders(pool=pool, redis=redis, kis_client=kis_client)
+
+
+@router.post("/cleanup-orders")
+async def api_cleanup_orders(pool: asyncpg.Pool = Depends(get_db)):
+    """End-of-day order cleanup — expire unresolved orders.
+
+    Should be called after market close (15:40 KST).
+    """
+    from app.execution.order_cleanup import cleanup_eod_orders
+    return await cleanup_eod_orders(pool=pool)
+
+
+@router.get("/order-summary")
+async def api_order_summary(pool: asyncpg.Pool = Depends(get_db)):
+    """Daily order execution summary with fill rate and slippage stats."""
+    from app.execution.order_cleanup import get_daily_order_summary
+    return await get_daily_order_summary(pool=pool)
+
+
+@router.get("/execution-quality")
+async def api_execution_quality(
+    days: int = 30,
+    pool: asyncpg.Pool = Depends(get_db),
+):
+    """Execution quality statistics — slippage and fill delay analysis."""
+    from app.execution.fill_monitor import get_execution_quality_stats
+    return await get_execution_quality_stats(pool=pool, days=days)
+
+
 @router.post("/reconcile")
 async def api_eod_reconcile(
     pool: asyncpg.Pool = Depends(get_db),
+    redis: aioredis.Redis = Depends(get_redis),
     kis_client: KISClient = Depends(get_kis_client),
     notifier: NotificationService = Depends(get_notifier),
 ):
-    """End-of-day broker reconciliation (v1.31 A-3).
+    """End-of-day broker reconciliation (v1.31 A-3, v1.4 enhanced).
 
-    Compares internal positions/cash/orders with BROKER ledger via KIS API.
+    Full EOD sequence:
+    1. Check & update in-flight order fills
+    2. Clean up remaining unresolved orders
+    3. Compare internal positions/cash/orders with BROKER ledger via KIS API
+
     Should be called daily after market close (via n8n WF or manually).
     """
     from app.services.audit import log_event
+    from app.execution.fill_monitor import check_inflight_orders
+    from app.execution.order_cleanup import cleanup_eod_orders
+
+    # Step 0: Final fill check + cleanup before reconciliation
+    fill_result = {}
+    cleanup_result = {}
+    try:
+        fill_result = await check_inflight_orders(pool=pool, redis=redis, kis_client=kis_client)
+        cleanup_result = await cleanup_eod_orders(pool=pool)
+    except Exception as e:
+        logger.warning("Pre-reconcile steps failed (non-fatal): %s", e)
+        fill_result = {"error": str(e)}
+        cleanup_result = {"error": str(e)}
 
     mismatches = []
     async with pool.acquire() as conn:
@@ -238,4 +298,8 @@ async def api_eod_reconcile(
         "status": "completed",
         "mismatches": len(mismatches),
         "details": mismatches,
+        "pre_reconcile": {
+            "fill_check": fill_result,
+            "order_cleanup": cleanup_result,
+        },
     }
