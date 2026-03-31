@@ -294,6 +294,30 @@ body {
   margin-bottom: var(--space-lg);
 }
 
+.card-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-lg);
+}
+
+.card-title-row .card-title {
+  margin-bottom: 0;
+}
+
+.chart-fullscreen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 100;
+  margin: 0;
+  border-radius: 0;
+  overflow-y: auto;
+  background: var(--color-surface);
+}
+
 /* ===========================================
    Metric Cards
    =========================================== */

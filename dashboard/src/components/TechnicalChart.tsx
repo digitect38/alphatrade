@@ -9,8 +9,10 @@ import {
   Tooltip,
   ResponsiveContainer,
   Legend,
+  ReferenceLine,
 } from "recharts";
 import type { OHLCVRecord } from "../types";
+import { filterEvents, getEventColor, type MarketEvent } from "../lib/events";
 
 type ChartPoint = { time: string; close: number };
 
@@ -85,23 +87,43 @@ export default function TechnicalChart({
     );
   };
 
+  // Events within visible date range
+  const [showEvents, setShowEvents] = useState(true);
+  const visibleEvents = useMemo<MarketEvent[]>(() => {
+    if (!showEvents || chartData.length < 2) return [];
+    const startDate = chartData[0].time.slice(0, 10);
+    const endDate = chartData[chartData.length - 1].time.slice(0, 10);
+    return filterEvents(startDate, endDate);
+  }, [chartData, showEvents]);
+
   const isZoomed = rangeStart > 0 || rangeEnd < 100;
+  const [fullscreen, setFullscreen] = useState(false);
 
   return (
-    <div className="card">
+    <div className={`card ${fullscreen ? "chart-fullscreen" : ""}`}>
       <div className="card-title-row">
         <h3 className="card-title">{t("analysis.priceChart")}</h3>
         <div className="flex gap-sm items-center">
           {periodLabel && <span className="text-secondary">{t("analysis.period")}: {periodLabel}</span>}
+          <button
+            className={`btn btn-sm ${showEvents ? "btn-primary" : ""}`}
+            style={{ fontSize: "11px" }}
+            onClick={() => setShowEvents((v) => !v)}
+          >
+            {t("analysis.events")} {showEvents ? "ON" : "OFF"}
+          </button>
           {isZoomed && (
             <button className="btn btn-sm" style={{ fontSize: "11px" }} onClick={() => { setRangeStart(0); setRangeEnd(100); }}>
               Reset Zoom
             </button>
           )}
+          <button className="btn btn-sm" style={{ fontSize: "11px" }} onClick={() => setFullscreen((v) => !v)}>
+            {fullscreen ? "✕" : "⛶"}
+          </button>
         </div>
       </div>
       <div style={{ overflow: "hidden", borderRadius: "8px" }}>
-        <ResponsiveContainer width="100%" height={360}>
+        <ResponsiveContainer width="100%" height={fullscreen ? 600 : 360}>
           <LineChart data={chartData} margin={{ top: 30, right: 16, bottom: 5, left: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-light)" />
             <XAxis
@@ -133,6 +155,34 @@ export default function TechnicalChart({
               connectNulls
               name={t("analysis.currentPrice")}
             />
+            {visibleEvents.map((evt) => {
+              // Find closest chart point to event date (handles downsampled data)
+              let matchTime: string | null = null;
+              let minDist = Infinity;
+              const evtMs = new Date(evt.date).getTime();
+              for (const d of chartData) {
+                const dist = Math.abs(new Date(d.time).getTime() - evtMs);
+                if (dist < minDist) { minDist = dist; matchTime = d.time; }
+              }
+              // Only show if within 5 days of actual event
+              if (!matchTime || minDist > 5 * 86400000) return null;
+              return (
+                <ReferenceLine
+                  key={evt.date}
+                  x={matchTime}
+                  stroke={getEventColor(evt.category)}
+                  strokeDasharray="4 3"
+                  strokeWidth={1.5}
+                  label={{
+                    value: evt.label,
+                    position: "top",
+                    fill: getEventColor(evt.category),
+                    fontSize: 10,
+                    fontWeight: 600,
+                  }}
+                />
+              );
+            })}
           </LineChart>
         </ResponsiveContainer>
       </div>
@@ -155,6 +205,28 @@ export default function TechnicalChart({
         <div className="flex gap-xl text-secondary" style={{ marginTop: "4px", fontSize: "12px" }}>
           {sma20 && <span>SMA20: {sma20.toLocaleString()}</span>}
           {sma60 && <span>SMA60: {sma60.toLocaleString()}</span>}
+        </div>
+      )}
+      {showEvents && visibleEvents.length > 0 && (
+        <div style={{ marginTop: 8, fontSize: 11 }}>
+          <div className="flex gap-md flex-wrap" style={{ marginBottom: 4 }}>
+            {[
+              { cat: "policy", label: t("event.policy") },
+              { cat: "geopolitics", label: t("event.geopolitics") },
+              { cat: "economy", label: t("event.economy") },
+              { cat: "market", label: t("event.market") },
+              { cat: "disaster", label: t("event.disaster") },
+            ].map((c) => (
+              <span key={c.cat} style={{ color: getEventColor(c.cat) }}>■ {c.label}</span>
+            ))}
+          </div>
+          <div className="flex gap-sm flex-wrap">
+            {visibleEvents.map((e) => (
+              <span key={e.date} title={e.description} style={{ color: getEventColor(e.category), cursor: "help", padding: "1px 4px", background: "#f8f8f8", borderRadius: 3 }}>
+                {e.date.slice(5)} {e.label}
+              </span>
+            ))}
+          </div>
         </div>
       )}
     </div>

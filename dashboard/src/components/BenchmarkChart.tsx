@@ -23,6 +23,7 @@ export default function BenchmarkChart({
 }) {
   const [data, setData] = useState<BenchmarkData | null>(null);
   const [loading, setLoading] = useState(false);
+  const [fullscreen, setFullscreen] = useState(false);
 
   useEffect(() => {
     if (!/^\d{6}$/.test(stockCode)) return;
@@ -51,8 +52,13 @@ export default function BenchmarkChart({
   const s = data.summary;
 
   return (
-    <div className="card">
-      <h3 className="card-title">벤치마크 비교</h3>
+    <div className={`card ${fullscreen ? "chart-fullscreen" : ""}`}>
+      <div className="card-title-row">
+        <h3 className="card-title">벤치마크 비교</h3>
+        <button className="btn btn-sm" style={{ fontSize: "11px" }} onClick={() => setFullscreen((v) => !v)}>
+          {fullscreen ? "✕" : "⛶"}
+        </button>
+      </div>
 
       {/* Summary cards */}
       <div className="flex gap-lg flex-wrap" style={{ marginBottom: "12px", fontSize: "13px" }}>
@@ -100,7 +106,7 @@ export default function BenchmarkChart({
 
       {/* Chart */}
       {chartData.length > 0 && (
-        <ResponsiveContainer width="100%" height={280}>
+        <ResponsiveContainer width="100%" height={fullscreen ? 500 : 280}>
           <LineChart data={chartData} margin={{ top: 10, right: 12, bottom: 5, left: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
             <XAxis
