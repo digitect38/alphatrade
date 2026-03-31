@@ -54,7 +54,7 @@ export default function App() {
     window.location.hash = p;
   };
 
-  const pageKey = page.startsWith("asset") ? "asset" : page;
+  const pageKey = page.startsWith("asset") ? "asset" : page.startsWith("analysis") ? "analysis" : page;
 
   return (
     <ToastProvider>
@@ -85,7 +85,7 @@ export default function App() {
           {page === "dashboard" && <DashboardPage t={t} />}
           {page === "market" && <MarketPage t={t} />}
           {page === "trend" && <TrendPage t={t} />}
-          {page === "analysis" && <AnalysisPage t={t} />}
+          {page.startsWith("analysis") && <AnalysisPage t={t} initialCode={page.includes("/") ? page.split("/")[1] : undefined} />}
           {page === "backtest" && <BacktestPage t={t} />}
           {page === "risk" && <RiskPage t={t} />}
           {page === "execution" && <ExecutionPage t={t} />}

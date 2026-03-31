@@ -296,7 +296,7 @@ export default function CommandCenterPage({ t: _t }: { t: (k: string) => string 
         value: activeMovers,
         delta: activeMovers > 0 ? `${activeMovers} above 2% move` : _t("command.noLiveMovers"),
         tone: activeMovers > 0 ? "danger" : "neutral",
-        onClick: () => setSelectedLane("watching"),
+        onClick: () => setMoverModal(true),
       },
       {
         title: _t("command.freshCatalysts"),
@@ -358,6 +358,7 @@ export default function CommandCenterPage({ t: _t }: { t: (k: string) => string 
   }, [selectedSymbol]);
 
   const [tradingMode, setTradingMode] = useState<string>("paper");
+  const [moverModal, setMoverModal] = useState(false);
   const [modeChanging, setModeChanging] = useState(false);
 
   useEffect(() => {
@@ -492,6 +493,7 @@ export default function CommandCenterPage({ t: _t }: { t: (k: string) => string 
                   key={item.stock_code}
                   className={`command-row ${selectedSymbol === item.stock_code ? "is-selected" : ""}`}
                   onClick={() => setSelectedSymbol(item.stock_code)}
+                  onDoubleClick={() => { window.location.hash = `analysis/${item.stock_code}`; }}
                 >
                   <div className="command-row-rank">{index + 1}</div>
                   <div className="command-row-main">
@@ -663,6 +665,60 @@ export default function CommandCenterPage({ t: _t }: { t: (k: string) => string 
           </div>
         )}
       </section>
+
+      {/* Mover detail modal */}
+      {moverModal && (
+        <div className="modal-overlay" onClick={() => setMoverModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 className="card-title" style={{ margin: 0 }}>{_t("command.activeMovers")} ({movers.filter((m) => Math.abs(toNumber(m.change_pct)) >= 2).length})</h3>
+              <button className="btn btn-sm" onClick={() => setMoverModal(false)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
+                <thead>
+                  <tr style={{ borderBottom: "2px solid var(--color-border)", textAlign: "left" }}>
+                    <th style={{ padding: "8px" }}>#</th>
+                    <th style={{ padding: "8px" }}>{_t("th.name")}</th>
+                    <th style={{ padding: "8px" }}>{_t("th.code")}</th>
+                    <th style={{ padding: "8px" }}>{_t("th.sector")}</th>
+                    <th style={{ padding: "8px", textAlign: "right" }}>{_t("th.price")}</th>
+                    <th style={{ padding: "8px", textAlign: "right" }}>{_t("th.changePct")}</th>
+                    <th style={{ padding: "8px", textAlign: "right" }}>{_t("th.volume")}</th>
+                    <th style={{ padding: "8px" }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {movers
+                    .filter((m) => Math.abs(toNumber(m.change_pct)) >= 0.5)
+                    .sort((a, b) => Math.abs(toNumber(b.change_pct)) - Math.abs(toNumber(a.change_pct)))
+                    .map((m, i) => (
+                    <tr key={m.stock_code} style={{ borderBottom: "1px solid #f0f0f0", cursor: "pointer" }}
+                        onClick={() => { setMoverModal(false); window.location.hash = `analysis/${m.stock_code}`; }}
+                    >
+                      <td style={{ padding: "8px", fontWeight: 600 }}>{i + 1}</td>
+                      <td style={{ padding: "8px", fontWeight: 600 }}>{m.stock_name || m.stock_code}</td>
+                      <td style={{ padding: "8px" }} className="text-secondary">{m.stock_code}</td>
+                      <td style={{ padding: "8px" }} className="text-secondary">{m.sector || "-"}</td>
+                      <td style={{ padding: "8px", textAlign: "right" }}>{formatNumber(toNumber(m.price))}</td>
+                      <td style={{ padding: "8px", textAlign: "right" }}>
+                        <DirectionValue value={toNumber(m.change_pct)} suffix="%" />
+                      </td>
+                      <td style={{ padding: "8px", textAlign: "right" }}>{formatCompact(toNumber(m.volume))}</td>
+                      <td style={{ padding: "8px" }}>
+                        <span style={{ fontSize: 11, color: "var(--color-accent)" }}>분석 →</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {movers.filter((m) => Math.abs(toNumber(m.change_pct)) >= 0.5).length === 0 && (
+                <div className="command-empty" style={{ padding: 20 }}>{_t("command.noLiveMovers")}</div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

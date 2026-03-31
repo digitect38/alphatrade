@@ -20,8 +20,13 @@ const ANALYSIS_PRESETS: Record<AnalysisPresetKey, { interval: "1d"; period: numb
   "ALL": { interval: "1d", period: 3000, limit: 3000 },
 };
 
-export default function AnalysisPage({ t: _t }: { t: (k: string) => string }) {
-  const [stockCode, setStockCode] = useState("005930");
+export default function AnalysisPage({ t: _t, initialCode }: { t: (k: string) => string; initialCode?: string }) {
+  const [stockCode, setStockCode] = useState(initialCode || "005930");
+
+  // Update when navigated with a new code
+  useEffect(() => {
+    if (initialCode && /^\d{6}$/.test(initialCode)) setStockCode(initialCode);
+  }, [initialCode]);
   const [preset, setPreset] = useState<AnalysisPresetKey>("6M");
   const [technical, setTechnical] = useState<TechnicalResult | null>(null);
   const [ohlcv, setOhlcv] = useState<OHLCVRecord[]>([]);
