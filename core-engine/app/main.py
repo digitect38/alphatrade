@@ -26,6 +26,7 @@ from app.routes.trading import router as trading_router
 from app.routes.webhook import router as webhook_router
 from app.routes.alert import router as alert_router
 from app.routes.ws import router as ws_router, redis_to_websocket_bridge
+from app.routes.risk import router as risk_router
 from app.services.dart_api import DARTClient
 from app.services.kis_api import KISClient
 from app.services.naver_news import NaverNewsClient
@@ -154,6 +155,7 @@ app.include_router(ws_router, tags=["websocket"])
 app.include_router(market_router, prefix="/market", tags=["market"])
 app.include_router(index_router, prefix="/index", tags=["index"])
 app.include_router(trading_router, prefix="/trading", tags=["trading"])
+app.include_router(risk_router, prefix="/risk", tags=["risk"])
 
 
 # --- Health & Metrics ---
