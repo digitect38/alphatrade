@@ -291,3 +291,20 @@ async def collect_stocks(pool: asyncpg.Pool = Depends(get_db)):
         "total": inserted + updated,
         "errors": errors[:10],
     }
+
+
+@router.post("/indexes")
+async def collect_indexes(pool: asyncpg.Pool = Depends(get_db)):
+    """Collect KOSPI + KOSDAQ daily index history from Naver Finance.
+
+    Fetches ~100 trading days of index data for benchmark comparison.
+    """
+    from app.services.index_collector import collect_index_data
+
+    results = []
+    for index_name in ["KOSPI", "KOSDAQ"]:
+        r = await collect_index_data(pool, index_name, pages=20)
+        results.append(r)
+        logger.info("Index %s: %d inserted", index_name, r.get("inserted", 0))
+
+    return {"status": "ok", "results": results}

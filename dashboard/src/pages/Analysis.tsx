@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import BenchmarkChart from "../components/BenchmarkChart";
 import StockSearch from "../components/StockSearch";
 import TechnicalChart from "../components/TechnicalChart";
 import { apiGet, apiPost } from "../hooks/useApi";
@@ -94,6 +95,11 @@ export default function AnalysisPage({ t: _t }: { t: (k: string) => string }) {
           periodLabel={preset}
           t={_t}
         />
+      )}
+
+      {/* Benchmark comparison */}
+      {ohlcv.length > 0 && (
+        <BenchmarkChart stockCode={stockCode} period={ANALYSIS_PRESETS[preset].limit} t={_t} />
       )}
 
       {technical && (

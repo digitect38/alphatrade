@@ -93,6 +93,74 @@ async def api_backtest(
     )
 
 
+@router.get("/benchmark")
+async def api_benchmark_compare(
+    stock_code: str = "005930",
+    period: int = 60,
+    pool: asyncpg.Pool = Depends(get_db),
+):
+    """Compare stock returns vs KOSPI/KOSDAQ benchmarks.
+
+    Returns normalized return series (base=100) for the stock and indexes.
+    """
+    async with pool.acquire() as conn:
+        # Stock data
+        stock_rows = await conn.fetch(
+            "SELECT time::date as dt, close FROM ohlcv WHERE stock_code = $1 AND interval = '1d' ORDER BY time DESC LIMIT $2",
+            stock_code, period,
+        )
+        # KOSPI data
+        kospi_rows = await conn.fetch(
+            "SELECT time::date as dt, close FROM ohlcv WHERE stock_code = 'KOSPI' AND interval = '1d' ORDER BY time DESC LIMIT $1",
+            period,
+        )
+        # KOSDAQ data
+        kosdaq_rows = await conn.fetch(
+            "SELECT time::date as dt, close FROM ohlcv WHERE stock_code = 'KOSDAQ' AND interval = '1d' ORDER BY time DESC LIMIT $1",
+            period,
+        )
+        # Stock name
+        name_row = await conn.fetchrow("SELECT stock_name FROM stocks WHERE stock_code = $1", stock_code)
+
+    stock_name = name_row["stock_name"] if name_row else stock_code
+
+    def to_series(rows):
+        data = sorted([(str(r["dt"]), float(r["close"])) for r in rows if r["close"]], key=lambda x: x[0])
+        if not data:
+            return []
+        base = data[0][1]
+        return [{"date": d, "value": round((v / base - 1) * 100, 2)} for d, v in data]
+
+    stock_series = to_series(stock_rows)
+    kospi_series = to_series(kospi_rows)
+    kosdaq_series = to_series(kosdaq_rows)
+
+    # Calculate summary
+    stock_return = stock_series[-1]["value"] if stock_series else 0
+    kospi_return = kospi_series[-1]["value"] if kospi_series else 0
+    kosdaq_return = kosdaq_series[-1]["value"] if kosdaq_series else 0
+    alpha_vs_kospi = round(stock_return - kospi_return, 2)
+    alpha_vs_kosdaq = round(stock_return - kosdaq_return, 2)
+
+    return {
+        "stock_code": stock_code,
+        "stock_name": stock_name,
+        "period": period,
+        "series": {
+            stock_code: stock_series,
+            "KOSPI": kospi_series,
+            "KOSDAQ": kosdaq_series,
+        },
+        "summary": {
+            f"{stock_code}_return": stock_return,
+            "kospi_return": kospi_return,
+            "kosdaq_return": kosdaq_return,
+            "alpha_vs_kospi": alpha_vs_kospi,
+            "alpha_vs_kosdaq": alpha_vs_kosdaq,
+        },
+    }
+
+
 @router.get("/presets")
 async def api_strategy_presets():
     """List all available strategy presets."""
