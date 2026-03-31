@@ -25,12 +25,21 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 
-def _get_weights() -> dict:
+async def _get_active_config(redis) -> dict:
+    """Get active strategy config from Redis (set via /strategy/active)."""
+    import json as _json
+    raw = await redis.get("strategy:active_config")
+    if raw:
+        return _json.loads(raw)
     return {
-        "momentum": settings.strategy_weight_momentum,
-        "mean_reversion": settings.strategy_weight_mean_reversion,
-        "volume": settings.strategy_weight_volume,
-        "sentiment": settings.strategy_weight_sentiment,
+        "weights": {
+            "momentum": settings.strategy_weight_momentum,
+            "mean_reversion": settings.strategy_weight_mean_reversion,
+            "volume": settings.strategy_weight_volume,
+            "sentiment": settings.strategy_weight_sentiment,
+        },
+        "buy_threshold": settings.strategy_buy_threshold,
+        "sell_threshold": settings.strategy_sell_threshold,
     }
 
 
@@ -57,22 +66,27 @@ async def generate_signal(
     vol_score = volume_signal(vol)
     sent_score = sentiment_signal(sent)
 
-    weights = _get_weights()
+    # Use active strategy config (from /strategy/active)
+    config = await _get_active_config(redis)
+    weights = config.get("weights", {})
+    buy_threshold = config.get("buy_threshold", settings.strategy_buy_threshold)
+    sell_threshold = config.get("sell_threshold", settings.strategy_sell_threshold)
+
     components = [
-        StrategyComponent(name="momentum", score=mom_score, weight=weights["momentum"]),
-        StrategyComponent(name="mean_reversion", score=mr_score, weight=weights["mean_reversion"]),
-        StrategyComponent(name="volume", score=vol_score, weight=weights["volume"]),
-        StrategyComponent(name="sentiment", score=sent_score, weight=weights["sentiment"]),
+        StrategyComponent(name="momentum", score=mom_score, weight=weights.get("momentum", 0.25)),
+        StrategyComponent(name="mean_reversion", score=mr_score, weight=weights.get("mean_reversion", 0.25)),
+        StrategyComponent(name="volume", score=vol_score, weight=weights.get("volume", 0.25)),
+        StrategyComponent(name="sentiment", score=sent_score, weight=weights.get("sentiment", 0.25)),
     ]
 
     # Weighted ensemble score
     ensemble_score = sum(c.score * c.weight for c in components)
     ensemble_score = round(max(-1.0, min(1.0, ensemble_score)), 4)
 
-    # Determine signal
-    if ensemble_score > settings.strategy_buy_threshold:
+    # Determine signal using active thresholds
+    if ensemble_score > buy_threshold:
         signal = "BUY"
-    elif ensemble_score < settings.strategy_sell_threshold:
+    elif ensemble_score < sell_threshold:
         signal = "SELL"
     else:
         signal = "HOLD"

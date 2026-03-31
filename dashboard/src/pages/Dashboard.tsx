@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { XAxis, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from "recharts";
 import DirectionValue from "../components/DirectionValue";
+import StrategySelector from "../components/StrategySelector";
 import { apiGet, apiPost } from "../hooks/useApi";
 import type { BatchSignalResult, PortfolioStatus, StrategySignal } from "../types";
 
@@ -233,6 +234,9 @@ export default function DashboardPage({ t }: { t: (k: string) => string }) {
           </table>
         </div>
       )}
+
+      {/* Row 5: Strategy Selector */}
+      <StrategySelector t={t} />
     </div>
   );
 }
