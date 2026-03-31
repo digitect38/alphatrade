@@ -357,14 +357,51 @@ export default function CommandCenterPage({ t: _t }: { t: (k: string) => string 
       .finally(() => setNewsLoading(false));
   }, [selectedSymbol]);
 
+  const [tradingMode, setTradingMode] = useState<string>("paper");
+  const [modeChanging, setModeChanging] = useState(false);
+
+  useEffect(() => {
+    apiGet<{ mode: string }>("/trading/mode").then((d) => setTradingMode(d.mode)).catch(() => {});
+  }, []);
+
+  const toggleTradingMode = async () => {
+    const targetMode = tradingMode === "paper" ? "live" : "paper";
+    if (targetMode === "live") {
+      const msg = _t("command.confirmLive");
+      if (!confirm(msg)) return;
+      // Must activate kill switch first
+      const ks = await apiGet<KillSwitchStatus>("/trading/kill-switch/status");
+      if (ks.kill_switch !== "active") {
+        alert(_t("command.killFirstForLive"));
+        return;
+      }
+    }
+    setModeChanging(true);
+    try {
+      const resp = await apiPost<{ status: string; mode: string }>("/trading/mode", {
+        mode: targetMode,
+        confirm: targetMode === "live" ? true : undefined,
+      });
+      if (resp.mode) setTradingMode(resp.mode);
+      else if (resp.status === "unchanged") { /* no-op */ }
+      else alert(JSON.stringify(resp));
+      void loadData();
+    } catch (e) {
+      alert(String(e));
+    }
+    setModeChanging(false);
+  };
+
   const killActive = killStatus?.kill_switch === "active";
   const lastUpdate = lastTick?.received_at || "";
+  const isLive = tradingMode === "live";
 
   return (
     <div className="page-content">
-      <section className={`command-strip ${killActive ? "is-danger" : "is-safe"}`}>
+      <section className={`command-strip ${isLive ? "is-live" : killActive ? "is-danger" : "is-safe"}`} style={{ position: "relative" }}>
         <div className="command-strip-status">
           <StatusBadge label={connected ? _t("state.live") : _t("state.offline")} tone={connected ? "success" : "danger"} />
+          <StatusBadge label={isLive ? _t("state.liveMode") : _t("state.paperMode")} tone={isLive ? "danger" : "info"} />
           <StatusBadge label={killActive ? _t("state.killActive") : _t("state.enabled")} tone={killActive ? "danger" : "success"} />
           <StatusBadge label={killStatus?.session.allowed ? _t("state.sessionOpen") : _t("state.sessionBlocked")} tone={killStatus?.session.allowed ? "info" : "warning"} />
           <StatusBadge label={health?.status === "ok" ? _t("state.apiHealthy") : _t("state.apiDegraded")} tone={health?.status === "ok" ? "success" : "danger"} />
@@ -396,6 +433,13 @@ export default function CommandCenterPage({ t: _t }: { t: (k: string) => string 
               {_t("command.resume")}
             </button>
           )}
+          <button
+            className={`btn btn-sm ${isLive ? "command-mode-live" : "command-mode-paper"}`}
+            onClick={toggleTradingMode}
+            disabled={modeChanging}
+          >
+            {modeChanging ? "..." : isLive ? _t("command.switchToPaper") : _t("command.switchToLive")}
+          </button>
         </div>
       </section>
 

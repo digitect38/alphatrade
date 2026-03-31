@@ -133,6 +133,36 @@ body {
   margin-bottom: var(--space-md);
 }
 
+.sidebar-live {
+  border-right: 3px solid #dc2626;
+}
+
+.sidebar-live-banner {
+  background: #dc2626;
+  color: #fff;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  padding: 6px;
+  margin: 0 12px 12px;
+  border-radius: 4px;
+  animation: live-pulse 2s ease-in-out infinite;
+}
+
+.sidebar-paper-banner {
+  background: #2563eb;
+  color: #fff;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  padding: 4px;
+  margin: 0 12px 12px;
+  border-radius: 4px;
+  opacity: 0.8;
+}
+
 .sidebar-item {
   padding: 10px var(--space-xl);
   cursor: pointer;
@@ -762,6 +792,47 @@ body {
 .command-strip-resume {
   background: #fff;
   color: var(--color-profit);
+}
+
+.command-mode-paper {
+  background: #3b82f6;
+  color: #fff;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.command-mode-live {
+  background: #dc2626;
+  color: #fff;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  animation: live-pulse 2s ease-in-out infinite;
+}
+
+@keyframes live-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.4); }
+  50% { box-shadow: 0 0 0 6px rgba(220, 38, 38, 0); }
+}
+
+/* Live mode global indicator — red top border on entire app */
+.command-strip.is-live {
+  background: linear-gradient(135deg, #7f1d1d 0%, #991b1b 40%, #dc2626 100%);
+  border: 2px solid #fca5a5;
+}
+
+.command-strip.is-live::before {
+  content: "LIVE TRADING";
+  position: absolute;
+  top: -10px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #dc2626;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  padding: 2px 12px;
+  border-radius: 4px;
 }
 
 .command-status-badge,

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import Sidebar from "./components/Sidebar";
 import { ToastProvider } from "./components/Toast";
+import { apiGet } from "./hooks/useApi";
 import { useLocale } from "./hooks/useLocale";
 import AnalysisPage from "./pages/Analysis";
 import AssetDetailPage from "./pages/AssetDetail";
@@ -29,7 +30,16 @@ const titleKeys: Record<string, string> = {
 export default function App() {
   const [page, setPage] = useState(window.location.hash.slice(1) || "command");
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [tradingMode, setTradingMode] = useState<string>("paper");
   const { locale, setLocale, t } = useLocale();
+
+  useEffect(() => {
+    apiGet<{ mode: string }>("/trading/mode").then((d) => setTradingMode(d.mode)).catch(() => {});
+    const modeInterval = setInterval(() => {
+      apiGet<{ mode: string }>("/trading/mode").then((d) => setTradingMode(d.mode)).catch(() => {});
+    }, 10000);
+    return () => clearInterval(modeInterval);
+  }, []);
 
   useEffect(() => {
     const onHash = () => {
@@ -67,6 +77,7 @@ export default function App() {
           t={t}
           isOpen={mobileNavOpen}
           onClose={() => setMobileNavOpen(false)}
+          tradingMode={tradingMode}
         />
         <main className="app-main">
           <h1 className="page-title">{t(titleKeys[pageKey] || "title.command")}</h1>

@@ -17,6 +17,8 @@ _NAVER_INDEX_URLS = {
     "KOSDAQ": "https://polling.finance.naver.com/api/realtime?query=SERVICE_INDEX:KOSDAQ",
 }
 
+_NAVER_FX_URL = "https://m.stock.naver.com/front-api/marketIndex/prices?category=exchange&reutersCode=FX_USDKRW"
+
 
 def _to_number(text: str) -> float:
     cleaned = (
@@ -260,4 +262,51 @@ async def api_realtime_indexes():
                 }
             )
 
+    # USD/KRW exchange rate
+    try:
+        fx = await _fetch_fx_rate()
+        fx["updated_at"] = datetime.now(timezone.utc).isoformat()
+        indexes.append(fx)
+    except Exception as exc:
+        logger.error("FX rate fetch failed: %s", exc)
+        indexes.append({
+            "name": "USD/KRW",
+            "price": 0.0, "change": 0.0, "change_pct": 0.0,
+            "open": 0.0, "high": 0.0, "low": 0.0,
+            "updated_at": None, "error": str(exc),
+        })
+
     return {"updated_at": datetime.now(timezone.utc).isoformat(), "indexes": indexes}
+
+
+async def _fetch_fx_rate() -> dict:
+    """Fetch USD/KRW exchange rate from Naver Finance mobile API."""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
+    }
+    async with httpx.AsyncClient(timeout=10, headers=headers, follow_redirects=True) as client:
+        response = await client.get(_NAVER_FX_URL)
+        response.raise_for_status()
+
+    data = response.json()
+    results = data.get("result", [])
+    if not results:
+        raise ValueError("No FX data returned")
+
+    item = results[0]  # Most recent day
+    price = _to_number(item.get("closePrice", "0"))
+    change = _to_number(item.get("fluctuations", "0"))
+    change_pct = _to_number(item.get("fluctuationsRatio", "0"))
+
+    # Get previous day for open proxy (yesterday's close)
+    prev_price = _to_number(results[1].get("closePrice", "0")) if len(results) > 1 else price
+
+    return {
+        "name": "USD/KRW",
+        "price": price,
+        "change": change,
+        "change_pct": change_pct,
+        "open": prev_price,
+        "high": price + max(change, 0),  # approximation
+        "low": price + min(change, 0),   # approximation
+    }

@@ -119,6 +119,83 @@ async def api_kill_switch_status(guard: TradingGuard = Depends(get_trading_guard
     }
 
 
+TRADING_MODE_KEY = "trading:mode"  # Redis key for runtime mode
+
+
+@router.get("/mode")
+async def api_get_trading_mode(redis: aioredis.Redis = Depends(get_redis)):
+    """Get current trading mode (paper/live)."""
+    mode = await redis.get(TRADING_MODE_KEY)
+    if mode:
+        mode = mode.decode() if isinstance(mode, bytes) else mode
+    else:
+        mode = settings.kis_mode  # default from .env
+    return {
+        "mode": mode,
+        "kis_base_url": settings.kis_base_url,
+        "is_live": mode == "live",
+    }
+
+
+@router.post("/mode")
+async def api_set_trading_mode(
+    body: dict,
+    pool: asyncpg.Pool = Depends(get_db),
+    redis: aioredis.Redis = Depends(get_redis),
+    kis_client: KISClient = Depends(get_kis_client),
+    guard: TradingGuard = Depends(get_trading_guard),
+    notifier: NotificationService = Depends(get_notifier),
+):
+    """Switch trading mode between paper and live.
+
+    Body: {"mode": "paper"} or {"mode": "live", "confirm": true}
+
+    Switching to live requires:
+    1. confirm: true in request body
+    2. Kill switch must be active (safety measure)
+    3. Pre-launch checks must pass (no FAIL items)
+    """
+    from app.services.audit import log_event
+
+    new_mode = body.get("mode", "paper")
+    if new_mode not in ("paper", "live"):
+        return {"error": f"Invalid mode: {new_mode}. Use 'paper' or 'live'."}
+
+    current = await redis.get(TRADING_MODE_KEY)
+    current_mode = (current.decode() if isinstance(current, bytes) else current) if current else settings.kis_mode
+
+    if new_mode == current_mode:
+        return {"status": "unchanged", "mode": current_mode}
+
+    # Switching to live requires safety checks
+    if new_mode == "live":
+        if not body.get("confirm"):
+            return {"error": "실전 전환은 confirm: true 필수", "hint": '{"mode": "live", "confirm": true}'}
+
+        # Kill switch must be active during switch (prevents orders during transition)
+        ks_active = await guard.is_kill_switch_active()
+        if not ks_active:
+            return {"error": "실전 전환 전 킬 스위치를 먼저 활성화하세요",
+                    "hint": "POST /trading/kill-switch/activate"}
+
+        await notifier.alert("🔴🔴🔴 <b>[실전 모드 전환]</b>\n모의투자 → 실전 매매로 전환되었습니다.\n킬 스위치 해제 후 실제 주문이 발생합니다.")
+
+    elif new_mode == "paper":
+        # Always allow switching back to paper
+        await notifier.alert("🟢 <b>[모의 모드 전환]</b>\n실전 → 모의투자로 전환되었습니다.")
+
+    await redis.set(TRADING_MODE_KEY, new_mode)
+
+    await log_event(
+        pool, source="trading_mode", event_type="mode_changed",
+        payload={"from": current_mode, "to": new_mode, "operator": "dashboard"},
+    )
+
+    logger.warning("Trading mode changed: %s → %s", current_mode, new_mode)
+
+    return {"status": "changed", "mode": new_mode, "previous": current_mode}
+
+
 @router.get("/pre-launch-check")
 async def api_pre_launch_check(
     pool: asyncpg.Pool = Depends(get_db),

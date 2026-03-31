@@ -20,12 +20,24 @@ interface Props {
   t: (key: string) => string;
   isOpen?: boolean;
   onClose?: () => void;
+  tradingMode?: string;
 }
 
-export default function Sidebar({ current, onNavigate, locale, onLocaleChange, t, isOpen = false, onClose }: Props) {
+export default function Sidebar({ current, onNavigate, locale, onLocaleChange, t, isOpen = false, onClose, tradingMode }: Props) {
+  const isLive = tradingMode === "live";
   return (
-    <nav className={`sidebar ${isOpen ? "is-open" : ""}`}>
+    <nav className={`sidebar ${isOpen ? "is-open" : ""} ${isLive ? "sidebar-live" : ""}`}>
       <div className="sidebar-logo">AlphaTrade</div>
+      {isLive && (
+        <div className="sidebar-live-banner">
+          LIVE TRADING
+        </div>
+      )}
+      {!isLive && tradingMode && (
+        <div className="sidebar-paper-banner">
+          PAPER MODE
+        </div>
+      )}
       {menuItems.map((m) => (
         <div
           key={m.key}

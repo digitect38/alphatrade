@@ -319,6 +319,12 @@ const translations: Record<string, Record<Locale, string>> = {
   "command.noRecentOrdersSymbol": { en: "No recent orders for this symbol.", ko: "이 종목의 최근 주문이 없습니다." },
   "command.priority": { en: "priority", ko: "우선도" },
   "command.orderStatus": { en: "Order", ko: "주문" },
+  "command.switchToLive": { en: "Switch to LIVE", ko: "실전 전환" },
+  "command.switchToPaper": { en: "Switch to Paper", ko: "모의 전환" },
+  "command.confirmLive": { en: "WARNING: Switch to LIVE trading? Real money will be used!", ko: "경고: 실전 매매로 전환합니까? 실제 자금이 사용됩니다!" },
+  "command.killFirstForLive": { en: "Activate kill switch first before switching to live mode", ko: "실전 전환 전 킬 스위치를 먼저 활성화하세요" },
+  "state.liveMode": { en: "LIVE", ko: "실전" },
+  "state.paperMode": { en: "PAPER", ko: "모의투자" },
 
   // Trend / Market Intel
   "trend.prioritySectorsTitle": { en: "Priority Sectors", ko: "우선 섹터" },
@@ -415,6 +421,8 @@ const translations: Record<string, Record<Locale, string>> = {
   "asset.indicator.macd": { en: "MACD", ko: "MACD" },
 
   // Common
+  "common.stockCode": { en: "Stock", ko: "종목" },
+  "common.count": { en: " count", ko: "건" },
   "common.loading": { en: "Loading...", ko: "로딩 중..." },
   "common.save": { en: "Save", ko: "저장" },
   "common.close": { en: "Close", ko: "닫기" },
