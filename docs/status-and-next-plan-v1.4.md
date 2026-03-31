@@ -470,4 +470,5 @@
 | v1.1 | 2026-03 | Hybrid Architecture (n8n/Grafana 추가) |
 | v1.3 | 2026-03 | 6단계 리팩토링 (R1-R6) |
 | v1.31 | 2026-03-30 | Commercial Controls (FSM, 킬스위치, 감사로그, RBAC) |
-| **v1.4** | **2026-04-01** | **Production-Grade Upgrade 계획 (전략검증, 실행품질, 리스크, 운영안정성, 실전전환)** |
+| **v1.4** | **2026-04-01** | **Production-Grade Upgrade 계획 수립** |
+| **v1.4.1** | **2026-04-01** | **Phase 1-6 구현 완료: Walk-Forward, Fill Monitor, VaR/CVaR, Stress Test, Alert Escalation, Risk Dashboard, Pre-Launch Checklist (903 tests)** |
