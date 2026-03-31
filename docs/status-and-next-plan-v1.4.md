@@ -472,3 +472,4 @@
 | v1.31 | 2026-03-30 | Commercial Controls (FSM, 킬스위치, 감사로그, RBAC) |
 | **v1.4** | **2026-04-01** | **Production-Grade Upgrade 계획 수립** |
 | **v1.4.1** | **2026-04-01** | **Phase 1-6 구현 완료: Walk-Forward, Fill Monitor, VaR/CVaR, Stress Test, Alert Escalation, Risk Dashboard, Pre-Launch Checklist (903 tests)** |
+| **v1.4.2** | **2026-04-01** | **실전/모의 전환 스위치 (테마색 구분), USD/KRW 환율, 차트 이벤트 마커 35건 (클릭→뉴스), 풀스크린, API 성능 최적화 (416ms→7ms)** |

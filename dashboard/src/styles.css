@@ -333,6 +333,13 @@ body {
   border-radius: 0;
   overflow-y: auto;
   background: var(--color-surface);
+  display: flex;
+  flex-direction: column;
+}
+
+.chart-fullscreen .recharts-responsive-container {
+  flex: 1;
+  min-height: 0;
 }
 
 /* ===========================================

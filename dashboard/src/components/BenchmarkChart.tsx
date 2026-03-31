@@ -106,7 +106,8 @@ export default function BenchmarkChart({
 
       {/* Chart */}
       {chartData.length > 0 && (
-        <ResponsiveContainer width="100%" height={fullscreen ? 500 : 280}>
+        <div style={{ flex: fullscreen ? 1 : undefined, minHeight: fullscreen ? 0 : undefined }}>
+        <ResponsiveContainer width="100%" height={fullscreen ? "100%" : 280}>
           <LineChart data={chartData} margin={{ top: 10, right: 12, bottom: 5, left: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
             <XAxis
@@ -153,6 +154,7 @@ export default function BenchmarkChart({
             )}
           </LineChart>
         </ResponsiveContainer>
+        </div>
       )}
     </div>
   );

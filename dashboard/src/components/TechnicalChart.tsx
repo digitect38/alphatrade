@@ -122,8 +122,8 @@ export default function TechnicalChart({
           </button>
         </div>
       </div>
-      <div style={{ overflow: "hidden", borderRadius: "8px" }}>
-        <ResponsiveContainer width="100%" height={fullscreen ? 600 : 360}>
+      <div style={{ overflow: "hidden", borderRadius: "8px", flex: fullscreen ? 1 : undefined, minHeight: fullscreen ? 0 : undefined }}>
+        <ResponsiveContainer width="100%" height={fullscreen ? "100%" : 360}>
           <LineChart data={chartData} margin={{ top: showEvents && visibleEvents.length > 0 ? 50 : 30, right: 16, bottom: 5, left: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-light)" />
             <XAxis
