@@ -79,7 +79,7 @@ export default function App() {
           onClose={() => setMobileNavOpen(false)}
           tradingMode={tradingMode}
         />
-        <main className="app-main">
+        <main className={`app-main ${tradingMode === "live" ? "app-main-live" : "app-main-paper"}`}>
           <h1 className="page-title">{t(titleKeys[pageKey] || "title.command")}</h1>
           {page === "command" && <CommandCenterPage t={t} />}
           {page === "dashboard" && <DashboardPage t={t} />}
