@@ -8,6 +8,7 @@ import { apiGet } from "../hooks/useApi";
 interface BenchmarkData {
   stock_code: string;
   stock_name: string;
+  sector?: string;
   period: number;
   series: Record<string, { date: string; value: number }[]>;
   summary: Record<string, number>;
@@ -73,8 +74,24 @@ export default function BenchmarkChart({
             {s.kosdaq_return >= 0 ? "+" : ""}{s.kosdaq_return}%
           </span>
         </div>
+        {s.sector_return != null && (
+          <div>
+            <span className="text-secondary">섹터평균</span>
+            <span className={s.sector_return >= 0 ? "text-profit" : "text-loss"} style={{ marginLeft: "6px" }}>
+              {s.sector_return >= 0 ? "+" : ""}{s.sector_return}%
+            </span>
+          </div>
+        )}
+        {s.portfolio_return != null && (
+          <div>
+            <span className="text-secondary">내 투자</span>
+            <span className={s.portfolio_return >= 0 ? "text-profit" : "text-loss"} style={{ marginLeft: "6px" }}>
+              {s.portfolio_return >= 0 ? "+" : ""}{s.portfolio_return}%
+            </span>
+          </div>
+        )}
         <div style={{ borderLeft: "1px solid #ddd", paddingLeft: "12px" }}>
-          <span className="text-secondary">알파(KOSPI 대비)</span>
+          <span className="text-secondary">알파(KOSPI)</span>
           <span className={`font-heavy ${s.alpha_vs_kospi >= 0 ? "text-profit" : "text-loss"}`} style={{ marginLeft: "6px" }}>
             {s.alpha_vs_kospi >= 0 ? "+" : ""}{s.alpha_vs_kospi}%p
           </span>
@@ -116,6 +133,18 @@ export default function BenchmarkChart({
               type="linear" dataKey="KOSDAQ" stroke="#2563eb"
               strokeWidth={1.5} dot={false} strokeDasharray="5 3" name="KOSDAQ"
             />
+            {data.series.sector && (
+              <Line
+                type="linear" dataKey="sector" stroke="#16a34a"
+                strokeWidth={1.5} dot={false} strokeDasharray="3 3" name={`섹터평균 (${data.sector || ""})`}
+              />
+            )}
+            {data.series.portfolio && (
+              <Line
+                type="linear" dataKey="portfolio" stroke="#d97706"
+                strokeWidth={2} dot={false} name="내 투자"
+              />
+            )}
           </LineChart>
         </ResponsiveContainer>
       )}

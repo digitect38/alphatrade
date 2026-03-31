@@ -119,42 +119,88 @@ async def api_benchmark_compare(
             "SELECT time::date as dt, close FROM ohlcv WHERE stock_code = 'KOSDAQ' AND interval = '1d' ORDER BY time DESC LIMIT $1",
             period,
         )
-        # Stock name
-        name_row = await conn.fetchrow("SELECT stock_name FROM stocks WHERE stock_code = $1", stock_code)
+        # Stock name + sector
+        name_row = await conn.fetchrow("SELECT stock_name, sector FROM stocks WHERE stock_code = $1", stock_code)
+
+        # Sector average: avg close of same-sector stocks
+        sector = name_row["sector"] if name_row else None
+        sector_rows = []
+        if sector:
+            sector_rows = await conn.fetch(
+                """
+                WITH sector_daily AS (
+                    SELECT o.time::date as dt, AVG(o.close) as avg_close
+                    FROM ohlcv o
+                    JOIN stocks s ON o.stock_code = s.stock_code
+                    WHERE s.sector = $1 AND o.interval = '1d' AND s.is_active = TRUE
+                    GROUP BY dt ORDER BY dt DESC LIMIT $2
+                )
+                SELECT dt, avg_close as close FROM sector_daily ORDER BY dt
+                """,
+                sector, period,
+            )
+
+        # My portfolio: cumulative return from snapshots
+        portfolio_rows = await conn.fetch(
+            "SELECT time::date as dt, cumulative_return as close FROM portfolio_snapshots ORDER BY time DESC LIMIT $1",
+            period,
+        )
 
     stock_name = name_row["stock_name"] if name_row else stock_code
 
-    def to_series(rows):
-        data = sorted([(str(r["dt"]), float(r["close"])) for r in rows if r["close"]], key=lambda x: x[0])
+    def to_series(rows, value_key="close"):
+        data = sorted([(str(r["dt"]), float(r[value_key])) for r in rows if r[value_key] is not None], key=lambda x: x[0])
         if not data:
             return []
         base = data[0][1]
+        if base == 0:
+            return [{"date": d, "value": 0} for d, _ in data]
         return [{"date": d, "value": round((v / base - 1) * 100, 2)} for d, v in data]
+
+    def portfolio_to_series(rows):
+        """Portfolio snapshots store cumulative_return directly (as ratio, not price)."""
+        data = sorted([(str(r["dt"]), float(r["close"])) for r in rows if r["close"] is not None], key=lambda x: x[0])
+        if not data:
+            return []
+        return [{"date": d, "value": round(v * 100, 2)} for d, v in data]
 
     stock_series = to_series(stock_rows)
     kospi_series = to_series(kospi_rows)
     kosdaq_series = to_series(kosdaq_rows)
+    sector_series = to_series(sector_rows) if sector_rows else []
+    portfolio_series = portfolio_to_series(portfolio_rows)
 
     # Calculate summary
     stock_return = stock_series[-1]["value"] if stock_series else 0
     kospi_return = kospi_series[-1]["value"] if kospi_series else 0
     kosdaq_return = kosdaq_series[-1]["value"] if kosdaq_series else 0
+    sector_return = sector_series[-1]["value"] if sector_series else None
+    portfolio_return = portfolio_series[-1]["value"] if portfolio_series else None
     alpha_vs_kospi = round(stock_return - kospi_return, 2)
     alpha_vs_kosdaq = round(stock_return - kosdaq_return, 2)
+
+    series = {
+        stock_code: stock_series,
+        "KOSPI": kospi_series,
+        "KOSDAQ": kosdaq_series,
+    }
+    if sector_series:
+        series["sector"] = sector_series
+    if portfolio_series:
+        series["portfolio"] = portfolio_series
 
     return {
         "stock_code": stock_code,
         "stock_name": stock_name,
+        "sector": sector,
         "period": period,
-        "series": {
-            stock_code: stock_series,
-            "KOSPI": kospi_series,
-            "KOSDAQ": kosdaq_series,
-        },
+        "series": series,
         "summary": {
             f"{stock_code}_return": stock_return,
             "kospi_return": kospi_return,
             "kosdaq_return": kosdaq_return,
+            "sector_return": sector_return,
+            "portfolio_return": portfolio_return,
             "alpha_vs_kospi": alpha_vs_kospi,
             "alpha_vs_kosdaq": alpha_vs_kosdaq,
         },
