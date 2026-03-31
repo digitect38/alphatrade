@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { toNumber } from "../lib/parse";
 import {
   LineChart,
   Line,
@@ -35,7 +36,7 @@ export default function TechnicalChart({
       data.map((d) => ({
         time: d.time,
         label: formatDateLabel(d.time, periodLabel),
-        close: d.close,
+        close: toNumber(d.close),
       })),
     [data, periodLabel],
   );

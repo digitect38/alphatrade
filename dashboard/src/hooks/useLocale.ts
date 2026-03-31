@@ -89,6 +89,8 @@ const translations: Record<string, Record<Locale, string>> = {
   "analysis.currentPrice": { en: "Current Price", ko: "현재가" },
   "analysis.priceChart": { en: "Price Chart", ko: "가격 차트" },
   "analysis.period": { en: "Period", ko: "기간" },
+  "analysis.highPoint": { en: "High", ko: "최고점" },
+  "analysis.lowPoint": { en: "Low", ko: "최저점" },
   "analysis.scores": { en: "Scores", ko: "점수" },
   "analysis.trend": { en: "Trend", ko: "추세" },
   "analysis.momentum": { en: "Momentum", ko: "모멘텀" },
