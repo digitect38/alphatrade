@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { toNumber } from "../lib/parse";
 import {
   LineChart,
@@ -9,11 +9,10 @@ import {
   Tooltip,
   ResponsiveContainer,
   Legend,
-  Brush,
 } from "recharts";
 import type { OHLCVRecord } from "../types";
 
-type ChartPoint = { time: string; close: number; };
+type ChartPoint = { time: string; close: number };
 
 export default function TechnicalChart({
   data, sma20, sma60, periodLabel, t,
@@ -24,62 +23,85 @@ export default function TechnicalChart({
   periodLabel?: string;
   t: (k: string) => string;
 }) {
-  const chartData = useMemo<ChartPoint[]>(() => {
+  const allData = useMemo<ChartPoint[]>(() => {
     const src = data.map((d) => ({ time: d.time, close: toNumber(d.close) }));
     return downsample(src, maxPoints(periodLabel));
   }, [data, periodLabel]);
 
+  // Range slider state
+  const [rangeStart, setRangeStart] = useState(0);
+  const [rangeEnd, setRangeEnd] = useState(100); // percentage
+
+  // Reset on period change
+  useMemo(() => { setRangeStart(0); setRangeEnd(100); }, [periodLabel]);
+
+  // Slice data by range
+  const chartData = useMemo(() => {
+    if (rangeStart === 0 && rangeEnd === 100) return allData;
+    const startIdx = Math.floor((rangeStart / 100) * allData.length);
+    const endIdx = Math.max(startIdx + 2, Math.ceil((rangeEnd / 100) * allData.length));
+    return allData.slice(startIdx, endIdx);
+  }, [allData, rangeStart, rangeEnd]);
+
+  // Extrema from visible data
   const extrema = useMemo(() => {
     if (chartData.length < 2) return null;
     const latest = chartData[chartData.length - 1];
-    let minIdx = 0, maxIdx = 0;
+    let minI = 0, maxI = 0;
     for (let i = 1; i < chartData.length; i++) {
-      if (chartData[i].close < chartData[minIdx].close) minIdx = i;
-      if (chartData[i].close > chartData[maxIdx].close) maxIdx = i;
+      if (chartData[i].close < chartData[minI].close) minI = i;
+      if (chartData[i].close > chartData[maxI].close) maxI = i;
     }
-    if (chartData[minIdx].close === chartData[maxIdx].close) return null;
-    return { minIdx, maxIdx, latest };
+    if (chartData[minI].close === chartData[maxI].close) return null;
+    return { minIdx: minI, maxIdx: maxI, latest };
   }, [chartData]);
 
-  const yDomain = useMemo(() => {
+  // Y domain from visible data — auto zoom
+  const yDomain = useMemo((): [number, number] => {
     const closes = chartData.map((d) => d.close).filter(Number.isFinite);
-    if (!closes.length) return ["auto", "auto"] as [string, string];
+    if (!closes.length) return [0, 100];
     const min = Math.min(...closes), max = Math.max(...closes);
     const span = Math.max(max - min, max * 0.02, 1);
-    return [roundAxis(min - span * 0.12, "down"), roundAxis(max + span * 0.18, "up")] as [number, number];
+    return [roundAxis(min - span * 0.12, "down"), roundAxis(max + span * 0.18, "up")];
   }, [chartData]);
 
-  // Custom dot renderer — show only high/low points
   const renderDot = (props: any) => {
     if (!extrema) return null;
     const { cx, cy, index } = props;
     if (index !== extrema.maxIdx && index !== extrema.minIdx) return null;
-
     const isHigh = index === extrema.maxIdx;
     const pt = chartData[index];
+    if (!pt) return null;
     const pct = ((pt.close / extrema.latest.close) - 1) * 100;
     const color = isHigh ? "#dc2626" : "#2563eb";
     const label = `${pt.close.toLocaleString()}원 (${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%)`;
-    const yOff = isHigh ? -16 : 20;
-
     return (
-      <g key={`extrema-${index}`}>
+      <g key={`ex-${index}`}>
         <circle cx={cx} cy={cy} r={5} fill={color} stroke="#fff" strokeWidth={2} />
-        <text x={cx} y={cy + yOff} textAnchor="middle" fill={color} fontSize={11} fontWeight={700}>
+        <text x={cx} y={cy + (isHigh ? -14 : 18)} textAnchor="middle" fill={color} fontSize={11} fontWeight={700}>
           {label}
         </text>
       </g>
     );
   };
 
+  const isZoomed = rangeStart > 0 || rangeEnd < 100;
+
   return (
     <div className="card">
       <div className="card-title-row">
         <h3 className="card-title">{t("analysis.priceChart")}</h3>
-        {periodLabel && <span className="text-secondary">{t("analysis.period")}: {periodLabel}</span>}
+        <div className="flex gap-sm items-center">
+          {periodLabel && <span className="text-secondary">{t("analysis.period")}: {periodLabel}</span>}
+          {isZoomed && (
+            <button className="btn btn-sm" style={{ fontSize: "11px" }} onClick={() => { setRangeStart(0); setRangeEnd(100); }}>
+              Reset Zoom
+            </button>
+          )}
+        </div>
       </div>
       <div style={{ overflow: "hidden", borderRadius: "8px" }}>
-        <ResponsiveContainer width="100%" height={380}>
+        <ResponsiveContainer width="100%" height={360}>
           <LineChart data={chartData} margin={{ top: 30, right: 16, bottom: 5, left: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-light)" />
             <XAxis
@@ -92,6 +114,7 @@ export default function TechnicalChart({
             <YAxis
               fontSize={11}
               domain={yDomain}
+              tickCount={6}
               tickFormatter={(v: number) => Math.round(v).toLocaleString()}
               width={80}
             />
@@ -110,19 +133,26 @@ export default function TechnicalChart({
               connectNulls
               name={t("analysis.currentPrice")}
             />
-            {/* Brush for zoom/pan */}
-            <Brush
-              dataKey="time"
-              height={28}
-              stroke="var(--color-accent)"
-              fill="#f8fafc"
-              tickFormatter={(v: string) => fmtDate(v, periodLabel)}
-            />
           </LineChart>
         </ResponsiveContainer>
       </div>
+      {/* Range slider for zoom */}
+      <div className="flex gap-sm items-center" style={{ padding: "8px 0", fontSize: "11px" }}>
+        <span className="text-secondary">Zoom:</span>
+        <input
+          type="range" min={0} max={Math.max(0, rangeEnd - 5)} value={rangeStart}
+          onChange={(e) => setRangeStart(Number(e.target.value))}
+          style={{ flex: 1, accentColor: "var(--color-accent)" }}
+        />
+        <input
+          type="range" min={Math.min(100, rangeStart + 5)} max={100} value={rangeEnd}
+          onChange={(e) => setRangeEnd(Number(e.target.value))}
+          style={{ flex: 1, accentColor: "var(--color-accent)" }}
+        />
+        <span className="text-secondary">{chartData.length}pts</span>
+      </div>
       {(sma20 || sma60) && (
-        <div className="flex gap-xl text-secondary" style={{ marginTop: "8px", fontSize: "12px" }}>
+        <div className="flex gap-xl text-secondary" style={{ marginTop: "4px", fontSize: "12px" }}>
           {sma20 && <span>SMA20: {sma20.toLocaleString()}</span>}
           {sma60 && <span>SMA60: {sma60.toLocaleString()}</span>}
         </div>
@@ -131,14 +161,10 @@ export default function TechnicalChart({
   );
 }
 
-/* === Helpers === */
-
 function fmtDate(value: string, period?: string) {
   const d = new Date(value);
-  if (period === "1Y" || period === "3Y" || period === "5Y" || period === "10Y" || period === "ALL")
+  if (["1Y","3Y","5Y","10Y","ALL"].includes(period || ""))
     return d.toLocaleDateString("ko-KR", { year: "2-digit", month: "short" });
-  if (period === "6M")
-    return d.toLocaleDateString("ko-KR", { month: "short", day: "numeric" });
   return d.toLocaleDateString("ko-KR", { month: "short", day: "numeric" });
 }
 
