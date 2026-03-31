@@ -9,22 +9,14 @@ import {
   Tooltip,
   ResponsiveContainer,
   Legend,
-  ReferenceDot,
+  Brush,
 } from "recharts";
 import type { OHLCVRecord } from "../types";
 
-type ChartPoint = {
-  time: string;
-  label: string;
-  close: number;
-};
+type ChartPoint = { time: string; close: number; };
 
 export default function TechnicalChart({
-  data,
-  sma20,
-  sma60,
-  periodLabel,
-  t,
+  data, sma20, sma60, periodLabel, t,
 }: {
   data: OHLCVRecord[];
   sma20?: number | null;
@@ -32,73 +24,53 @@ export default function TechnicalChart({
   periodLabel?: string;
   t: (k: string) => string;
 }) {
-  const sourceData = useMemo<ChartPoint[]>(
-    () =>
-      data.map((d) => ({
-        time: d.time,
-        label: formatDateLabel(d.time, periodLabel),
-        close: toNumber(d.close),
-      })),
-    [data, periodLabel],
-  );
-
-  const chartData = useMemo<ChartPoint[]>(
-    () => downsampleChartData(sourceData, maxChartPoints(periodLabel)),
-    [sourceData, periodLabel],
-  );
+  const chartData = useMemo<ChartPoint[]>(() => {
+    const src = data.map((d) => ({ time: d.time, close: toNumber(d.close) }));
+    return downsample(src, maxPoints(periodLabel));
+  }, [data, periodLabel]);
 
   const extrema = useMemo(() => {
-    if (!chartData.length) return null;
-
+    if (chartData.length < 2) return null;
     const latest = chartData[chartData.length - 1];
-    let minPoint = chartData[0];
-    let maxPoint = chartData[0];
-
-    for (const point of chartData) {
-      if (point.close < minPoint.close) minPoint = point;
-      if (point.close > maxPoint.close) maxPoint = point;
+    let minIdx = 0, maxIdx = 0;
+    for (let i = 1; i < chartData.length; i++) {
+      if (chartData[i].close < chartData[minIdx].close) minIdx = i;
+      if (chartData[i].close > chartData[maxIdx].close) maxIdx = i;
     }
-
-    // Skip if min == max (flat line)
-    if (minPoint.close === maxPoint.close) return null;
-
-    return {
-      latest,
-      minPoint,
-      maxPoint,
-      minVsCurrentPct: computeChangePct(minPoint.close, latest.close),
-      maxVsCurrentPct: computeChangePct(maxPoint.close, latest.close),
-    };
+    if (chartData[minIdx].close === chartData[maxIdx].close) return null;
+    return { minIdx, maxIdx, latest };
   }, [chartData]);
 
   const yDomain = useMemo(() => {
-    if (!chartData.length) return ["auto", "auto"] as [string, string];
-    const closes = chartData.map((item) => item.close).filter((value) => Number.isFinite(value));
+    const closes = chartData.map((d) => d.close).filter(Number.isFinite);
     if (!closes.length) return ["auto", "auto"] as [string, string];
-
-    const minPrice = Math.min(...closes);
-    const maxPrice = Math.max(...closes);
-    const rawSpan = maxPrice - minPrice;
-    const fallbackSpan = Math.max(maxPrice * 0.02, 1);
-    const span = Math.max(rawSpan, fallbackSpan);
-    // Extra top padding for high/low labels
-    const topPadding = span * 0.15;
-    const bottomPadding = span * 0.12;
-    const lower = Math.max(0, minPrice - bottomPadding);
-    const upper = maxPrice + topPadding;
-
-    return [roundDownAxis(lower), roundUpAxis(upper)] as [number, number];
+    const min = Math.min(...closes), max = Math.max(...closes);
+    const span = Math.max(max - min, max * 0.02, 1);
+    return [roundAxis(min - span * 0.12, "down"), roundAxis(max + span * 0.18, "up")] as [number, number];
   }, [chartData]);
 
-  const xTickInterval = useMemo(() => tickIntervalForLength(chartData.length), [chartData.length]);
+  // Custom dot renderer — show only high/low points
+  const renderDot = (props: any) => {
+    if (!extrema) return null;
+    const { cx, cy, index } = props;
+    if (index !== extrema.maxIdx && index !== extrema.minIdx) return null;
 
-  // Custom label for ReferenceDot
-  const highLabel = extrema
-    ? `${extrema.maxPoint.close.toLocaleString()}원 (${formatSignedPct(extrema.maxVsCurrentPct)})`
-    : "";
-  const lowLabel = extrema
-    ? `${extrema.minPoint.close.toLocaleString()}원 (${formatSignedPct(extrema.minVsCurrentPct)})`
-    : "";
+    const isHigh = index === extrema.maxIdx;
+    const pt = chartData[index];
+    const pct = ((pt.close / extrema.latest.close) - 1) * 100;
+    const color = isHigh ? "#dc2626" : "#2563eb";
+    const label = `${pt.close.toLocaleString()}원 (${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%)`;
+    const yOff = isHigh ? -16 : 20;
+
+    return (
+      <g key={`extrema-${index}`}>
+        <circle cx={cx} cy={cy} r={5} fill={color} stroke="#fff" strokeWidth={2} />
+        <text x={cx} y={cy + yOff} textAnchor="middle" fill={color} fontSize={11} fontWeight={700}>
+          {label}
+        </text>
+      </g>
+    );
+  };
 
   return (
     <div className="card">
@@ -107,74 +79,47 @@ export default function TechnicalChart({
         {periodLabel && <span className="text-secondary">{t("analysis.period")}: {periodLabel}</span>}
       </div>
       <div style={{ overflow: "hidden", borderRadius: "8px" }}>
-      <ResponsiveContainer width="100%" height={340}>
-        <LineChart data={chartData} margin={{ top: 30, right: 12, bottom: 20, left: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-light)" />
-          <XAxis
-            dataKey="time"
-            fontSize={11}
-            interval={xTickInterval}
-            minTickGap={chartData.length <= 40 ? 16 : 28}
-            tickFormatter={(value: string) => formatDateLabel(value, periodLabel)}
-          />
-          <YAxis
-            fontSize={11}
-            domain={yDomain}
-            tickFormatter={(value: number) => `${Math.round(value).toLocaleString()}`}
-            width={80}
-          />
-          <Tooltip formatter={(value: number) => `${Number(value).toLocaleString()}원`} />
-          <Legend />
-          <Line
-            type="linear"
-            isAnimationActive={false}
-            dataKey="close"
-            stroke="var(--color-accent)"
-            strokeWidth={2}
-            dot={false}
-            connectNulls
-            name={t("analysis.currentPrice")}
-          />
-          {/* High point marker */}
-          {extrema && (
-            <ReferenceDot
-              x={extrema.maxPoint.time}
-              y={extrema.maxPoint.close}
-              r={5}
-              fill="#dc2626"
-              stroke="#fff"
-              strokeWidth={2}
-              label={{
-                value: highLabel,
-                position: "top",
-                fill: "#dc2626",
-                fontSize: 11,
-                fontWeight: 700,
-                offset: 10,
-              }}
+        <ResponsiveContainer width="100%" height={380}>
+          <LineChart data={chartData} margin={{ top: 30, right: 16, bottom: 5, left: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-light)" />
+            <XAxis
+              dataKey="time"
+              fontSize={11}
+              interval={tickInterval(chartData.length)}
+              minTickGap={chartData.length <= 40 ? 16 : 28}
+              tickFormatter={(v: string) => fmtDate(v, periodLabel)}
             />
-          )}
-          {/* Low point marker */}
-          {extrema && (
-            <ReferenceDot
-              x={extrema.minPoint.time}
-              y={extrema.minPoint.close}
-              r={5}
-              fill="#2563eb"
-              stroke="#fff"
-              strokeWidth={2}
-              label={{
-                value: lowLabel,
-                position: "bottom",
-                fill: "#2563eb",
-                fontSize: 11,
-                fontWeight: 700,
-                offset: 10,
-              }}
+            <YAxis
+              fontSize={11}
+              domain={yDomain}
+              tickFormatter={(v: number) => Math.round(v).toLocaleString()}
+              width={80}
             />
-          )}
-        </LineChart>
-      </ResponsiveContainer>
+            <Tooltip
+              formatter={(v: number) => `${Number(v).toLocaleString()}원`}
+              labelFormatter={(v: string) => new Date(v).toLocaleDateString("ko-KR")}
+            />
+            <Legend />
+            <Line
+              type="linear"
+              isAnimationActive={false}
+              dataKey="close"
+              stroke="var(--color-accent)"
+              strokeWidth={2}
+              dot={renderDot as any}
+              connectNulls
+              name={t("analysis.currentPrice")}
+            />
+            {/* Brush for zoom/pan */}
+            <Brush
+              dataKey="time"
+              height={28}
+              stroke="var(--color-accent)"
+              fill="#f8fafc"
+              tickFormatter={(v: string) => fmtDate(v, periodLabel)}
+            />
+          </LineChart>
+        </ResponsiveContainer>
       </div>
       {(sma20 || sma60) && (
         <div className="flex gap-xl text-secondary" style={{ marginTop: "8px", fontSize: "12px" }}>
@@ -186,72 +131,39 @@ export default function TechnicalChart({
   );
 }
 
-function formatDateLabel(value: string, periodLabel?: string) {
-  const date = new Date(value);
-  if (periodLabel === "1Y") return date.toLocaleDateString("ko-KR", { year: "2-digit", month: "short" });
-  if (periodLabel === "6M") return date.toLocaleDateString("ko-KR", { month: "short", day: "numeric" });
-  if (periodLabel === "3Y" || periodLabel === "5Y" || periodLabel === "10Y" || periodLabel === "ALL")
-    return date.toLocaleDateString("ko-KR", { year: "2-digit", month: "short" });
-  return date.toLocaleDateString("ko-KR", { month: "short", day: "numeric" });
+/* === Helpers === */
+
+function fmtDate(value: string, period?: string) {
+  const d = new Date(value);
+  if (period === "1Y" || period === "3Y" || period === "5Y" || period === "10Y" || period === "ALL")
+    return d.toLocaleDateString("ko-KR", { year: "2-digit", month: "short" });
+  if (period === "6M")
+    return d.toLocaleDateString("ko-KR", { month: "short", day: "numeric" });
+  return d.toLocaleDateString("ko-KR", { month: "short", day: "numeric" });
 }
 
-function roundDownAxis(value: number) {
-  const unit = axisUnit(value);
-  return Math.floor(value / unit) * unit;
+function roundAxis(value: number, dir: "up" | "down") {
+  const u = value >= 100000 ? 5000 : value >= 10000 ? 1000 : value >= 1000 ? 100 : 10;
+  return dir === "up" ? Math.ceil(value / u) * u : Math.max(0, Math.floor(value / u) * u);
 }
 
-function roundUpAxis(value: number) {
-  const unit = axisUnit(value);
-  return Math.ceil(value / unit) * unit;
+function maxPoints(p?: string) {
+  const m: Record<string, number> = { "1M":120,"3M":140,"6M":150,"1Y":160,"3Y":180,"5Y":200,"10Y":220,"ALL":220 };
+  return m[p || ""] || 120;
 }
 
-function axisUnit(value: number) {
-  if (value >= 100000) return 5000;
-  if (value >= 10000) return 1000;
-  if (value >= 1000) return 100;
-  if (value >= 100) return 10;
-  return 1;
+function downsample<T extends { close: number; time: string }>(data: T[], max: number): T[] {
+  if (data.length <= max) return data;
+  const step = data.length / max;
+  const r: T[] = [];
+  for (let i = 0; i < max; i++) r.push(data[Math.min(Math.round(i * step), data.length - 1)]);
+  if (r[r.length - 1] !== data[data.length - 1]) r.push(data[data.length - 1]);
+  return r;
 }
 
-function computeChangePct(base: number, current: number) {
-  if (!base) return 0;
-  return ((current / base) - 1) * 100;
-}
-
-function formatSignedPct(value: number) {
-  const rounded = value.toFixed(1);
-  return `${value >= 0 ? "+" : ""}${rounded}%`;
-}
-
-function maxChartPoints(periodLabel?: string) {
-  if (periodLabel === "1M") return 120;
-  if (periodLabel === "3M") return 140;
-  if (periodLabel === "6M") return 150;
-  if (periodLabel === "1Y") return 160;
-  if (periodLabel === "3Y") return 180;
-  if (periodLabel === "5Y") return 200;
-  if (periodLabel === "10Y" || periodLabel === "ALL") return 220;
-  return 120;
-}
-
-function downsampleChartData<T extends { close: number; time: string }>(data: T[], maxPoints: number): T[] {
-  if (data.length <= maxPoints) return data;
-  const step = data.length / maxPoints;
-  const result: T[] = [];
-  for (let i = 0; i < maxPoints; i++) {
-    const idx = Math.min(Math.round(i * step), data.length - 1);
-    result.push(data[idx]);
-  }
-  if (result[result.length - 1] !== data[data.length - 1]) {
-    result.push(data[data.length - 1]);
-  }
-  return result;
-}
-
-function tickIntervalForLength(length: number) {
-  if (length <= 30) return "preserveEnd" as const;
-  if (length <= 80) return 8;
-  if (length <= 140) return 16;
-  if (length <= 200) return 24;
-  return 32;
+function tickInterval(len: number) {
+  if (len <= 30) return "preserveEnd" as const;
+  if (len <= 80) return 8;
+  if (len <= 140) return 16;
+  return 24;
 }
