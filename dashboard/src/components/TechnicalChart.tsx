@@ -9,6 +9,7 @@ import {
   Tooltip,
   ResponsiveContainer,
   Legend,
+  ReferenceDot,
 } from "recharts";
 import type { OHLCVRecord } from "../types";
 
@@ -47,16 +48,19 @@ export default function TechnicalChart({
   );
 
   const extrema = useMemo(() => {
-    if (!sourceData.length) return null;
+    if (!chartData.length) return null;
 
-    const latest = sourceData[sourceData.length - 1];
-    let minPoint = sourceData[0];
-    let maxPoint = sourceData[0];
+    const latest = chartData[chartData.length - 1];
+    let minPoint = chartData[0];
+    let maxPoint = chartData[0];
 
-    for (const point of sourceData) {
+    for (const point of chartData) {
       if (point.close < minPoint.close) minPoint = point;
       if (point.close > maxPoint.close) maxPoint = point;
     }
+
+    // Skip if min == max (flat line)
+    if (minPoint.close === maxPoint.close) return null;
 
     return {
       latest,
@@ -65,13 +69,11 @@ export default function TechnicalChart({
       minVsCurrentPct: computeChangePct(minPoint.close, latest.close),
       maxVsCurrentPct: computeChangePct(maxPoint.close, latest.close),
     };
-  }, [sourceData]);
+  }, [chartData]);
 
   const yDomain = useMemo(() => {
     if (!chartData.length) return ["auto", "auto"] as [string, string];
-
     const closes = chartData.map((item) => item.close).filter((value) => Number.isFinite(value));
-
     if (!closes.length) return ["auto", "auto"] as [string, string];
 
     const minPrice = Math.min(...closes);
@@ -79,15 +81,24 @@ export default function TechnicalChart({
     const rawSpan = maxPrice - minPrice;
     const fallbackSpan = Math.max(maxPrice * 0.02, 1);
     const span = Math.max(rawSpan, fallbackSpan);
-    const paddingRatio = 0.08;
-    const padding = span * paddingRatio;
-    const lower = Math.max(0, minPrice - padding);
-    const upper = maxPrice + padding;
+    // Extra top padding for high/low labels
+    const topPadding = span * 0.15;
+    const bottomPadding = span * 0.12;
+    const lower = Math.max(0, minPrice - bottomPadding);
+    const upper = maxPrice + topPadding;
 
     return [roundDownAxis(lower), roundUpAxis(upper)] as [number, number];
   }, [chartData]);
 
   const xTickInterval = useMemo(() => tickIntervalForLength(chartData.length), [chartData.length]);
+
+  // Custom label for ReferenceDot
+  const highLabel = extrema
+    ? `${extrema.maxPoint.close.toLocaleString()}원 (${formatSignedPct(extrema.maxVsCurrentPct)})`
+    : "";
+  const lowLabel = extrema
+    ? `${extrema.minPoint.close.toLocaleString()}원 (${formatSignedPct(extrema.minVsCurrentPct)})`
+    : "";
 
   return (
     <div className="card">
@@ -95,21 +106,9 @@ export default function TechnicalChart({
         <h3 className="card-title">{t("analysis.priceChart")}</h3>
         {periodLabel && <span className="text-secondary">{t("analysis.period")}: {periodLabel}</span>}
       </div>
-      {extrema ? (
-        <div className="analysis-chart-meta">
-          <span className="analysis-chart-meta-item">
-            <strong>{t("analysis.highPoint")}</strong> {extrema.maxPoint.close.toLocaleString()}{t("common.won")}
-            <span className="text-secondary"> ({formatSignedPct(extrema.maxVsCurrentPct)})</span>
-          </span>
-          <span className="analysis-chart-meta-item">
-            <strong>{t("analysis.lowPoint")}</strong> {extrema.minPoint.close.toLocaleString()}{t("common.won")}
-            <span className="text-secondary"> ({formatSignedPct(extrema.minVsCurrentPct)})</span>
-          </span>
-        </div>
-      ) : null}
       <div style={{ overflow: "hidden", borderRadius: "8px" }}>
-      <ResponsiveContainer width="100%" height={320}>
-        <LineChart data={chartData} margin={{ top: 20, right: 12, bottom: 20, left: 0 }}>
+      <ResponsiveContainer width="100%" height={340}>
+        <LineChart data={chartData} margin={{ top: 30, right: 12, bottom: 20, left: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-light)" />
           <XAxis
             dataKey="time"
@@ -131,12 +130,49 @@ export default function TechnicalChart({
             isAnimationActive={false}
             dataKey="close"
             stroke="var(--color-accent)"
+            strokeWidth={2}
+            dot={false}
+            connectNulls
+            name={t("analysis.currentPrice")}
+          />
+          {/* High point marker */}
+          {extrema && (
+            <ReferenceDot
+              x={extrema.maxPoint.time}
+              y={extrema.maxPoint.close}
+              r={5}
+              fill="#dc2626"
+              stroke="#fff"
               strokeWidth={2}
-              dot={false}
-              connectNulls
-              name={t("analysis.currentPrice")}
+              label={{
+                value: highLabel,
+                position: "top",
+                fill: "#dc2626",
+                fontSize: 11,
+                fontWeight: 700,
+                offset: 10,
+              }}
             />
-          {/* ExtremaOverlay temporarily disabled for chart overflow debugging */}
+          )}
+          {/* Low point marker */}
+          {extrema && (
+            <ReferenceDot
+              x={extrema.minPoint.time}
+              y={extrema.minPoint.close}
+              r={5}
+              fill="#2563eb"
+              stroke="#fff"
+              strokeWidth={2}
+              label={{
+                value: lowLabel,
+                position: "bottom",
+                fill: "#2563eb",
+                fontSize: 11,
+                fontWeight: 700,
+                offset: 10,
+              }}
+            />
+          )}
         </LineChart>
       </ResponsiveContainer>
       </div>
@@ -152,19 +188,10 @@ export default function TechnicalChart({
 
 function formatDateLabel(value: string, periodLabel?: string) {
   const date = new Date(value);
-
-  if (periodLabel === "1Y") {
+  if (periodLabel === "1Y") return date.toLocaleDateString("ko-KR", { year: "2-digit", month: "short" });
+  if (periodLabel === "6M") return date.toLocaleDateString("ko-KR", { month: "short", day: "numeric" });
+  if (periodLabel === "3Y" || periodLabel === "5Y" || periodLabel === "10Y" || periodLabel === "ALL")
     return date.toLocaleDateString("ko-KR", { year: "2-digit", month: "short" });
-  }
-
-  if (periodLabel === "6M") {
-    return date.toLocaleDateString("ko-KR", { month: "short", day: "numeric" });
-  }
-
-  if (periodLabel === "3Y" || periodLabel === "5Y" || periodLabel === "10Y" || periodLabel === "ALL") {
-    return date.toLocaleDateString("ko-KR", { year: "2-digit", month: "short" });
-  }
-
   return date.toLocaleDateString("ko-KR", { month: "short", day: "numeric" });
 }
 
@@ -192,10 +219,9 @@ function computeChangePct(base: number, current: number) {
 }
 
 function formatSignedPct(value: number) {
-  const rounded = value.toFixed(2);
+  const rounded = value.toFixed(1);
   return `${value >= 0 ? "+" : ""}${rounded}%`;
 }
-
 
 function maxChartPoints(periodLabel?: string) {
   if (periodLabel === "1M") return 120;
@@ -229,4 +255,3 @@ function tickIntervalForLength(length: number) {
   if (length <= 200) return 24;
   return 32;
 }
-
