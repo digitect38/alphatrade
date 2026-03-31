@@ -124,7 +124,7 @@ export default function TechnicalChart({
       </div>
       <div style={{ overflow: "hidden", borderRadius: "8px" }}>
         <ResponsiveContainer width="100%" height={fullscreen ? 600 : 360}>
-          <LineChart data={chartData} margin={{ top: 30, right: 16, bottom: 5, left: 0 }}>
+          <LineChart data={chartData} margin={{ top: showEvents && visibleEvents.length > 0 ? 50 : 30, right: 16, bottom: 5, left: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-light)" />
             <XAxis
               dataKey="time"
@@ -155,7 +155,7 @@ export default function TechnicalChart({
               connectNulls
               name={t("analysis.currentPrice")}
             />
-            {visibleEvents.map((evt) => {
+            {visibleEvents.map((evt, evtIdx) => {
               // Find closest chart point to event date (handles downsampled data)
               let matchTime: string | null = null;
               let minDist = Infinity;
@@ -164,21 +164,36 @@ export default function TechnicalChart({
                 const dist = Math.abs(new Date(d.time).getTime() - evtMs);
                 if (dist < minDist) { minDist = dist; matchTime = d.time; }
               }
-              // Only show if within 5 days of actual event
               if (!matchTime || minDist > 5 * 86400000) return null;
+              // Alternate label Y offset: cycle through 4 positions to avoid overlap
+              const offsets = [6, 18, 30, 42];
+              const yOff = offsets[evtIdx % offsets.length];
               return (
                 <ReferenceLine
                   key={evt.date}
                   x={matchTime}
                   stroke={getEventColor(evt.category)}
                   strokeDasharray="4 3"
-                  strokeWidth={1.5}
-                  label={{
-                    value: evt.label,
-                    position: "top",
-                    fill: getEventColor(evt.category),
-                    fontSize: 10,
-                    fontWeight: 600,
+                  strokeWidth={1}
+                  strokeOpacity={0.6}
+                  label={({ viewBox }: any) => {
+                    const x = viewBox?.x ?? 0;
+                    return (
+                      <g
+                        style={{ cursor: "pointer" }}
+                        onClick={() => window.open(evt.url, "_blank", "noopener")}
+                      >
+                        <text
+                          x={x} y={yOff}
+                          textAnchor="middle"
+                          fill={getEventColor(evt.category)}
+                          fontSize={9}
+                          fontWeight={600}
+                        >
+                          {evt.label}
+                        </text>
+                      </g>
+                    );
                   }}
                 />
               );
@@ -222,9 +237,17 @@ export default function TechnicalChart({
           </div>
           <div className="flex gap-sm flex-wrap">
             {visibleEvents.map((e) => (
-              <span key={e.date} title={e.description} style={{ color: getEventColor(e.category), cursor: "help", padding: "1px 4px", background: "#f8f8f8", borderRadius: 3 }}>
+              <a
+                key={e.date}
+                href={e.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                title={e.description}
+                className="event-chip"
+                style={{ color: getEventColor(e.category), borderColor: getEventColor(e.category) }}
+              >
                 {e.date.slice(5)} {e.label}
-              </span>
+              </a>
             ))}
           </div>
         </div>
