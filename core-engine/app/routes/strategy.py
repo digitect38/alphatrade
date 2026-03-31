@@ -140,9 +140,10 @@ async def api_benchmark_compare(
                 sector, period,
             )
 
-        # My portfolio: cumulative return from snapshots
+        # My portfolio: use total_value (like a price) for proper normalization
         portfolio_rows = await conn.fetch(
-            "SELECT time::date as dt, cumulative_return as close FROM portfolio_snapshots ORDER BY time DESC LIMIT $1",
+            """SELECT DISTINCT ON (time::date) time::date as dt, total_value as close
+            FROM portfolio_snapshots ORDER BY time::date DESC, time DESC LIMIT $1""",
             period,
         )
 
@@ -150,25 +151,18 @@ async def api_benchmark_compare(
 
     def to_series(rows, value_key="close"):
         data = sorted([(str(r["dt"]), float(r[value_key])) for r in rows if r[value_key] is not None], key=lambda x: x[0])
-        if not data:
+        if not data or len(data) < 2:
             return []
         base = data[0][1]
         if base == 0:
-            return [{"date": d, "value": 0} for d, _ in data]
-        return [{"date": d, "value": round((v / base - 1) * 100, 2)} for d, v in data]
-
-    def portfolio_to_series(rows):
-        """Portfolio snapshots store cumulative_return directly (as ratio, not price)."""
-        data = sorted([(str(r["dt"]), float(r["close"])) for r in rows if r["close"] is not None], key=lambda x: x[0])
-        if not data:
             return []
-        return [{"date": d, "value": round(v * 100, 2)} for d, v in data]
+        return [{"date": d, "value": round((v / base - 1) * 100, 2)} for d, v in data]
 
     stock_series = to_series(stock_rows)
     kospi_series = to_series(kospi_rows)
     kosdaq_series = to_series(kosdaq_rows)
     sector_series = to_series(sector_rows) if sector_rows else []
-    portfolio_series = portfolio_to_series(portfolio_rows)
+    portfolio_series = to_series(portfolio_rows)
 
     # Calculate summary
     stock_return = stock_series[-1]["value"] if stock_series else 0
