@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import DirectionValue from "../components/DirectionValue";
 import { apiGet, apiPost } from "../hooks/useApi";
+import { toNum, formatNumber, formatCompact } from "../lib/formatting";
 import { eventTypeLabel, orderStatusLabel } from "../lib/labels";
+import { EXECUTION_ISSUE_STATUSES } from "../lib/statusMapping";
 import type { OrderHistoryItem } from "../types";
 
 interface Mover {
@@ -23,7 +25,7 @@ interface EventCandidate {
 
 type MonitorTab = "movers" | "catalysts" | "tradeable" | "blocked" | "issues";
 
-const ISSUE_STATUSES = new Set(["REJECTED", "BLOCKED", "FAILED", "UNKNOWN"]);
+// EXECUTION_ISSUE_STATUSES → use EXECUTION_ISSUE_STATUSES from lib/statusMapping
 
 export default function MonitorPage({ t: _t, initialTab }: { t: (k: string) => string; initialTab?: string }) {
   const [tab, setTab] = useState<MonitorTab>((initialTab as MonitorTab) || "movers");
@@ -45,7 +47,7 @@ export default function MonitorPage({ t: _t, initialTab }: { t: (k: string) => s
     ]).catch(() => {}).finally(() => setLoading(false));
   }, []);
 
-  const toNum = (v: number | string | undefined) => typeof v === "number" ? v : Number(v || 0);
+  // toNum imported from lib/formatting
 
   const activeMovers = useMemo(() =>
     movers.filter((m) => Math.abs(toNum(m.change_pct)) >= 0.5)
@@ -62,13 +64,13 @@ export default function MonitorPage({ t: _t, initialTab }: { t: (k: string) => s
     [candidates]);
 
   const blocked = useMemo(() => {
-    const orderCodes = new Set(orders.filter((o) => ISSUE_STATUSES.has(o.status)).map((o) => o.stock_code));
+    const orderCodes = new Set(orders.filter((o) => EXECUTION_ISSUE_STATUSES.has(o.status)).map((o) => o.stock_code));
     return candidates.filter((c) => orderCodes.has(c.stock_code) || c.priority < 30)
       .sort((a, b) => b.priority - a.priority);
   }, [candidates, orders]);
 
   const issueOrders = useMemo(() =>
-    orders.filter((o) => ISSUE_STATUSES.has(o.status)),
+    orders.filter((o) => EXECUTION_ISSUE_STATUSES.has(o.status)),
     [orders]);
 
   const goAnalysis = (code: string) => { window.location.hash = `analysis/${code}`; };
@@ -82,8 +84,8 @@ export default function MonitorPage({ t: _t, initialTab }: { t: (k: string) => s
     { key: "issues", label: _t("command.executionIssues"), count: issueOrders.length },
   ];
 
-  const fmt = (v: number) => v.toLocaleString("ko-KR", { maximumFractionDigits: 0 });
-  const fmtCompact = (v: number) => v >= 1e9 ? `${(v/1e9).toFixed(1)}B` : v >= 1e6 ? `${(v/1e6).toFixed(1)}M` : v >= 1e3 ? `${(v/1e3).toFixed(1)}K` : `${v}`;
+  const fmt = formatNumber;
+  const fmtCompact = formatCompact;
 
   return (
     <div className="page-content">

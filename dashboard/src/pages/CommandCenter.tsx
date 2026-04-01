@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import DirectionValue from "../components/DirectionValue";
 import { apiGet, apiPost } from "../hooks/useApi";
 import { useWebSocket } from "../hooks/useWebSocket";
+import { toNum, formatSigned, formatNumber, formatCompact, formatDateTime } from "../lib/formatting";
 import { eventTypeLabel, orderStatusLabel } from "../lib/labels";
+import { EXECUTION_ISSUE_STATUSES, EXECUTION_ACTIVE_STATUSES, toneForLane, toneForOrder } from "../lib/statusMapping";
 import type { HealthStatus, OrderHistoryItem } from "../types";
 
 interface Mover {
@@ -39,7 +41,7 @@ interface NewsItem {
   url: string;
 }
 
-type CandidateLane = "eligible" | "blocked" | "watching" | "executed";
+import type { CandidateLane } from "../lib/statusMapping";
 
 interface CandidateCard extends EventCandidate {
   lane: CandidateLane;
@@ -69,8 +71,7 @@ interface MarketIndex {
   error?: string;
 }
 
-const EXECUTION_ISSUE_STATUSES = new Set(["REJECTED", "BLOCKED", "FAILED", "UNKNOWN"]);
-const EXECUTION_ACTIVE_STATUSES = new Set(["SUBMITTED", "ACKED", "PARTIALLY_FILLED", "FILLED"]);
+// Status constants imported from lib/statusMapping.ts
 
 export default function CommandCenterPage({ t: _t }: { t: (k: string) => string }) {
   const [movers, setMovers] = useState<Mover[]>([]);
@@ -112,7 +113,7 @@ export default function CommandCenterPage({ t: _t }: { t: (k: string) => string 
         if (index >= 0) next[index] = updated;
         else next.unshift(updated);
         return next
-          .sort((a, b) => Math.abs(toNumber(b.change_pct)) - Math.abs(toNumber(a.change_pct)))
+          .sort((a, b) => Math.abs(toNum(b.change_pct)) - Math.abs(toNum(a.change_pct)))
           .slice(0, 20);
       });
     },
@@ -284,7 +285,7 @@ export default function CommandCenterPage({ t: _t }: { t: (k: string) => string 
   }, [_t, connected, enrichedCandidates, health, killStatus, orders]);
 
   const pulse = useMemo(() => {
-    const activeMovers = movers.filter((item) => Math.abs(toNumber(item.change_pct)) >= 2).length;
+    const activeMovers = movers.filter((item) => Math.abs(toNum(item.change_pct)) >= 2).length;
     const freshCatalysts = candidates.filter((item) => item.priority >= 60).length;
     const tradeable = enrichedCandidates.filter((item) => item.lane === "eligible").length;
     const blocked = enrichedCandidates.filter((item) => item.lane === "blocked").length;
@@ -411,7 +412,7 @@ export default function CommandCenterPage({ t: _t }: { t: (k: string) => string 
         <div className="command-strip-meta">
           <span>{_t("sys.dailyPnl")} {formatSigned(killStatus?.daily_loss_pct ?? 0)}%</span>
           <span>{_t("sys.brokerFails")} {killStatus?.broker_failures ?? 0}/{killStatus?.broker_limit ?? 3}</span>
-          <span>{_t("sys.lastTick")} {lastUpdate ? formatTime(lastUpdate) : "-"}</span>
+          <span>{_t("sys.lastTick")} {lastUpdate ? formatDateTime(lastUpdate) : "-"}</span>
         </div>
         <div className="command-strip-actions">
           <button className="btn btn-sm btn-primary" onClick={() => { void loadData(); void runEventScan(); }} disabled={scanning}>
@@ -448,7 +449,7 @@ export default function CommandCenterPage({ t: _t }: { t: (k: string) => string 
           <div key={item.name} className="card command-index-card">
             <div className="command-index-top">
               <span className="command-index-name">{item.name}</span>
-              <span className="text-secondary">{item.updated_at ? formatTime(item.updated_at) : "-"}</span>
+              <span className="text-secondary">{item.updated_at ? formatDateTime(item.updated_at) : "-"}</span>
             </div>
             <div className="command-index-price">{formatNumber(item.price)}</div>
             <div className="command-index-change">
@@ -502,13 +503,13 @@ export default function CommandCenterPage({ t: _t }: { t: (k: string) => string 
                     </div>
                     <div className="command-row-meta">
                       <span>{item.sector || _t("state.unclassified")}</span>
-                      <span>Vol {formatCompact(toNumber(item.volume))}</span>
+                      <span>Vol {formatCompact(toNum(item.volume))}</span>
                       {item.stale && <span className="text-warning">{_t("market.stale")}</span>}
                     </div>
                   </div>
                   <div className="command-row-change">
-                    <DirectionValue value={toNumber(item.change_pct)} suffix="%" />
-                    <span className="text-secondary">{formatNumber(toNumber(item.price))}</span>
+                    <DirectionValue value={toNum(item.change_pct)} suffix="%" />
+                    <span className="text-secondary">{formatNumber(toNum(item.price))}</span>
                   </div>
                   <div className="command-row-badges">
                     {matchedCandidate ? <Badge tone="info" label={eventTypeLabel(matchedCandidate.event_type, _t)} /> : <Badge tone="neutral" label={_t("state.noCatalyst")} />}
@@ -605,8 +606,8 @@ export default function CommandCenterPage({ t: _t }: { t: (k: string) => string 
           <div className="detail-grid">
             <div className="detail-card">
               <div className="detail-card-label">{_t("command.price")}</div>
-              <div className="detail-card-value">{selectedMover ? formatNumber(toNumber(selectedMover.price)) : "-"}</div>
-              <div>{selectedMover ? <DirectionValue value={toNumber(selectedMover.change_pct)} suffix="%" /> : "-"}</div>
+              <div className="detail-card-value">{selectedMover ? formatNumber(toNum(selectedMover.price)) : "-"}</div>
+              <div>{selectedMover ? <DirectionValue value={toNum(selectedMover.change_pct)} suffix="%" /> : "-"}</div>
             </div>
             <div className="detail-card">
               <div className="detail-card-label">{_t("command.catalyst")}</div>
@@ -636,7 +637,7 @@ export default function CommandCenterPage({ t: _t }: { t: (k: string) => string 
                     <div key={order.order_id} className="timeline-item">
                       <div className="timeline-top">
                         <Badge tone={toneForOrder(order.status)} label={orderStatusLabel(order.status, _t)} />
-                        <span className="text-secondary">{formatTime(order.time)}</span>
+                        <span className="text-secondary">{formatDateTime(order.time)}</span>
                       </div>
                       <div className="timeline-main">
                         {_t(order.side === "BUY" ? "signal.buy" : "signal.sell")} {order.quantity} · {_t("exec.filled")} {order.filled_qty}
@@ -655,7 +656,7 @@ export default function CommandCenterPage({ t: _t }: { t: (k: string) => string 
                   {newsItems.map((item, index) => (
                     <a key={`${item.time}-${index}`} className="news-compact" href={item.url} target="_blank" rel="noreferrer">
                       <div className="news-compact-title">{item.title}</div>
-                      <div className="news-compact-meta">{item.source} · {formatTime(item.time)}</div>
+                      <div className="news-compact-meta">{item.source} · {formatDateTime(item.time)}</div>
                     </a>
                   ))}
                 </div>
@@ -669,54 +670,17 @@ export default function CommandCenterPage({ t: _t }: { t: (k: string) => string 
   );
 }
 
-function toNumber(value: number | string | undefined) {
-  return typeof value === "number" ? value : Number(value || 0);
-}
-
-function formatSigned(value: number) {
-  return `${value > 0 ? "+" : ""}${value.toFixed(2)}`;
-}
-
-function formatNumber(value: number) {
-  return value.toLocaleString("ko-KR", { maximumFractionDigits: 0 });
-}
-
-function formatCompact(value: number) {
-  if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(1)}B`;
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
-  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K`;
-  return `${value}`;
-}
-
-function formatTime(value: string) {
-  return new Date(value).toLocaleString("ko-KR");
-}
+// Inline helpers removed — use shared imports from lib/formatting.ts and lib/statusMapping.ts
 
 function summarizeDetails(details: Record<string, unknown>) {
   const entries = Object.entries(details).slice(0, 3).map(([key, value]) => `${key}: ${String(value)}`);
   return entries.length > 0 ? entries.join(" · ") : "No details";
 }
 
-function toneForLane(lane: CandidateLane): BadgeTone {
-  if (lane === "eligible") return "success";
-  if (lane === "blocked") return "warning";
-  if (lane === "executed") return "info";
-  return "neutral";
-}
-
-function toneForOrder(status: string): BadgeTone {
-  if (status === "FILLED") return "success";
-  if (EXECUTION_ISSUE_STATUSES.has(status)) return "danger";
-  if (EXECUTION_ACTIVE_STATUSES.has(status)) return "info";
-  return "neutral";
-}
-
-type BadgeTone = "success" | "danger" | "warning" | "info" | "neutral";
-
-function Badge({ label, tone }: { label: string; tone: BadgeTone }) {
+function Badge({ label, tone }: { label: string; tone: import("../lib/statusMapping").BadgeTone }) {
   return <span className={`command-badge tone-${tone}`}>{label}</span>;
 }
 
-function StatusBadge({ label, tone }: { label: string; tone: BadgeTone }) {
+function StatusBadge({ label, tone }: { label: string; tone: import("../lib/statusMapping").BadgeTone }) {
   return <span className={`command-status-badge tone-${tone}`}>{label}</span>;
 }

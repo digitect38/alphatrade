@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { apiGet, apiPost } from "../hooks/useApi";
 import { orderStatusLabel } from "../lib/labels";
+import { STATUS_COLORS, STATUS_BADGES } from "../lib/statusMapping";
 
 interface Order {
   order_id: string;
@@ -14,26 +15,7 @@ interface Order {
   slippage: number | null;
 }
 
-const STATUS_COLORS: Record<string, string> = {
-  CREATED: "text-neutral",
-  VALIDATED: "text-neutral",
-  SUBMITTED: "text-warning",
-  ACKED: "text-warning",
-  PARTIALLY_FILLED: "text-warning",
-  FILLED: "text-profit",
-  CANCELLED: "text-secondary",
-  REJECTED: "text-loss",
-  BLOCKED: "text-loss",
-  FAILED: "text-loss",
-  UNKNOWN: "text-loss",
-  EXPIRED: "text-secondary",
-};
-
-const STATUS_BADGES: Record<string, string> = {
-  FILLED: "✅", PARTIALLY_FILLED: "⏳", SUBMITTED: "📤", ACKED: "📥",
-  REJECTED: "❌", BLOCKED: "🚫", FAILED: "💥", UNKNOWN: "❓",
-  CANCELLED: "🚪", EXPIRED: "⏰", CREATED: "📝", VALIDATED: "✔️",
-};
+// STATUS_COLORS, STATUS_BADGES imported from lib/statusMapping.ts
 
 interface ExecQuality {
   total_fills: number;
