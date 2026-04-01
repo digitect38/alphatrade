@@ -9,7 +9,7 @@ import {
 } from "recharts";
 import type { OHLCVRecord } from "../types";
 import { useChartEvents } from "../hooks/useChartEvents";
-import { EventLines, EventPanel } from "./charts";
+import { renderEventLines, EventPanel } from "./charts";
 
 type ChartPoint = { time: string; close: number };
 
@@ -145,7 +145,7 @@ export default function TechnicalChart({
               dot={renderDot as any} connectNulls
               name={t("analysis.currentPrice")}
             />
-            {showEvents && <EventLines events={chartLineEvents} chartData={chartData} />}
+            {showEvents && renderEventLines(chartLineEvents, chartData)}
           </LineChart>
         </ResponsiveContainer>
       </div>
