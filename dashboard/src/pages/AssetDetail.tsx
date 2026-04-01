@@ -16,18 +16,12 @@ import StockSearch from "../components/StockSearch";
 import { calcOHLCDomain } from "../lib/charts/domain";
 import { orderStatusLabel } from "../lib/labels";
 import { apiGet } from "../hooks/useApi";
-import type { OrderHistoryItem } from "../types";
+import type { OrderHistoryItem, NewsItem } from "../types";
 
 type RangeKey = "1D" | "5D" | "1M" | "3M" | "6M" | "YTD" | "1Y";
 type ChartMode = "line" | "candles";
 
-interface NewsItem {
-  time: string;
-  source: string;
-  title: string;
-  content: string;
-  url: string;
-}
+// NewsItem imported from types.ts
 
 interface AssetOverview {
   stock_code: string;

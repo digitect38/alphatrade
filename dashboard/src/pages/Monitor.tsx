@@ -4,24 +4,7 @@ import { apiGet, apiPost } from "../hooks/useApi";
 import { toNum, formatNumber, formatCompact } from "../lib/formatting";
 import { eventTypeLabel, orderStatusLabel } from "../lib/labels";
 import { EXECUTION_ISSUE_STATUSES } from "../lib/statusMapping";
-import type { OrderHistoryItem } from "../types";
-
-interface Mover {
-  stock_code: string;
-  stock_name: string;
-  sector: string;
-  price: number | string;
-  change_pct: number | string;
-  volume: number | string;
-}
-
-interface EventCandidate {
-  stock_code: string;
-  stock_name: string;
-  event_type: string;
-  priority: number;
-  details: Record<string, unknown>;
-}
+import type { OrderHistoryItem, Mover, EventCandidate } from "../types";
 
 type MonitorTab = "movers" | "catalysts" | "tradeable" | "blocked" | "issues";
 

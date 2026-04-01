@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import DirectionValue from "../components/DirectionValue";
 import { apiGet, apiPost } from "../hooks/useApi";
 import { useWebSocket } from "../hooks/useWebSocket";
+import type { NewsItem } from "../types";
 
 interface StockPrice {
   stock_code: string;
@@ -13,14 +14,6 @@ interface StockPrice {
   volume: number;
   news_count: number;
   stale?: boolean;
-}
-
-interface NewsItem {
-  time: string;
-  source: string;
-  title: string;
-  content: string;
-  url: string;
 }
 
 interface MarketData {

@@ -3,6 +3,7 @@ import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "rec
 import DirectionValue from "../components/DirectionValue";
 import { apiGet, apiPost } from "../hooks/useApi";
 import { eventTypeLabel, orderStatusLabel } from "../lib/labels";
+import type { EventCandidate } from "../types";
 import type { OrderHistoryItem } from "../types";
 
 interface TrendPoint {
@@ -40,13 +41,7 @@ interface SectorOverview {
   stocks: SectorOverviewStock[];
 }
 
-interface EventCandidate {
-  stock_code: string;
-  stock_name: string;
-  event_type: string;
-  priority: number;
-  details: Record<string, unknown>;
-}
+// EventCandidate imported from types.ts
 
 interface SectorIntel {
   sector: string;

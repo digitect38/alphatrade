@@ -110,3 +110,51 @@ export interface OHLCVRecord {
   close: number;
   volume: number;
 }
+
+// === Shared domain types used across multiple pages ===
+
+export interface NewsItem {
+  time: string;
+  source: string;
+  title: string;
+  content: string;
+  url: string;
+}
+
+export interface EventCandidate {
+  stock_code: string;
+  stock_name: string;
+  event_type: string;
+  priority: number;
+  details: Record<string, unknown>;
+}
+
+export interface Mover {
+  stock_code: string;
+  stock_name: string;
+  sector: string;
+  price: number | string;
+  change_pct: number | string;
+  volume: number | string;
+  stale?: boolean;
+}
+
+export interface KillSwitchStatus {
+  kill_switch: string;
+  daily_loss_pct: number;
+  session: { allowed: boolean; message: string };
+  broker_failures: number;
+  broker_limit?: number;
+}
+
+export interface MarketIndex {
+  name: string;
+  price: number;
+  change: number;
+  change_pct: number;
+  open: number;
+  high: number;
+  low: number;
+  updated_at: string | null;
+  error?: string;
+}

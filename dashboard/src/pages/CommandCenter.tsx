@@ -5,41 +5,7 @@ import { useWebSocket } from "../hooks/useWebSocket";
 import { toNum, formatSigned, formatNumber, formatCompact, formatDateTime } from "../lib/formatting";
 import { eventTypeLabel, orderStatusLabel } from "../lib/labels";
 import { EXECUTION_ISSUE_STATUSES, EXECUTION_ACTIVE_STATUSES, toneForLane, toneForOrder } from "../lib/statusMapping";
-import type { HealthStatus, OrderHistoryItem } from "../types";
-
-interface Mover {
-  stock_code: string;
-  stock_name: string;
-  sector: string;
-  price: number | string;
-  change_pct: number | string;
-  volume: number | string;
-  stale?: boolean;
-}
-
-interface EventCandidate {
-  stock_code: string;
-  stock_name: string;
-  event_type: string;
-  priority: number;
-  details: Record<string, unknown>;
-}
-
-interface KillSwitchStatus {
-  kill_switch: string;
-  daily_loss_pct: number;
-  session: { allowed: boolean; message: string };
-  broker_failures: number;
-  broker_limit?: number;
-}
-
-interface NewsItem {
-  time: string;
-  source: string;
-  title: string;
-  content: string;
-  url: string;
-}
+import type { HealthStatus, OrderHistoryItem, Mover, EventCandidate, KillSwitchStatus, NewsItem, MarketIndex } from "../types";
 
 import type { CandidateLane } from "../lib/statusMapping";
 
@@ -59,17 +25,7 @@ interface IncidentItem {
   action: string;
 }
 
-interface MarketIndex {
-  name: string;
-  price: number;
-  change: number;
-  change_pct: number;
-  open: number;
-  high: number;
-  low: number;
-  updated_at: string | null;
-  error?: string;
-}
+// MarketIndex imported from types.ts
 
 // Status constants imported from lib/statusMapping.ts
 
