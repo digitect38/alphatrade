@@ -4,6 +4,7 @@ import {
   CartesianGrid,
   Cell,
   ComposedChart,
+  Customized,
   Line,
   LineChart,
   ReferenceLine,
@@ -206,7 +207,9 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
       macd: macd.macd[index],
       macdSignal: macd.signal[index],
       macdHist: macd.histogram[index],
-      candleTop: Math.max(bar.open, bar.close),  // for Bar shape rendering
+      // Candle bar rendering: stacked bars (invisible base + colored body)
+      candleBase: Math.min(bar.open, bar.close),  // invisible spacer
+      candleBody: Math.abs(bar.close - bar.open) || 1,  // visible colored body (min 1 for doji)
       isUpBar: index === 0 ? true : bar.close >= chartData[index - 1].close,
     }));
 
@@ -454,18 +457,44 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
               />
               {overview?.current_price ? <ReferenceLine yAxisId="price" y={overview.current_price - overview.change} stroke="#94a3b8" strokeDasharray="4 4" /> : null}
               {chartMode === "candles" ? (
-                <>
-                  {/* OHLC bar chart: colored bars showing close price, colored by direction */}
-                  <Bar yAxisId="price" dataKey="close" isAnimationActive={false}
-                    barSize={Math.max(1, Math.min(8, 500 / chartPoints.length))}>
-                    {chartPoints.map((pt, i) => (
-                      <Cell key={i} fill={pt.isUpBar ? "rgba(22,163,74,0.6)" : "rgba(220,38,38,0.6)"} />
-                    ))}
-                  </Bar>
-                  {/* High-low range as line overlay */}
-                  <Line yAxisId="price" type="monotone" dataKey="high" stroke="rgba(22,163,74,0.3)" strokeWidth={1} dot={false} connectNulls />
-                  <Line yAxisId="price" type="monotone" dataKey="low" stroke="rgba(220,38,38,0.3)" strokeWidth={1} dot={false} connectNulls />
-                </>
+                <Customized component={(cProps: any) => {
+                  // Get Y axis scale from Recharts internals
+                  const yMap = cProps.yAxisMap;
+                  const yAxis = yMap ? (yMap["price"] || Object.values(yMap)[0]) : null;
+                  const xMap = cProps.xAxisMap;
+                  const xAxis = xMap ? Object.values(xMap)[0] : null;
+                  if (!yAxis?.scale || !xAxis) return <g />;
+
+                  const yScale = yAxis.scale;
+                  const xLeft = (xAxis as any).x || 65;
+                  const xWidth = (xAxis as any).width || 650;
+                  const n = chartPoints.length;
+                  const candleW = Math.max(1.5, Math.min(10, (xWidth / n) * 0.7));
+
+                  return (
+                    <g>
+                      {chartPoints.map((pt, i) => {
+                        const cx = xLeft + (i + 0.5) * (xWidth / n);
+                        const oY = yScale(pt.open);
+                        const cY = yScale(pt.close);
+                        const hY = yScale(pt.high);
+                        const lY = yScale(pt.low);
+                        if ([oY, cY, hY, lY].some((v) => !Number.isFinite(v))) return null;
+                        const rising = pt.close >= pt.open;
+                        return (
+                          <g key={i}>
+                            <line x1={cx} x2={cx} y1={hY} y2={lY}
+                              stroke={rising ? "var(--color-profit)" : "var(--color-loss)"} strokeWidth={1} />
+                            <rect x={cx - candleW / 2} y={Math.min(oY, cY)}
+                              width={candleW} height={Math.max(1, Math.abs(cY - oY))} rx={0.5}
+                              fill={rising ? "rgba(22,163,74,0.5)" : "rgba(220,38,38,0.5)"}
+                              stroke={rising ? "var(--color-profit)" : "var(--color-loss)"} strokeWidth={0.7} />
+                          </g>
+                        );
+                      })}
+                    </g>
+                  );
+                }} />
               ) : (
                 <>
                   <Line
