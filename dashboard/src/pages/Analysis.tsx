@@ -7,9 +7,14 @@ import { parseOHLCVList } from "../lib/parse";
 import type { OHLCVRecord, TechnicalResult } from "../types";
 
 const signalColors: Record<string, string> = { bullish: "text-profit", bearish: "text-loss", neutral: "text-neutral" };
-type AnalysisPresetKey = "1M" | "3M" | "6M" | "1Y" | "3Y" | "5Y" | "10Y" | "ALL";
+type AnalysisPresetKey = "1m" | "10m" | "1H" | "1D" | "1W" | "1M" | "3M" | "6M" | "1Y" | "3Y" | "5Y" | "10Y" | "ALL";
 
-const ANALYSIS_PRESETS: Record<AnalysisPresetKey, { interval: "1d"; period: number; limit: number }> = {
+const ANALYSIS_PRESETS: Record<AnalysisPresetKey, { interval: string; period: number; limit: number }> = {
+  "1m": { interval: "1m", period: 1, limit: 60 },
+  "10m": { interval: "1m", period: 1, limit: 600 },
+  "1H": { interval: "5m", period: 1, limit: 12 },
+  "1D": { interval: "5m", period: 1, limit: 78 },
+  "1W": { interval: "15m", period: 5, limit: 130 },
   "1M": { interval: "1d", period: 22, limit: 22 },
   "3M": { interval: "1d", period: 66, limit: 66 },
   "6M": { interval: "1d", period: 132, limit: 132 },

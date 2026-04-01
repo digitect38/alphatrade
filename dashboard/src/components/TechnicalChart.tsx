@@ -122,9 +122,9 @@ export default function TechnicalChart({
           </button>
         </div>
       </div>
-      <div style={{ overflow: "hidden", borderRadius: "8px", flex: fullscreen ? 1 : undefined, minHeight: fullscreen ? 0 : undefined }}>
+      <div style={{ borderRadius: "8px", flex: fullscreen ? 1 : undefined, minHeight: fullscreen ? 0 : undefined }}>
         <ResponsiveContainer width="100%" height={fullscreen ? "100%" : 360}>
-          <LineChart data={chartData} margin={{ top: showEvents && visibleEvents.length > 0 ? 50 : 30, right: 16, bottom: 5, left: 0 }}>
+          <LineChart data={chartData} margin={{ top: showEvents && visibleEvents.length > 0 ? 60 : 30, right: 16, bottom: 5, left: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-light)" />
             <XAxis
               dataKey="time"
@@ -166,7 +166,7 @@ export default function TechnicalChart({
               }
               if (!matchTime || minDist > 5 * 86400000) return null;
               // Alternate label Y offset: cycle through 4 positions to avoid overlap
-              const offsets = [6, 18, 30, 42];
+              const offsets = [12, 24, 36, 48];
               const yOff = offsets[evtIdx % offsets.length];
               return (
                 <ReferenceLine
