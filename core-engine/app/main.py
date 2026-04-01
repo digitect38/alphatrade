@@ -27,6 +27,7 @@ from app.routes.webhook import router as webhook_router
 from app.routes.alert import router as alert_router
 from app.routes.ws import router as ws_router, redis_to_websocket_bridge
 from app.routes.risk import router as risk_router
+from app.routes.telegram import router as telegram_router
 from app.services.dart_api import DARTClient
 from app.services.kis_api import KISClient
 from app.services.naver_news import NaverNewsClient
@@ -101,6 +102,15 @@ async def lifespan(app: FastAPI):
             import logging
             logging.getLogger(__name__).error("KIS WebSocket startup failed: %s", e)
 
+    # Start Telegram bot polling
+    telegram_poll_task = None
+    try:
+        from app.routes.telegram import run_telegram_polling
+        telegram_poll_task = asyncio.create_task(run_telegram_polling(db_pool, redis_client))
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error("Telegram bot startup failed: %s", e)
+
     yield
 
     # Shutdown background tasks
@@ -110,6 +120,8 @@ async def lifespan(app: FastAPI):
         kis_ws_task.cancel()
     if market_poll_task:
         market_poll_task.cancel()
+    if telegram_poll_task:
+        telegram_poll_task.cancel()
 
     # Shutdown
     await app.state.notifier.close()
@@ -156,6 +168,7 @@ app.include_router(market_router, prefix="/market", tags=["market"])
 app.include_router(index_router, prefix="/index", tags=["index"])
 app.include_router(trading_router, prefix="/trading", tags=["trading"])
 app.include_router(risk_router, prefix="/risk", tags=["risk"])
+app.include_router(telegram_router, prefix="/telegram", tags=["telegram"])
 
 
 # --- Health & Metrics ---
