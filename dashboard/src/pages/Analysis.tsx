@@ -9,12 +9,14 @@ import type { OHLCVRecord, TechnicalResult } from "../types";
 const signalColors: Record<string, string> = { bullish: "text-profit", bearish: "text-loss", neutral: "text-neutral" };
 type AnalysisPresetKey = "1m" | "10m" | "1H" | "1D" | "1W" | "1M" | "3M" | "6M" | "1Y" | "3Y" | "5Y" | "10Y" | "ALL";
 
+// Uses only intervals that exist in DB: "1m" (intraday ticks) and "1d" (daily bars)
+// Intraday presets use 1m data; daily+ presets use 1d data
 const ANALYSIS_PRESETS: Record<AnalysisPresetKey, { interval: string; period: number; limit: number }> = {
-  "1m": { interval: "1m", period: 1, limit: 60 },
-  "10m": { interval: "1m", period: 1, limit: 600 },
-  "1H": { interval: "5m", period: 1, limit: 12 },
-  "1D": { interval: "5m", period: 1, limit: 78 },
-  "1W": { interval: "15m", period: 5, limit: 130 },
+  "1m": { interval: "1m", period: 1, limit: 30 },       // Last 30 ticks (~30min)
+  "10m": { interval: "1m", period: 1, limit: 60 },      // Last 60 ticks (~1hr)
+  "1H": { interval: "1m", period: 1, limit: 120 },      // Last 120 ticks (~2hr)
+  "1D": { interval: "1m", period: 1, limit: 200 },      // Today's all ticks
+  "1W": { interval: "1d", period: 5, limit: 5 },        // 5 daily bars
   "1M": { interval: "1d", period: 22, limit: 22 },
   "3M": { interval: "1d", period: 66, limit: 66 },
   "6M": { interval: "1d", period: 132, limit: 132 },
@@ -36,20 +38,30 @@ export default function AnalysisPage({ t: _t, initialCode }: { t: (k: string) =>
   const [technical, setTechnical] = useState<TechnicalResult | null>(null);
   const [ohlcv, setOhlcv] = useState<OHLCVRecord[]>([]);
   const [loading, setLoading] = useState(false);
+  const isIntraday = (p: AnalysisPresetKey) => ["1m", "10m", "1H", "1D"].includes(p);
+
   const analyze = async (nextStockCode: string, nextPreset: AnalysisPresetKey) => {
     const selected = ANALYSIS_PRESETS[nextPreset];
     setLoading(true);
     try {
-      const [tech, data] = await Promise.all([
-        apiPost<TechnicalResult>("/analyze/technical", {
-          stock_code: nextStockCode,
-          interval: selected.interval,
-          period: selected.period,
-        }),
-        apiGet<Record<string, unknown>[]>(
-          `/data/ohlcv/latest?stock_code=${nextStockCode}&interval=${selected.interval}&limit=${selected.limit}`,
-        ).then(parseOHLCVList),
-      ]);
+      // Fetch OHLCV data
+      const data = await apiGet<Record<string, unknown>[]>(
+        `/data/ohlcv/latest?stock_code=${nextStockCode}&interval=${selected.interval}&limit=${selected.limit}`,
+      ).then(parseOHLCVList);
+
+      // Technical analysis only for daily intervals with enough data
+      // (intraday ticks don't have enough bars for SMA20/60)
+      let tech: TechnicalResult | null = null;
+      if (!isIntraday(nextPreset)) {
+        try {
+          tech = await apiPost<TechnicalResult>("/analyze/technical", {
+            stock_code: nextStockCode,
+            interval: selected.interval,
+            period: selected.period,
+          });
+        } catch { /* skip technical for short periods */ }
+      }
+
       setTechnical(tech);
       setOhlcv([...data].reverse());
     } catch (e) {
