@@ -1,4 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
+import { calcCloseDomain } from "../lib/charts/domain";
+import { downsample, maxPointsForPeriod } from "../lib/charts/downsample";
+import { formatChartDate, tickInterval, wonFormatter, tooltipDateFormatter } from "../lib/charts/format";
 import { toNumber } from "../lib/parse";
 import {
   LineChart,
@@ -28,7 +31,7 @@ export default function TechnicalChart({
 }) {
   const allData = useMemo<ChartPoint[]>(() => {
     const src = data.map((d) => ({ time: d.time, close: toNumber(d.close) }));
-    return downsample(src, maxPoints(periodLabel));
+    return downsample(src, maxPointsForPeriod(periodLabel));
   }, [data, periodLabel]);
 
   // Range slider state
@@ -60,13 +63,7 @@ export default function TechnicalChart({
   }, [chartData]);
 
   // Y domain from visible data — auto zoom
-  const yDomain = useMemo((): [number, number] => {
-    const closes = chartData.map((d) => d.close).filter(Number.isFinite);
-    if (!closes.length) return [0, 100];
-    const min = Math.min(...closes), max = Math.max(...closes);
-    const span = Math.max(max - min, max * 0.02, 1);
-    return [roundAxis(min - span * 0.12, "down"), roundAxis(max + span * 0.18, "up")];
-  }, [chartData]);
+  const yDomain = useMemo(() => calcCloseDomain(chartData.map((d) => d.close)), [chartData]);
 
   const renderDot = (props: any) => {
     if (!extrema) return null;
@@ -148,7 +145,7 @@ export default function TechnicalChart({
               fontSize={11}
               interval={tickInterval(chartData.length)}
               minTickGap={chartData.length <= 40 ? 16 : 28}
-              tickFormatter={(v: string) => fmtDate(v, periodLabel)}
+              tickFormatter={(v: string) => formatChartDate(v, periodLabel)}
             />
             <YAxis
               fontSize={11}
@@ -158,8 +155,8 @@ export default function TechnicalChart({
               width={80}
             />
             <Tooltip
-              formatter={(v: number) => `${Number(v).toLocaleString()}원`}
-              labelFormatter={(v: string) => new Date(v).toLocaleDateString("ko-KR")}
+              formatter={(v: number) => wonFormatter(v)}
+              labelFormatter={(v: string) => tooltipDateFormatter(v)}
             />
             <Legend />
             <Line
@@ -273,35 +270,4 @@ export default function TechnicalChart({
   );
 }
 
-function fmtDate(value: string, period?: string) {
-  const d = new Date(value);
-  if (["1Y","3Y","5Y","10Y","ALL"].includes(period || ""))
-    return d.toLocaleDateString("ko-KR", { year: "2-digit", month: "short" });
-  return d.toLocaleDateString("ko-KR", { month: "short", day: "numeric" });
-}
-
-function roundAxis(value: number, dir: "up" | "down") {
-  const u = value >= 100000 ? 5000 : value >= 10000 ? 1000 : value >= 1000 ? 100 : 10;
-  return dir === "up" ? Math.ceil(value / u) * u : Math.max(0, Math.floor(value / u) * u);
-}
-
-function maxPoints(p?: string) {
-  const m: Record<string, number> = { "1M":120,"3M":140,"6M":150,"1Y":160,"3Y":180,"5Y":200,"10Y":220,"ALL":220 };
-  return m[p || ""] || 120;
-}
-
-function downsample<T extends { close: number; time: string }>(data: T[], max: number): T[] {
-  if (data.length <= max) return data;
-  const step = data.length / max;
-  const r: T[] = [];
-  for (let i = 0; i < max; i++) r.push(data[Math.min(Math.round(i * step), data.length - 1)]);
-  if (r[r.length - 1] !== data[data.length - 1]) r.push(data[data.length - 1]);
-  return r;
-}
-
-function tickInterval(len: number) {
-  if (len <= 30) return "preserveEnd" as const;
-  if (len <= 80) return 8;
-  if (len <= 140) return 16;
-  return 24;
-}
+// Helper functions moved to lib/charts/domain.ts, lib/charts/format.ts, lib/charts/downsample.ts

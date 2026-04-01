@@ -1,20 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  Bar,
   CartesianGrid,
-  Cell,
   ComposedChart,
   Customized,
   Line,
-  LineChart,
   ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
+import { renderCandlesticks, VolumePanel, RSIPanel, MACDPanel } from "../components/charts";
 import DirectionValue from "../components/DirectionValue";
 import StockSearch from "../components/StockSearch";
+import { calcOHLCDomain } from "../lib/charts/domain";
 import { orderStatusLabel } from "../lib/labels";
 import { apiGet } from "../hooks/useApi";
 import type { OrderHistoryItem } from "../types";
@@ -229,15 +228,10 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
   }, [chartData]);
   const relativeVolume = averageVolume > 0 && overview ? overview.volume / averageVolume : 0;
   const activePoint = hoverPoint ?? chartPoints[chartPoints.length - 1] ?? null;
-  const priceDomain = useMemo((): [number, number] => {
-    if (!chartPoints.length) return [0, 100];
-    const prices = chartPoints.flatMap((d) => [d.open, d.high, d.low, d.close]).filter(Number.isFinite);
-    if (!prices.length) return [0, 100];
-    const min = Math.min(...prices);
-    const max = Math.max(...prices);
-    const pad = Math.max((max - min) * 0.08, max * 0.01, 100);
-    return [Math.max(0, min - pad), max + pad];
-  }, [chartPoints]);
+  const priceDomain = useMemo(
+    () => calcOHLCDomain(chartPoints.flatMap((d) => [d.open, d.high, d.low, d.close])),
+    [chartPoints],
+  );
 
   if (!stockCode) return <div className="card">{t("asset.noCode")}</div>;
   if (loading) return <p className="text-secondary p-xl">{t("asset.loading")}</p>;
@@ -457,44 +451,9 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
               />
               {overview?.current_price ? <ReferenceLine yAxisId="price" y={overview.current_price - overview.change} stroke="#94a3b8" strokeDasharray="4 4" /> : null}
               {chartMode === "candles" ? (
-                <Customized component={(cProps: any) => {
-                  // Get Y axis scale from Recharts internals
-                  const yMap = cProps.yAxisMap;
-                  const yAxis = yMap ? (yMap["price"] || Object.values(yMap)[0]) : null;
-                  const xMap = cProps.xAxisMap;
-                  const xAxis = xMap ? Object.values(xMap)[0] : null;
-                  if (!yAxis?.scale || !xAxis) return <g />;
-
-                  const yScale = yAxis.scale;
-                  const xLeft = (xAxis as any).x || 65;
-                  const xWidth = (xAxis as any).width || 650;
-                  const n = chartPoints.length;
-                  const candleW = Math.max(1.5, Math.min(10, (xWidth / n) * 0.7));
-
-                  return (
-                    <g>
-                      {chartPoints.map((pt, i) => {
-                        const cx = xLeft + (i + 0.5) * (xWidth / n);
-                        const oY = yScale(pt.open);
-                        const cY = yScale(pt.close);
-                        const hY = yScale(pt.high);
-                        const lY = yScale(pt.low);
-                        if ([oY, cY, hY, lY].some((v) => !Number.isFinite(v))) return null;
-                        const rising = pt.close >= pt.open;
-                        return (
-                          <g key={i}>
-                            <line x1={cx} x2={cx} y1={hY} y2={lY}
-                              stroke={rising ? "var(--color-profit)" : "var(--color-loss)"} strokeWidth={1} />
-                            <rect x={cx - candleW / 2} y={Math.min(oY, cY)}
-                              width={candleW} height={Math.max(1, Math.abs(cY - oY))} rx={0.5}
-                              fill={rising ? "rgba(22,163,74,0.5)" : "rgba(220,38,38,0.5)"}
-                              stroke={rising ? "var(--color-profit)" : "var(--color-loss)"} strokeWidth={0.7} />
-                          </g>
-                        );
-                      })}
-                    </g>
-                  );
-                }} />
+                <Customized component={(cProps: any) =>
+                  renderCandlesticks({ data: chartPoints, yAxisMap: cProps.yAxisMap, xAxisMap: cProps.xAxisMap })
+                } />
               ) : (
                 <>
                   <Line
@@ -526,54 +485,14 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
             </ComposedChart>
           </ResponsiveContainer>
           <div className="asset-volume-panel">
-            <div className="asset-volume-label">{t("asset.volume")}</div>
-            <ResponsiveContainer width="100%" height={110}>
-              <ComposedChart data={chartPoints} syncId="asset-detail">
-                <XAxis dataKey="label" hide />
-                <YAxis hide />
-                <Tooltip
-                  formatter={(value: number) => [value.toLocaleString(), t("asset.volume")]}
-                  labelFormatter={(_label, payload) => payload?.[0]?.payload?.time ? new Date(payload[0].payload.time).toLocaleString("ko-KR") : ""}
-                />
-                <Bar dataKey="volume" radius={[3, 3, 0, 0]}>
-                  {chartPoints.map((point) => (
-                    <Cell
-                      key={point.time}
-                      fill={point.isUpBar ? "rgba(16, 185, 129, 0.35)" : "rgba(239, 68, 68, 0.28)"}
-                    />
-                  ))}
-                </Bar>
-              </ComposedChart>
-            </ResponsiveContainer>
+            <VolumePanel data={chartPoints} syncId="asset-detail" t={t} />
           </div>
           <div className="asset-indicator-stack">
             <div className="asset-indicator-panel">
-              <div className="asset-volume-label">{t("asset.indicator.rsi")}</div>
-              <ResponsiveContainer width="100%" height={120}>
-                <LineChart data={chartPoints} syncId="asset-detail">
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-light)" />
-                  <XAxis dataKey="label" hide />
-                  <YAxis domain={[0, 100]} hide />
-                  <ReferenceLine y={70} stroke="#ef4444" strokeDasharray="4 4" />
-                  <ReferenceLine y={30} stroke="#10b981" strokeDasharray="4 4" />
-                  <Tooltip formatter={(value: number) => [Number(value).toFixed(2), t("asset.indicator.rsi")]} />
-                  <Line type="monotone" dataKey="rsi14" stroke="#2563eb" strokeWidth={2} dot={false} connectNulls />
-                </LineChart>
-              </ResponsiveContainer>
+              <RSIPanel data={chartPoints} syncId="asset-detail" t={t} />
             </div>
             <div className="asset-indicator-panel">
-              <div className="asset-volume-label">{t("asset.indicator.macd")}</div>
-              <ResponsiveContainer width="100%" height={140}>
-                <ComposedChart data={chartPoints} syncId="asset-detail">
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-light)" />
-                  <XAxis dataKey="label" hide />
-                  <YAxis hide />
-                  <Tooltip formatter={(value: number) => [Number(value).toFixed(2), "MACD"]} />
-                  <Bar dataKey="macdHist" fill="rgba(14, 165, 233, 0.24)" />
-                  <Line type="monotone" dataKey="macd" stroke="#7c3aed" strokeWidth={2} dot={false} connectNulls />
-                  <Line type="monotone" dataKey="macdSignal" stroke="#f59e0b" strokeWidth={2} dot={false} connectNulls />
-                </ComposedChart>
-              </ResponsiveContainer>
+              <MACDPanel data={chartPoints} syncId="asset-detail" t={t} />
             </div>
           </div>
         </div>
