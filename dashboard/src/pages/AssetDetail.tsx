@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  Area,
   Bar,
   CartesianGrid,
   Cell,
@@ -108,7 +107,7 @@ const RANGE_CONFIG: Record<RangeKey, { interval: string; limit: number }> = {
 export default function AssetDetailPage({ t, route }: { t: (k: string) => string; route: string }) {
   const stockCode = useMemo(() => route.split("/")[1] || "", [route]);
   const [range, setRange] = useState<RangeKey>("1M");
-  const [chartMode, setChartMode] = useState<ChartMode>("candles");
+  const [chartMode, setChartMode] = useState<ChartMode>("line");
   const [showMa20, setShowMa20] = useState(true);
   const [showMa50, setShowMa50] = useState(true);
   const [compareCode, setCompareCode] = useState("");
@@ -217,6 +216,15 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
   }, [chartData]);
   const relativeVolume = averageVolume > 0 && overview ? overview.volume / averageVolume : 0;
   const activePoint = hoverPoint ?? chartPoints[chartPoints.length - 1] ?? null;
+  const priceDomain = useMemo((): [number, number] => {
+    if (!chartData.length) return [0, 100];
+    const prices = chartData.flatMap((d) => [d.open, d.high, d.low, d.close]).filter(Number.isFinite);
+    if (!prices.length) return [0, 100];
+    const min = Math.min(...prices);
+    const max = Math.max(...prices);
+    const pad = Math.max((max - min) * 0.08, max * 0.01, 100);
+    return [Math.max(0, min - pad), max + pad];
+  }, [chartData]);
 
   if (!stockCode) return <div className="card">{t("asset.noCode")}</div>;
   if (loading) return <p className="text-secondary p-xl">{t("asset.loading")}</p>;
@@ -404,8 +412,8 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
               <YAxis
                 yAxisId="price"
                 fontSize={11}
-                domain={chartMode === "line" && compareCode ? ["auto", "auto"] : ["auto", "auto"]}
-                tickFormatter={(value: number) => (chartMode === "line" && compareCode ? `${value.toFixed(1)}%` : `${(value / 1000).toFixed(0)}k`)}
+                domain={chartMode === "line" && compareCode ? ["auto", "auto"] : priceDomain}
+                tickFormatter={(value: number) => (chartMode === "line" && compareCode ? `${value.toFixed(1)}%` : value >= 1000 ? `${(value / 1000).toFixed(0)}k` : `${value}`)}
               />
               <Tooltip
                 content={({ active, payload, label }) => {
@@ -437,13 +445,15 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
               {overview?.current_price ? <ReferenceLine yAxisId="price" y={overview.current_price - overview.change} stroke="#94a3b8" strokeDasharray="4 4" /> : null}
               {chartMode === "line" ? (
                 <>
-                  <Area
+                  <Line
                     yAxisId="price"
                     type="monotone"
                     dataKey={compareCode ? "primaryNormalized" : "close"}
                     stroke={isPositiveRange ? "var(--color-profit)" : "var(--color-loss)"}
-                    fill="url(#assetChartFill)"
                     strokeWidth={2.5}
+                    dot={false}
+                    connectNulls
+                    name={overview?.stock_name || stockCode}
                   />
                   {compareCode ? (
                     <Line
@@ -703,13 +713,14 @@ function computeEma(values: number[], period: number, mask?: Array<number | null
 
 function CandlestickLayer({ data, xAxisMap, yAxisMap }: { data: Array<AssetChartPoint & { label: string }>; xAxisMap?: Record<string, any>; yAxisMap?: Record<string, any> }) {
   const xAxis = xAxisMap ? Object.values(xAxisMap)[0] : null;
-  const yAxis = yAxisMap ? Object.values(yAxisMap)[0] : null;
+  // Use "price" yAxisId explicitly, fallback to first axis
+  const yAxis = yAxisMap ? (yAxisMap["price"] || Object.values(yAxisMap)[0]) : null;
 
   if (!xAxis?.scale || !yAxis?.scale || !data.length) return null;
 
   const xScale = xAxis.scale;
   const yScale = yAxis.scale;
-  const band = typeof xScale.bandwidth === "function" ? xScale.bandwidth() : Math.max(4, 520 / data.length);
+  const band = typeof xScale.bandwidth === "function" ? xScale.bandwidth() : Math.max(4, (xAxis.width || 520) / data.length);
   const candleWidth = Math.max(3, Math.min(12, band * 0.55));
 
   return (
