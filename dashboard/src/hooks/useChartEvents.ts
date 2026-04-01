@@ -31,6 +31,8 @@ interface UseChartEventsResult {
   chartLineEvents: MarketEvent[];
   /** Loading state */
   loading: boolean;
+  /** Whether initial fetch has completed */
+  loaded: boolean;
 }
 
 export function useChartEvents({
@@ -42,6 +44,7 @@ export function useChartEvents({
 }: UseChartEventsOptions): UseChartEventsResult {
   const [dbEvents, setDbEvents] = useState<MarketEvent[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loaded, setLoaded] = useState(false);
 
   // Fetch from API only when date range changes (NOT on zoom)
   useEffect(() => {
@@ -52,7 +55,7 @@ export function useChartEvents({
     )
       .then((d) => setDbEvents(d.events || []))
       .catch(() => setDbEvents([]))
-      .finally(() => setLoading(false));
+      .finally(() => { setLoading(false); setLoaded(true); });
   }, [startDate, endDate, enabled]);
 
   // Merge DB + local, deduplicate
@@ -83,5 +86,5 @@ export function useChartEvents({
       .sort((a, b) => a.date.localeCompare(b.date));
   }, [visibleEvents]);
 
-  return { allEvents, visibleEvents, chartLineEvents, loading };
+  return { allEvents, visibleEvents, chartLineEvents, loading, loaded };
 }

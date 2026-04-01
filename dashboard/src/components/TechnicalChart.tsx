@@ -9,7 +9,8 @@ import {
 } from "recharts";
 import type { OHLCVRecord } from "../types";
 import { useChartEvents } from "../hooks/useChartEvents";
-import { renderEventLines, EventPanel } from "./charts";
+import { EventPanel } from "./charts";
+import { getEventColor } from "../lib/events";
 
 type ChartPoint = { time: string; close: number };
 
@@ -92,6 +93,25 @@ export default function TechnicalChart({
     enabled: showEvents,
   });
 
+  // Pre-compute event line data (x position + color)
+  const eventRefLines = useMemo<Array<{ x: string; color: string }>>(() => {
+    if (!chartLineEvents.length || !chartData.length) return [];
+    const result: Array<{ x: string; color: string }> = [];
+    for (const evt of chartLineEvents) {
+      let mt: string | null = null;
+      let md = Infinity;
+      const ems = new Date(evt.date).getTime();
+      for (const d of chartData) {
+        const dist = Math.abs(new Date(d.time).getTime() - ems);
+        if (dist < md) { md = dist; mt = d.time; }
+      }
+      if (mt && md <= 5 * 86400000) {
+        result.push({ x: mt, color: getEventColor(evt.category) });
+      }
+    }
+    return result;
+  }, [chartLineEvents, chartData]);
+
   const isZoomed = rangeStart > 0 || rangeEnd < 100;
   const [fullscreen, setFullscreen] = useState(false);
 
@@ -119,7 +139,7 @@ export default function TechnicalChart({
         </div>
       </div>
 
-      <div style={{ borderRadius: "8px", flex: fullscreen ? 1 : undefined, minHeight: fullscreen ? 0 : undefined }}>
+      <div style={{ borderRadius: "8px", flex: fullscreen ? 1 : undefined, minHeight: fullscreen ? 0 : undefined, position: "relative" }}>
         <ResponsiveContainer width="100%" height={fullscreen ? "100%" : 360}>
           <LineChart data={chartData} margin={{ top: 30, right: 16, bottom: 5, left: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-light)" />
@@ -145,9 +165,22 @@ export default function TechnicalChart({
               dot={renderDot as any} connectNulls
               name={t("analysis.currentPrice")}
             />
-            {showEvents && renderEventLines(chartLineEvents, chartData)}
           </LineChart>
         </ResponsiveContainer>
+        {/* Event lines overlay — SVG positioned over the chart area */}
+        {showEvents && eventRefLines.length > 0 && chartData.length > 1 && (
+          <svg style={{ position: "absolute", top: 0, left: 80, right: 16, bottom: 30, pointerEvents: "none", width: "calc(100% - 96px)", height: "calc(100% - 35px)" }}>
+            {eventRefLines.map((evt, i) => {
+              const idx = chartData.findIndex((d) => d.time === evt.x);
+              if (idx < 0) return null;
+              const pct = idx / (chartData.length - 1);
+              return (
+                <line key={`evl${i}`} x1={`${pct * 100}%`} x2={`${pct * 100}%`} y1="0" y2="100%"
+                  stroke={evt.color} strokeDasharray="5 4" strokeWidth={1.2} strokeOpacity={0.7} />
+              );
+            })}
+          </svg>
+        )}
       </div>
 
       {/* Zoom slider */}

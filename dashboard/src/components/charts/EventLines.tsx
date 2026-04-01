@@ -40,10 +40,11 @@ export function renderEventLines(
   events: MarketEvent[],
   chartData: ChartPoint[],
 ): (React.ReactElement | null)[] {
-  return events.map((evt) => {
+  const lines: React.ReactElement[] = [];
+  for (const evt of events) {
     const matchTime = matchEventToChart(evt, chartData);
-    if (!matchTime) return null;
-    return (
+    if (!matchTime) continue;
+    lines.push(
       <ReferenceLine
         key={`evt-${evt.date}-${evt.label}`}
         x={matchTime}
@@ -53,7 +54,8 @@ export function renderEventLines(
         strokeOpacity={0.7}
       />
     );
-  });
+  }
+  return lines;
 }
 
 // Keep default export for backward compat, but prefer renderEventLines
