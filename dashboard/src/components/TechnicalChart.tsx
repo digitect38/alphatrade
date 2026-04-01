@@ -93,10 +93,10 @@ export default function TechnicalChart({
     enabled: showEvents,
   });
 
-  // Pre-compute event line data (x position + color)
-  const eventRefLines = useMemo<Array<{ x: string; color: string }>>(() => {
+  // Pre-compute event line data (x position + color + label + url)
+  const eventRefLines = useMemo<Array<{ x: string; color: string; label: string; url: string }>>(() => {
     if (!chartLineEvents.length || !chartData.length) return [];
-    const result: Array<{ x: string; color: string }> = [];
+    const result: Array<{ x: string; color: string; label: string; url: string }> = [];
     for (const evt of chartLineEvents) {
       let mt: string | null = null;
       let md = Infinity;
@@ -106,7 +106,7 @@ export default function TechnicalChart({
         if (dist < md) { md = dist; mt = d.time; }
       }
       if (mt && md <= 5 * 86400000) {
-        result.push({ x: mt, color: getEventColor(evt.category) });
+        result.push({ x: mt, color: getEventColor(evt.category), label: evt.label, url: evt.url });
       }
     }
     return result;
@@ -167,16 +167,27 @@ export default function TechnicalChart({
             />
           </LineChart>
         </ResponsiveContainer>
-        {/* Event lines overlay — SVG positioned over the chart area */}
+        {/* Event lines + labels overlay */}
         {showEvents && eventRefLines.length > 0 && chartData.length > 1 && (
-          <svg style={{ position: "absolute", top: 0, left: 80, right: 16, bottom: 30, pointerEvents: "none", width: "calc(100% - 96px)", height: "calc(100% - 35px)" }}>
+          <svg style={{ position: "absolute", top: 0, left: 80, right: 16, bottom: 30, pointerEvents: "none", width: "calc(100% - 96px)", height: "calc(100% - 35px)", overflow: "visible" }}>
             {eventRefLines.map((evt, i) => {
               const idx = chartData.findIndex((d) => d.time === evt.x);
               if (idx < 0) return null;
               const pct = idx / (chartData.length - 1);
+              const yOffsets = [8, 18, 28, 38];
+              const yOff = yOffsets[i % yOffsets.length];
               return (
-                <line key={`evl${i}`} x1={`${pct * 100}%`} x2={`${pct * 100}%`} y1="0" y2="100%"
-                  stroke={evt.color} strokeDasharray="5 4" strokeWidth={1.2} strokeOpacity={0.7} />
+                <g key={`evl${i}`}>
+                  <line x1={`${pct * 100}%`} x2={`${pct * 100}%`} y1="0" y2="100%"
+                    stroke={evt.color} strokeDasharray="5 4" strokeWidth={1.2} strokeOpacity={0.7} />
+                  <text x={`${pct * 100}%`} y={yOff} textAnchor="middle"
+                    fill={evt.color} fontSize={8} fontWeight={600}
+                    style={{ pointerEvents: "auto", cursor: evt.url ? "pointer" : "default" }}
+                    onClick={() => { if (evt.url) window.open(evt.url, "_blank", "noopener"); }}
+                  >
+                    {evt.label}
+                  </text>
+                </g>
               );
             })}
           </svg>
