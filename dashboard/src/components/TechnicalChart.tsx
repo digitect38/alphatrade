@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toNumber } from "../lib/parse";
 import {
   LineChart,
@@ -11,8 +11,9 @@ import {
   Legend,
   ReferenceLine,
 } from "recharts";
+import { apiGet } from "../hooks/useApi";
 import type { OHLCVRecord } from "../types";
-import { filterEvents, getEventColor, type MarketEvent } from "../lib/events";
+import { getEventColor, type MarketEvent, filterEvents as filterLocalEvents } from "../lib/events";
 
 type ChartPoint = { time: string; close: number };
 
@@ -87,14 +88,30 @@ export default function TechnicalChart({
     );
   };
 
-  // Events within visible date range
+  // Events within visible date range — fetch from API, fallback to local
   const [showEvents, setShowEvents] = useState(true);
+  const [dbEvents, setDbEvents] = useState<MarketEvent[]>([]);
+
+  useEffect(() => {
+    if (!showEvents || chartData.length < 2) return;
+    const startDate = chartData[0].time.slice(0, 10);
+    const endDate = chartData[chartData.length - 1].time.slice(0, 10);
+    apiGet<{ events: MarketEvent[] }>(`/events/range?start_date=${startDate}&end_date=${endDate}&min_importance=2`)
+      .then((d) => setDbEvents(d.events || []))
+      .catch(() => setDbEvents([])); // fallback handled below
+  }, [chartData, showEvents]);
+
   const visibleEvents = useMemo<MarketEvent[]>(() => {
     if (!showEvents || chartData.length < 2) return [];
     const startDate = chartData[0].time.slice(0, 10);
     const endDate = chartData[chartData.length - 1].time.slice(0, 10);
-    return filterEvents(startDate, endDate);
-  }, [chartData, showEvents]);
+    // Merge DB events + local static events, deduplicate by date+label
+    const localEvents = filterLocalEvents(startDate, endDate);
+    const merged = new Map<string, MarketEvent>();
+    for (const e of localEvents) merged.set(`${e.date}|${e.label}`, e);
+    for (const e of dbEvents) merged.set(`${e.date}|${e.label}`, e); // DB overrides local
+    return [...merged.values()].sort((a, b) => a.date.localeCompare(b.date));
+  }, [chartData, showEvents, dbEvents]);
 
   const isZoomed = rangeStart > 0 || rangeEnd < 100;
   const [fullscreen, setFullscreen] = useState(false);

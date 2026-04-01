@@ -250,3 +250,21 @@ CREATE TABLE IF NOT EXISTS execution_quality (
 SELECT create_hypertable('execution_quality', 'time', if_not_exists => TRUE);
 CREATE INDEX IF NOT EXISTS idx_eq_stock ON execution_quality(stock_code, time DESC);
 CREATE INDEX IF NOT EXISTS idx_eq_order ON execution_quality(order_id);
+
+-- ============================================================
+-- v1.4.2: Market Events (auto-collected via LLM)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS market_events (
+    id           SERIAL PRIMARY KEY,
+    date         DATE NOT NULL,
+    label        TEXT NOT NULL,
+    category     TEXT NOT NULL CHECK (category IN ('policy', 'geopolitics', 'economy', 'market', 'disaster')),
+    description  TEXT NOT NULL,
+    url          TEXT DEFAULT '',
+    importance   SMALLINT DEFAULT 3 CHECK (importance BETWEEN 1 AND 5),  -- 1=minor, 5=critical
+    source       TEXT DEFAULT 'openai',  -- openai, manual, seed
+    created_at   TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(date, label)
+);
+CREATE INDEX IF NOT EXISTS idx_events_date ON market_events(date DESC);
+CREATE INDEX IF NOT EXISTS idx_events_category ON market_events(category);
