@@ -125,6 +125,7 @@ const translations: Record<string, Record<Locale, string>> = {
   "analysis.priceChart": { en: "Price Chart", ko: "가격 차트" },
   "analysis.period": { en: "Period", ko: "기간" },
   "analysis.events": { en: "Events", ko: "이벤트" },
+  "analysis.intradayNote": { en: "Intraday — data accumulates during market hours", ko: "장중 실시간 축적 데이터" },
   "event.policy": { en: "Policy", ko: "정책/금리" },
   "event.geopolitics": { en: "Geopolitics", ko: "정치/외교" },
   "event.economy": { en: "Economy", ko: "경제/금융" },

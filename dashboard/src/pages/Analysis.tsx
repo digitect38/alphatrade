@@ -91,6 +91,16 @@ export default function AnalysisPage({ t: _t, initialCode }: { t: (k: string) =>
               {_t("analysis.currentPrice")}: {technical.current_price?.toLocaleString()}{_t("common.won")}
             </span>
           )}
+          {!technical && ohlcv.length > 0 && (
+            <span className="font-bold" style={{ fontSize: "14px" }}>
+              {_t("analysis.currentPrice")}: {ohlcv[ohlcv.length - 1]?.close?.toLocaleString()}{_t("common.won")}
+            </span>
+          )}
+          {isIntraday(preset) && (
+            <span className="text-secondary" style={{ fontSize: "12px", marginLeft: 8 }}>
+              ({_t("analysis.intradayNote")})
+            </span>
+          )}
         </div>
         <div className="analysis-toolbar-row analysis-toolbar-row-period">
           <span className="analysis-period-label">{_t("analysis.period")}</span>
