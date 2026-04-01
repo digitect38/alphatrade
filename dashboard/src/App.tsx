@@ -11,11 +11,13 @@ import DashboardPage from "./pages/Dashboard";
 import ExecutionPage from "./pages/Execution";
 import MarketPage from "./pages/Market";
 import OrdersPage from "./pages/Orders";
+import MonitorPage from "./pages/Monitor";
 import RiskPage from "./pages/Risk";
 import TrendPage from "./pages/Trend";
 
 const titleKeys: Record<string, string> = {
   command: "title.command",
+  monitor: "title.monitor",
   dashboard: "title.dashboard",
   market: "title.market",
   trend: "title.trend",
@@ -54,7 +56,7 @@ export default function App() {
     window.location.hash = p;
   };
 
-  const pageKey = page.startsWith("asset") ? "asset" : page.startsWith("analysis") ? "analysis" : page;
+  const pageKey = page.startsWith("asset") ? "asset" : page.startsWith("analysis") ? "analysis" : page.startsWith("monitor") ? "monitor" : page;
 
   return (
     <ToastProvider>
@@ -82,6 +84,7 @@ export default function App() {
         <main className={`app-main ${tradingMode === "live" ? "app-main-live" : "app-main-paper"}`}>
           <h1 className="page-title">{t(titleKeys[pageKey] || "title.command")}</h1>
           {page === "command" && <CommandCenterPage t={t} />}
+          {page.startsWith("monitor") && <MonitorPage t={t} initialTab={page.includes("/") ? page.split("/")[1] : "movers"} />}
           {page === "dashboard" && <DashboardPage t={t} />}
           {page === "market" && <MarketPage t={t} />}
           {page === "trend" && <TrendPage t={t} />}

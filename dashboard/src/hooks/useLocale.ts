@@ -29,6 +29,11 @@ const translations: Record<string, Record<Locale, string>> = {
   "title.orders": { en: "Orders", ko: "주문 관리" },
   "title.asset": { en: "Asset Detail", ko: "종목 상세" },
   "title.risk": { en: "Risk Management", ko: "리스크 관리" },
+  "title.monitor": { en: "Monitor", ko: "모니터" },
+  "monitor.clickToAnalyze": { en: "Click a stock to analyze", ko: "종목을 클릭하면 분석 화면으로 이동" },
+  "monitor.analyze": { en: "Analyze", ko: "분석" },
+  "monitor.detail": { en: "Detail", ko: "상세" },
+  "monitor.status": { en: "Status", ko: "상태" },
   "nav.risk": { en: "Risk", ko: "리스크" },
 
   // Risk page
