@@ -94,14 +94,15 @@ interface UniverseItem {
   sector: string;
 }
 
-const RANGE_CONFIG: Record<RangeKey, { interval: string; limit: number }> = {
-  "1D": { interval: "1m", limit: 240 },
-  "5D": { interval: "1m", limit: 600 },
-  "1M": { interval: "1d", limit: 30 },
-  "3M": { interval: "1d", limit: 90 },
-  "6M": { interval: "1d", limit: 180 },
-  "YTD": { interval: "1d", limit: 260 },
-  "1Y": { interval: "1d", limit: 260 },
+// display = bars to show, fetch = bars to request (extra for MA50 pre-computation)
+const RANGE_CONFIG: Record<RangeKey, { interval: string; limit: number; display: number }> = {
+  "1D": { interval: "1m", limit: 240, display: 240 },
+  "5D": { interval: "1m", limit: 600, display: 600 },
+  "1M": { interval: "1d", limit: 80, display: 30 },    // fetch 80, show 30 (MA50 needs 50 extra)
+  "3M": { interval: "1d", limit: 140, display: 90 },
+  "6M": { interval: "1d", limit: 230, display: 180 },
+  "YTD": { interval: "1d", limit: 310, display: 260 },
+  "1Y": { interval: "1d", limit: 310, display: 260 },
 };
 
 export default function AssetDetailPage({ t, route }: { t: (k: string) => string; route: string }) {
@@ -180,6 +181,7 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
   }, [overview?.sector, stockCode]);
 
   const chartPoints = useMemo(() => {
+    // Compute indicators on full data (includes pre-fetch buffer for MA)
     const ma20Values = computeMovingAverage(chartData, 20);
     const ma50Values = computeMovingAverage(chartData, 50);
     const primaryNormalized = normalizeSeries(chartData);
@@ -188,7 +190,7 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
     const rsi14 = computeRsi(chartData, 14);
     const macd = computeMacd(chartData);
 
-    return chartData.map((bar, index) => ({
+    const allPoints = chartData.map((bar, index) => ({
       label: formatChartLabel(bar.time, range, chartInterval),
       interval: chartInterval,
       time: bar.time,
@@ -207,6 +209,10 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
       macdHist: macd.histogram[index],
       isUpBar: index === 0 ? true : bar.close >= chartData[index - 1].close,
     }));
+
+    // Trim to display range (extra data was for MA pre-computation)
+    const displayCount = RANGE_CONFIG[range].display;
+    return allPoints.length > displayCount ? allPoints.slice(allPoints.length - displayCount) : allPoints;
   }, [chartData, compareChartData, chartInterval, range]);
 
   const latestOrder = executionContext?.latest_order || null;
@@ -221,14 +227,14 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
   const relativeVolume = averageVolume > 0 && overview ? overview.volume / averageVolume : 0;
   const activePoint = hoverPoint ?? chartPoints[chartPoints.length - 1] ?? null;
   const priceDomain = useMemo((): [number, number] => {
-    if (!chartData.length) return [0, 100];
-    const prices = chartData.flatMap((d) => [d.open, d.high, d.low, d.close]).filter(Number.isFinite);
+    if (!chartPoints.length) return [0, 100];
+    const prices = chartPoints.flatMap((d) => [d.open, d.high, d.low, d.close]).filter(Number.isFinite);
     if (!prices.length) return [0, 100];
     const min = Math.min(...prices);
     const max = Math.max(...prices);
     const pad = Math.max((max - min) * 0.08, max * 0.01, 100);
     return [Math.max(0, min - pad), max + pad];
-  }, [chartData]);
+  }, [chartPoints]);
 
   if (!stockCode) return <div className="card">{t("asset.noCode")}</div>;
   if (loading) return <p className="text-secondary p-xl">{t("asset.loading")}</p>;
