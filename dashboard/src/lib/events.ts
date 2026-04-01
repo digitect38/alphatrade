@@ -11,6 +11,7 @@ export interface MarketEvent {
   category: "policy" | "geopolitics" | "economy" | "market" | "disaster";
   description: string;
   url: string;
+  importance?: number;  // 1-5, higher = more important
 }
 
 export const MARKET_EVENTS: MarketEvent[] = [

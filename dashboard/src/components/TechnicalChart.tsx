@@ -20,6 +20,9 @@ import { getEventColor, type MarketEvent, filterEvents as filterLocalEvents } fr
 
 type ChartPoint = { time: string; close: number };
 
+// Max events to show lines on chart (prevents clutter)
+const MAX_CHART_LINES = 12;
+
 export default function TechnicalChart({
   data, sma20, sma60, periodLabel, t,
 }: {
@@ -34,14 +37,11 @@ export default function TechnicalChart({
     return downsample(src, maxPointsForPeriod(periodLabel));
   }, [data, periodLabel]);
 
-  // Range slider state
   const [rangeStart, setRangeStart] = useState(0);
-  const [rangeEnd, setRangeEnd] = useState(100); // percentage
+  const [rangeEnd, setRangeEnd] = useState(100);
 
-  // Reset on period change
   useMemo(() => { setRangeStart(0); setRangeEnd(100); }, [periodLabel]);
 
-  // Slice data by range
   const chartData = useMemo(() => {
     if (rangeStart === 0 && rangeEnd === 100) return allData;
     const startIdx = Math.floor((rangeStart / 100) * allData.length);
@@ -49,7 +49,6 @@ export default function TechnicalChart({
     return allData.slice(startIdx, endIdx);
   }, [allData, rangeStart, rangeEnd]);
 
-  // Extrema from visible data
   const extrema = useMemo(() => {
     if (chartData.length < 2) return null;
     const latest = chartData[chartData.length - 1];
@@ -62,7 +61,6 @@ export default function TechnicalChart({
     return { minIdx: minI, maxIdx: maxI, latest };
   }, [chartData]);
 
-  // Y domain from visible data — auto zoom
   const yDomain = useMemo(() => calcCloseDomain(chartData.map((d) => d.close)), [chartData]);
 
   const renderDot = (props: any) => {
@@ -85,30 +83,65 @@ export default function TechnicalChart({
     );
   };
 
-  // Events within visible date range — fetch from API, fallback to local
+  // === Events: fetch once per period change (NOT on zoom) ===
   const [showEvents, setShowEvents] = useState(true);
   const [dbEvents, setDbEvents] = useState<MarketEvent[]>([]);
+  const [eventsExpanded, setEventsExpanded] = useState(false);
+
+  // Stable date range from allData (not chartData which changes on zoom)
+  const dateRange = useMemo(() => {
+    if (allData.length < 2) return null;
+    return { start: allData[0].time.slice(0, 10), end: allData[allData.length - 1].time.slice(0, 10) };
+  }, [allData]);
 
   useEffect(() => {
-    if (!showEvents || chartData.length < 2) return;
-    const startDate = chartData[0].time.slice(0, 10);
-    const endDate = chartData[chartData.length - 1].time.slice(0, 10);
-    apiGet<{ events: MarketEvent[] }>(`/events/range?start_date=${startDate}&end_date=${endDate}&min_importance=2`)
+    if (!showEvents || !dateRange) return;
+    apiGet<{ events: MarketEvent[] }>(
+      `/events/range?start_date=${dateRange.start}&end_date=${dateRange.end}&min_importance=2`
+    )
       .then((d) => setDbEvents(d.events || []))
-      .catch(() => setDbEvents([])); // fallback handled below
-  }, [chartData, showEvents]);
+      .catch(() => setDbEvents([]));
+  }, [dateRange, showEvents]);
 
-  const visibleEvents = useMemo<MarketEvent[]>(() => {
-    if (!showEvents || chartData.length < 2) return [];
-    const startDate = chartData[0].time.slice(0, 10);
-    const endDate = chartData[chartData.length - 1].time.slice(0, 10);
-    // Merge DB events + local static events, deduplicate by date+label
-    const localEvents = filterLocalEvents(startDate, endDate);
+  // Merge DB + local events, deduplicate, sort by date
+  const allEvents = useMemo<MarketEvent[]>(() => {
+    if (!showEvents || !dateRange) return [];
+    const localEvents = filterLocalEvents(dateRange.start, dateRange.end);
     const merged = new Map<string, MarketEvent>();
     for (const e of localEvents) merged.set(`${e.date}|${e.label}`, e);
-    for (const e of dbEvents) merged.set(`${e.date}|${e.label}`, e); // DB overrides local
+    for (const e of dbEvents) merged.set(`${e.date}|${e.label}`, e);
     return [...merged.values()].sort((a, b) => a.date.localeCompare(b.date));
-  }, [chartData, showEvents, dbEvents]);
+  }, [dateRange, showEvents, dbEvents]);
+
+  // Events visible in current zoom range
+  const visibleEvents = useMemo<MarketEvent[]>(() => {
+    if (!showEvents || chartData.length < 2) return [];
+    const start = chartData[0].time.slice(0, 10);
+    const end = chartData[chartData.length - 1].time.slice(0, 10);
+    return allEvents.filter((e) => e.date >= start && e.date <= end);
+  }, [allEvents, chartData, showEvents]);
+
+  // For chart lines: pick top events by importance, limit count to avoid clutter
+  const chartLineEvents = useMemo(() => {
+    if (visibleEvents.length <= MAX_CHART_LINES) return visibleEvents;
+    // Sort by importance desc, take top N
+    return [...visibleEvents]
+      .sort((a, b) => (b.importance ?? 3) - (a.importance ?? 3))
+      .slice(0, MAX_CHART_LINES)
+      .sort((a, b) => a.date.localeCompare(b.date));
+  }, [visibleEvents]);
+
+  // Match event dates to closest chart data point
+  const matchEventToChart = (evt: MarketEvent): string | null => {
+    let matchTime: string | null = null;
+    let minDist = Infinity;
+    const evtMs = new Date(evt.date).getTime();
+    for (const d of chartData) {
+      const dist = Math.abs(new Date(d.time).getTime() - evtMs);
+      if (dist < minDist) { minDist = dist; matchTime = d.time; }
+    }
+    return matchTime && minDist <= 5 * 86400000 ? matchTime : null;
+  };
 
   const isZoomed = rangeStart > 0 || rangeEnd < 100;
   const [fullscreen, setFullscreen] = useState(false);
@@ -138,7 +171,7 @@ export default function TechnicalChart({
       </div>
       <div style={{ borderRadius: "8px", flex: fullscreen ? 1 : undefined, minHeight: fullscreen ? 0 : undefined }}>
         <ResponsiveContainer width="100%" height={fullscreen ? "100%" : 360}>
-          <LineChart data={chartData} margin={{ top: showEvents && visibleEvents.length > 0 ? 60 : 30, right: 16, bottom: 5, left: 0 }}>
+          <LineChart data={chartData} margin={{ top: 30, right: 16, bottom: 5, left: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-light)" />
             <XAxis
               dataKey="time"
@@ -169,53 +202,26 @@ export default function TechnicalChart({
               connectNulls
               name={t("analysis.currentPrice")}
             />
-            {visibleEvents.map((evt, evtIdx) => {
-              // Find closest chart point to event date (handles downsampled data)
-              let matchTime: string | null = null;
-              let minDist = Infinity;
-              const evtMs = new Date(evt.date).getTime();
-              for (const d of chartData) {
-                const dist = Math.abs(new Date(d.time).getTime() - evtMs);
-                if (dist < minDist) { minDist = dist; matchTime = d.time; }
-              }
-              if (!matchTime || minDist > 5 * 86400000) return null;
-              // Alternate label Y offset: cycle through 4 positions to avoid overlap
-              const offsets = [12, 24, 36, 48];
-              const yOff = offsets[evtIdx % offsets.length];
+            {/* Event lines — no labels on chart, just colored dashed lines */}
+            {showEvents && chartLineEvents.map((evt) => {
+              const matchTime = matchEventToChart(evt);
+              if (!matchTime) return null;
               return (
                 <ReferenceLine
-                  key={evt.date}
+                  key={`${evt.date}-${evt.label}`}
                   x={matchTime}
                   stroke={getEventColor(evt.category)}
                   strokeDasharray="4 3"
                   strokeWidth={1}
-                  strokeOpacity={0.6}
-                  label={({ viewBox }: any) => {
-                    const x = viewBox?.x ?? 0;
-                    return (
-                      <g
-                        style={{ cursor: "pointer" }}
-                        onClick={() => window.open(evt.url, "_blank", "noopener")}
-                      >
-                        <text
-                          x={x} y={yOff}
-                          textAnchor="middle"
-                          fill={getEventColor(evt.category)}
-                          fontSize={9}
-                          fontWeight={600}
-                        >
-                          {evt.label}
-                        </text>
-                      </g>
-                    );
-                  }}
+                  strokeOpacity={0.5}
                 />
               );
             })}
           </LineChart>
         </ResponsiveContainer>
       </div>
-      {/* Range slider for zoom */}
+
+      {/* Zoom slider */}
       <div className="flex gap-sm items-center" style={{ padding: "8px 0", fontSize: "11px" }}>
         <span className="text-secondary">Zoom:</span>
         <input
@@ -230,44 +236,72 @@ export default function TechnicalChart({
         />
         <span className="text-secondary">{chartData.length}pts</span>
       </div>
+
       {(sma20 || sma60) && (
         <div className="flex gap-xl text-secondary" style={{ marginTop: "4px", fontSize: "12px" }}>
           {sma20 && <span>SMA20: {sma20.toLocaleString()}</span>}
           {sma60 && <span>SMA60: {sma60.toLocaleString()}</span>}
         </div>
       )}
+
+      {/* Event panel — collapsible, clean layout */}
       {showEvents && visibleEvents.length > 0 && (
-        <div style={{ marginTop: 8, fontSize: 11 }}>
-          <div className="flex gap-md flex-wrap" style={{ marginBottom: 4 }}>
-            {[
-              { cat: "policy", label: t("event.policy") },
-              { cat: "geopolitics", label: t("event.geopolitics") },
-              { cat: "economy", label: t("event.economy") },
-              { cat: "market", label: t("event.market") },
-              { cat: "disaster", label: t("event.disaster") },
-            ].map((c) => (
-              <span key={c.cat} style={{ color: getEventColor(c.cat) }}>■ {c.label}</span>
-            ))}
+        <div style={{ marginTop: 8, borderTop: "1px solid var(--color-border-light)", paddingTop: 8 }}>
+          <div
+            className="flex items-center gap-sm"
+            style={{ cursor: "pointer", fontSize: 12, userSelect: "none" }}
+            onClick={() => setEventsExpanded((v) => !v)}
+          >
+            <span style={{ fontSize: 14 }}>{eventsExpanded ? "▼" : "▶"}</span>
+            <span className="font-bold">{t("analysis.events")} ({visibleEvents.length})</span>
+            <div className="flex gap-sm" style={{ marginLeft: 8 }}>
+              {["policy", "geopolitics", "economy", "market", "disaster"].map((cat) => {
+                const count = visibleEvents.filter((e) => e.category === cat).length;
+                if (!count) return null;
+                return (
+                  <span key={cat} style={{ color: getEventColor(cat), fontSize: 11 }}>
+                    ■{count}
+                  </span>
+                );
+              })}
+            </div>
           </div>
-          <div className="flex gap-sm flex-wrap">
-            {visibleEvents.map((e) => (
-              <a
-                key={e.date}
-                href={e.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                title={e.description}
-                className="event-chip"
-                style={{ color: getEventColor(e.category), borderColor: getEventColor(e.category) }}
-              >
-                {e.date.slice(5)} {e.label}
-              </a>
-            ))}
-          </div>
+          {eventsExpanded && (
+            <div style={{ marginTop: 6, maxHeight: 200, overflowY: "auto" }}>
+              <table style={{ width: "100%", fontSize: 11, borderCollapse: "collapse" }}>
+                <tbody>
+                  {visibleEvents.map((e) => (
+                    <tr key={`${e.date}-${e.label}`} style={{ borderBottom: "1px solid #f5f5f5" }}>
+                      <td style={{ padding: "3px 6px", whiteSpace: "nowrap", color: "var(--color-text-secondary)" }}>
+                        {e.date}
+                      </td>
+                      <td style={{ padding: "3px 6px" }}>
+                        <span style={{ color: getEventColor(e.category), fontWeight: 600 }}>■</span>
+                      </td>
+                      <td style={{ padding: "3px 6px" }}>
+                        {e.url ? (
+                          <a href={e.url} target="_blank" rel="noopener noreferrer"
+                            style={{ color: getEventColor(e.category), textDecoration: "none" }}
+                            onMouseOver={(ev) => { (ev.target as HTMLElement).style.textDecoration = "underline"; }}
+                            onMouseOut={(ev) => { (ev.target as HTMLElement).style.textDecoration = "none"; }}
+                          >
+                            {e.label}
+                          </a>
+                        ) : (
+                          <span style={{ color: getEventColor(e.category) }}>{e.label}</span>
+                        )}
+                      </td>
+                      <td style={{ padding: "3px 6px", color: "var(--color-text-secondary)" }}>
+                        {e.description}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
     </div>
   );
 }
-
-// Helper functions moved to lib/charts/domain.ts, lib/charts/format.ts, lib/charts/downsample.ts
