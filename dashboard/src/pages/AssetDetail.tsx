@@ -134,7 +134,11 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
       .then(([overviewData, chartResponse, returnsResponse, executionResponse]) => {
         setOverview(overviewData);
         setChartInterval(chartResponse.interval || "1d");
-        setChartData(chartResponse.points || []);
+        // Deduplicate by time (keep last entry for each timestamp)
+        const rawPoints = chartResponse.points || [];
+        const seen = new Map<string, AssetChartPoint>();
+        for (const pt of rawPoints) seen.set(pt.time, pt);
+        setChartData([...seen.values()]);
         setPeriodReturns((Object.entries(returnsResponse.returns) as Array<[RangeKey, number]>).map(([key, value]) => ({ key, value })));
         setExecutionContext(executionResponse);
       })
@@ -713,46 +717,55 @@ function computeEma(values: number[], period: number, mask?: Array<number | null
 
 function CandlestickLayer({ data, xAxisMap, yAxisMap }: { data: Array<AssetChartPoint & { label: string }>; xAxisMap?: Record<string, any>; yAxisMap?: Record<string, any> }) {
   const xAxis = xAxisMap ? Object.values(xAxisMap)[0] : null;
-  // Use "price" yAxisId explicitly, fallback to first axis
   const yAxis = yAxisMap ? (yAxisMap["price"] || Object.values(yAxisMap)[0]) : null;
 
   if (!xAxis?.scale || !yAxis?.scale || !data.length) return null;
 
   const xScale = xAxis.scale;
   const yScale = yAxis.scale;
-  const band = typeof xScale.bandwidth === "function" ? xScale.bandwidth() : Math.max(4, (xAxis.width || 520) / data.length);
-  const candleWidth = Math.max(3, Math.min(12, band * 0.55));
+
+  // Compute layout from axis geometry
+  const chartLeft = xAxis.x || 80;
+  const chartWidth = xAxis.width || 600;
+  const hasBandwidth = typeof xScale.bandwidth === "function";
+  const bandWidth = hasBandwidth ? xScale.bandwidth() : chartWidth / data.length;
+  const candleWidth = Math.max(2, Math.min(14, bandWidth * 0.6));
 
   return (
     <g className="asset-candles-layer">
-      {data.map((point) => {
-        const x = xScale(point.label) + band / 2;
+      {data.map((point, idx) => {
+        // Use xScale for label-based positioning, fallback to index-based
+        let x: number;
+        if (hasBandwidth) {
+          x = xScale(point.label) + bandWidth / 2;
+        } else {
+          const raw = xScale(point.label);
+          x = (raw != null && Number.isFinite(raw)) ? raw : chartLeft + (idx + 0.5) * (chartWidth / data.length);
+        }
+
         const openY = yScale(point.open);
         const closeY = yScale(point.close);
         const highY = yScale(point.high);
         const lowY = yScale(point.low);
+
+        // Skip if any value is not a valid number
+        if ([x, openY, closeY, highY, lowY].some((v) => !Number.isFinite(v))) return null;
+
         const bodyTop = Math.min(openY, closeY);
         const bodyHeight = Math.max(1.5, Math.abs(closeY - openY));
         const rising = point.close >= point.open;
 
         return (
-          <g key={point.time}>
+          <g key={`${point.time}-${idx}`}>
             <line
-              x1={x}
-              x2={x}
-              y1={highY}
-              y2={lowY}
+              x1={x} x2={x} y1={highY} y2={lowY}
               stroke={rising ? "var(--color-profit)" : "var(--color-loss)"}
-              strokeWidth={1.25}
-              opacity={0.9}
+              strokeWidth={1.25} opacity={0.9}
             />
             <rect
-              x={x - candleWidth / 2}
-              y={bodyTop}
-              width={candleWidth}
-              height={bodyHeight}
-              rx={1}
-              fill={rising ? "var(--color-profit-soft)" : "var(--color-loss-soft)"}
+              x={x - candleWidth / 2} y={bodyTop}
+              width={candleWidth} height={bodyHeight} rx={1}
+              fill={rising ? "rgba(22,163,74,0.3)" : "rgba(220,38,38,0.3)"}
               stroke={rising ? "var(--color-profit)" : "var(--color-loss)"}
               strokeWidth={1.1}
             />
