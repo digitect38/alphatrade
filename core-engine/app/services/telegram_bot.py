@@ -243,42 +243,71 @@ class TelegramAssistant:
         )
 
     async def _ask_llm(self, question: str, chat_id: int) -> str:
-        """Send question to Claude with live trading context."""
-        if not settings.anthropic_api_key:
-            return "LLM API 키가 설정되지 않았습니다. (ANTHROPIC_API_KEY)"
+        """Send question to LLM with live trading context.
 
-        # Build context
+        Uses OpenAI (GPT-4o-mini) if available, falls back to Claude Haiku.
+        """
+        if not settings.openai_api_key and not settings.anthropic_api_key:
+            return "LLM API 키가 설정되지 않았습니다. (OPENAI_API_KEY 또는 ANTHROPIC_API_KEY)"
+
         context = await self._build_context(question)
 
         try:
-            resp = await self.client.post(
-                "https://api.anthropic.com/v1/messages",
-                headers={
-                    "x-api-key": settings.anthropic_api_key,
-                    "anthropic-version": "2023-06-01",
-                    "content-type": "application/json",
-                },
-                json={
-                    "model": "claude-haiku-4-5-20251001",
-                    "max_tokens": 1000,
-                    "system": SYSTEM_PROMPT.format(context=context),
-                    "messages": [{"role": "user", "content": question}],
-                },
-                timeout=30,
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            answer = data["content"][0]["text"]
+            if settings.openai_api_key:
+                answer = await self._call_openai(question, context)
+            else:
+                answer = await self._call_claude(question, context)
 
-            # Truncate for Telegram (4096 char limit)
             if len(answer) > 3800:
                 answer = answer[:3800] + "\n\n...(생략)"
-
             return answer
 
         except Exception as e:
             logger.error("LLM call failed: %s", e)
             return f"AI 응답 실패: {e}\n\n/help 명령어를 사용해보세요."
+
+    async def _call_openai(self, question: str, context: str) -> str:
+        """Call OpenAI GPT-4o-mini."""
+        resp = await self.client.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {settings.openai_api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": "gpt-4o-mini",
+                "max_tokens": 1000,
+                "messages": [
+                    {"role": "system", "content": SYSTEM_PROMPT.format(context=context)},
+                    {"role": "user", "content": question},
+                ],
+            },
+            timeout=30,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        return data["choices"][0]["message"]["content"]
+
+    async def _call_claude(self, question: str, context: str) -> str:
+        """Call Anthropic Claude Haiku (fallback)."""
+        resp = await self.client.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": settings.anthropic_api_key,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+            },
+            json={
+                "model": "claude-haiku-4-5-20251001",
+                "max_tokens": 1000,
+                "system": SYSTEM_PROMPT.format(context=context),
+                "messages": [{"role": "user", "content": question}],
+            },
+            timeout=30,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        return data["content"][0]["text"]
 
     async def _build_context(self, question: str) -> str:
         """Build live trading context for the LLM system prompt."""

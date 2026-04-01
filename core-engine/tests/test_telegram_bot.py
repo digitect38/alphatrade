@@ -150,6 +150,7 @@ async def test_llm_no_api_key(assistant):
         s.telegram_chat_id = "12345"
         s.telegram_bot_token = "token"
         s.anthropic_api_key = ""
+        s.openai_api_key = ""
         s.core_engine_port = 8000
         result = await assistant.handle_message(msg)
     assert "API 키" in result
