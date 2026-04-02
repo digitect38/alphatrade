@@ -191,6 +191,10 @@ class TelegramAssistant:
         if cmd == "/collect": return await self._cmd_collect(args)
 
         # === 시스템 관리 ===
+        if cmd == "/debug":
+            if args and args[0].lower() == "gui":
+                return await self._cmd_debug_gui()
+            return "사용법: /debug gui"
         if cmd == "/health": return await self._api_get("/health", "헬스체크")
         if cmd == "/reconcile": return await self._cmd_reconcile(args)
         if cmd == "/cleanup": return await self._api_post("/trading/cleanup-orders", "주문 정리")
@@ -473,6 +477,30 @@ class TelegramAssistant:
             return f"알 수 없는 수집 대상: {target}\n사용 가능: {', '.join(routes.keys())}"
         path, label = routes[target]
         return await self._api_post(path, label)
+
+    async def _cmd_debug_gui(self) -> str:
+        """Run GUI audit via subprocess."""
+        import asyncio
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "node", "/app/../scripts/gui_audit.mjs", "--pc-only",
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+                cwd="/Users/woosj/DevelopMac/alpha_trade",
+            )
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=300)
+            output = stdout.decode()
+            # Extract summary
+            lines = output.split("\n")
+            summary = []
+            capture = False
+            for line in lines:
+                if "AUDIT SUMMARY" in line: capture = True
+                if capture: summary.append(line)
+            return "🔍 <b>GUI Audit 완료</b>\n\n<pre>" + "\n".join(summary[-8:]) + "</pre>"
+        except asyncio.TimeoutError:
+            return "⏰ GUI Audit 타임아웃 (300초)"
+        except Exception as e:
+            return f"❌ GUI Audit 실패: {e}\n\n수동 실행: node scripts/gui_audit.mjs"
 
     async def _cmd_reconcile(self, args: list) -> str:
         force = "force" in args
