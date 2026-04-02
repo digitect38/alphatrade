@@ -2250,24 +2250,22 @@ body {
     scroll-snap-align: start;
   }
 
+  /* Vertical stack instead of horizontal scroll — chart first, side card below */
   .asset-main-grid,
   .asset-bottom-grid {
     display: flex;
-    overflow-x: auto;
+    flex-direction: column;
     gap: var(--space-md);
-    scroll-snap-type: x mandatory;
-    padding-bottom: 6px;
   }
 
   .asset-main-grid > .card,
   .asset-bottom-grid > .card {
-    flex: 0 0 84vw;
-    min-width: 84vw;
+    width: 100%;
+    min-width: 0;
   }
 
   .asset-chart-card {
-    flex-basis: 94vw;
-    min-width: 94vw;
+    width: 100%;
   }
 }
 
@@ -2572,8 +2570,40 @@ body {
   /* Asset range: also grid */
   .asset-range-strip .asset-range-group {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     gap: 4px;
+  }
+
+  /* Asset detail: hide non-essential sections to show chart faster */
+  .asset-hero-strip {
+    display: none !important;
+  }
+
+  .asset-compare-strip,
+  .asset-peer-strip,
+  .asset-swipe-hint {
+    display: none !important;
+  }
+
+  .asset-header-side {
+    display: none !important;
+  }
+
+  /* Compact header */
+  .asset-header {
+    padding: 8px !important;
+  }
+
+  .asset-name {
+    font-size: 16px !important;
+  }
+
+  .asset-price {
+    font-size: 24px !important;
+  }
+
+  .asset-range-strip {
+    padding: 6px !important;
   }
 
   /* Chart: reduce Y-axis width */
