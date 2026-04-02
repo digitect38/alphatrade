@@ -13,6 +13,9 @@ from app.utils.market_calendar import KST, get_current_session
 router = APIRouter()
 
 RANGE_CONFIG: dict[str, tuple[str, int]] = {
+    "1m": ("1m", 30),
+    "10m": ("1m", 60),
+    "1H": ("1m", 120),
     "1D": ("1m", 240),
     "5D": ("1m", 600),
     "1M": ("1d", 30),
@@ -97,7 +100,8 @@ async def _load_chart(pool: asyncpg.Pool, stock_code: str, range_key: str):
         )
 
         if interval == "1m" and _is_synthetic_intraday(rows):
-            fallback_limit = 5 if range_key == "1D" else 22
+            fallback_limits = {"1m": 1, "10m": 1, "1H": 1, "1D": 5, "5D": 22}
+            fallback_limit = fallback_limits.get(range_key, 22)
             rows = await conn.fetch(
                 """
                 SELECT time, open, high, low, close, volume
