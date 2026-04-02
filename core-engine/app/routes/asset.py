@@ -86,18 +86,33 @@ async def _load_market_state(redis: aioredis.Redis, pool: asyncpg.Pool, stock_co
 async def _load_chart(pool: asyncpg.Pool, stock_code: str, range_key: str):
     interval, limit = RANGE_CONFIG.get(range_key, RANGE_CONFIG["1M"])
     async with pool.acquire() as conn:
-        rows = await conn.fetch(
-            """
-            SELECT time, open, high, low, close, volume
-            FROM ohlcv
-            WHERE stock_code = $1 AND interval = $2
-            ORDER BY time DESC
-            LIMIT $3
-            """,
-            stock_code,
-            interval,
-            limit,
-        )
+        if interval == "1d":
+            # For daily: deduplicate by date, keep last entry per day
+            rows = await conn.fetch(
+                """
+                SELECT DISTINCT ON (time::date) time, open, high, low, close, volume
+                FROM ohlcv
+                WHERE stock_code = $1 AND interval = $2
+                ORDER BY time::date DESC, time DESC
+                LIMIT $3
+                """,
+                stock_code,
+                interval,
+                limit,
+            )
+        else:
+            rows = await conn.fetch(
+                """
+                SELECT time, open, high, low, close, volume
+                FROM ohlcv
+                WHERE stock_code = $1 AND interval = $2
+                ORDER BY time DESC
+                LIMIT $3
+                """,
+                stock_code,
+                interval,
+                limit,
+            )
 
         if interval == "1m" and _is_synthetic_intraday(rows):
             fallback_limits = {"1m": 1, "10m": 1, "1H": 1, "1D": 5, "5D": 22}
