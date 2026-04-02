@@ -82,10 +82,11 @@ async def refresh_market_state_once(
                 }
             )
 
-            # Also save to DB as 1m tick for chart display
-            current.interval = "1m"
-            async with pool.acquire() as conn:
-                await conn.execute(
+            # Also save to DB as 1m tick for chart display (skip bad data)
+            if float(current.open) > 0 and float(current.high) > 0 and float(current.low) > 0:
+                current.interval = "1m"
+                async with pool.acquire() as conn:
+                    await conn.execute(
                     """INSERT INTO ohlcv (time, stock_code, open, high, low, close, volume, value, interval)
                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)""",
                     current.time, stock_code, current.open, current.high,

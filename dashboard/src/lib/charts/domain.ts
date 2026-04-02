@@ -10,7 +10,7 @@ export function roundAxis(value: number, dir: "up" | "down"): number {
 
 /** Price domain from close prices — with rounding for clean axis labels. */
 export function calcCloseDomain(closes: number[]): [number, number] {
-  const valid = closes.filter(Number.isFinite);
+  const valid = closes.filter((v) => Number.isFinite(v) && v > 0);
   if (!valid.length) return [0, 100];
   const min = Math.min(...valid);
   const max = Math.max(...valid);
@@ -18,9 +18,9 @@ export function calcCloseDomain(closes: number[]): [number, number] {
   return [roundAxis(min - span * 0.12, "down"), roundAxis(max + span * 0.18, "up")];
 }
 
-/** Price domain from OHLC data — tighter padding, no rounding. */
+/** Price domain from OHLC data — tighter padding, no rounding. Filters out zeros. */
 export function calcOHLCDomain(prices: number[]): [number, number] {
-  const valid = prices.filter(Number.isFinite);
+  const valid = prices.filter((v) => Number.isFinite(v) && v > 0);
   if (!valid.length) return [0, 100];
   const min = Math.min(...valid);
   const max = Math.max(...valid);
