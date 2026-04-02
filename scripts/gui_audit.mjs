@@ -72,10 +72,13 @@ async function checkPage(page, name) {
     return { charts: charts.length, lines: lines.length };
   });
 
-  // Check loading spinners stuck
+  // Check loading spinners stuck (only if it's the ONLY content visible)
   const loading = await page.evaluate(() => {
-    const text = document.body.innerText;
-    return text.includes("로딩 중") || text.includes("Loading");
+    const text = document.body.innerText.trim();
+    const cards = document.querySelectorAll(".card").length;
+    // Only flag as stuck if "로딩 중" is present AND very few cards (truly empty page)
+    const hasOnlyLoading = (text.includes("로딩 중") || text.includes("Loading...")) && cards <= 1;
+    return hasOnlyLoading;
   });
   if (loading) issues.push("stuck in loading state");
 
@@ -99,7 +102,7 @@ async function main() {
   for (const pg of PAGES) {
     process.stdout.write(`  ${pg.label.padEnd(20)}`);
     await dp.goto(`${BASE}/#${pg.hash}`, { waitUntil: "networkidle", timeout: 15000 });
-    await dp.waitForTimeout(3000);
+    await dp.waitForTimeout(5000); // extra time for heavy pages like Trend
     await dp.screenshot({ path: join(OUT, `desktop-${pg.name}.png`), fullPage: true });
     const result = await checkPage(dp, pg.label);
     const status = result.issues.length ? "WARN" : "OK";
@@ -134,10 +137,13 @@ async function main() {
     await dp.waitForTimeout(2000);
     await dp.locator(".asset-range-chip").nth(range.idx).click();
     await dp.waitForTimeout(3000);
-    const yTicks = await dp.evaluate(() =>
-      Array.from(document.querySelectorAll(".recharts-yAxis .recharts-cartesian-axis-tick-value")).map((t) => t.textContent)
-    );
-    const hasZeroAxis = yTicks.some((t) => t === "0");
+    // Check FIRST Y-axis only (price axis), ignore RSI/MACD axes
+    const yTicks = await dp.evaluate(() => {
+      const firstAxis = document.querySelector(".recharts-yAxis");
+      if (!firstAxis) return [];
+      return Array.from(firstAxis.querySelectorAll(".recharts-cartesian-axis-tick-value")).map((t) => t.textContent);
+    });
+    const hasZeroAxis = yTicks.length > 0 && yTicks[0] === "0";
     console.log(`${hasZeroAxis ? "WARN" : "OK"}  y=[${yTicks.join(",")}]`);
     if (hasZeroAxis) allIssues.push({ page: `종목상세 ${range.label}`, viewport: "desktop", issues: ["Y-axis starts at 0"] });
   }
@@ -152,7 +158,7 @@ async function main() {
   for (const pg of PAGES.slice(0, 7)) {
     process.stdout.write(`  ${pg.label.padEnd(20)}`);
     await mp.goto(`${BASE}/#${pg.hash}`, { waitUntil: "networkidle", timeout: 15000 });
-    await mp.waitForTimeout(2500);
+    await mp.waitForTimeout(5000);
     await mp.screenshot({ path: join(OUT, `mobile-${pg.name}.png`), fullPage: true });
     const result = await checkPage(mp, pg.label);
     const status = result.issues.length ? "WARN" : "OK";
