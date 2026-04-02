@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import DirectionValue from "../components/DirectionValue";
 import { apiGet, apiPost } from "../hooks/useApi";
 import { useWebSocket } from "../hooks/useWebSocket";
-import { toNum, formatSigned, formatNumber, formatCompact, formatDateTime } from "../lib/formatting";
+import { toNum, formatSigned, formatNumber, formatCompact, formatDateTime, summarizeDetails } from "../lib/formatting";
 import { eventTypeLabel, orderStatusLabel } from "../lib/labels";
 import { EXECUTION_ISSUE_STATUSES, EXECUTION_ACTIVE_STATUSES, toneForLane, toneForOrder } from "../lib/statusMapping";
 import type { HealthStatus, OrderHistoryItem, Mover, EventCandidate, KillSwitchStatus, NewsItem, MarketIndex } from "../types";
@@ -628,10 +628,7 @@ export default function CommandCenterPage({ t: _t }: { t: (k: string) => string 
 
 // Inline helpers removed — use shared imports from lib/formatting.ts and lib/statusMapping.ts
 
-function summarizeDetails(details: Record<string, unknown>) {
-  const entries = Object.entries(details).slice(0, 3).map(([key, value]) => `${key}: ${String(value)}`);
-  return entries.length > 0 ? entries.join(" · ") : "No details";
-}
+// summarizeDetails imported from lib/formatting.ts
 
 function Badge({ label, tone }: { label: string; tone: import("../lib/statusMapping").BadgeTone }) {
   return <span className={`command-badge tone-${tone}`}>{label}</span>;

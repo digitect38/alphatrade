@@ -72,10 +72,12 @@ async function checkPage(page) {
     if ((body.includes("로딩 중") || body.includes("Loading...")) && cards <= 1) problems.push("loading stuck");
     const charts = document.querySelectorAll(".recharts-wrapper").length;
     const lines = document.querySelectorAll(".recharts-line-curve").length;
-    // Y-axis zero check (first axis only)
+    // Y-axis zero check: only flag if first axis looks like price (values > 100)
+    // Skip RSI (0-100) and MACD axes
     const firstY = document.querySelector(".recharts-yAxis");
     const yTicks = firstY ? Array.from(firstY.querySelectorAll(".recharts-cartesian-axis-tick-value")).map(t => t.textContent) : [];
-    if (yTicks.length && yTicks[0] === "0" && charts > 0) problems.push("Y=0");
+    const maxTick = Math.max(...yTicks.map(t => parseFloat(String(t).replace(/[k,%]/g, "")) || 0));
+    if (yTicks.length && yTicks[0] === "0" && maxTick > 100 && charts > 0) problems.push("Y=0");
     return { problems, charts, lines };
   });
 }

@@ -34,7 +34,8 @@ export default function BenchmarkChart({
       .finally(() => setLoading(false));
   }, [stockCode, period]);
 
-  if (loading) return <div className="card text-secondary p-xl">벤치마크 로딩 중...</div>;
+  const tt = _t || ((k: string) => k);
+  if (loading) return <div className="card text-secondary p-xl">{tt("common.loading")}</div>;
   if (!data) return null;
 
   // Merge all series by date
@@ -54,7 +55,7 @@ export default function BenchmarkChart({
   return (
     <div className={`card ${fullscreen ? "chart-fullscreen" : ""}`}>
       <div className="card-title-row">
-        <h3 className="card-title">벤치마크 비교</h3>
+        <h3 className="card-title">{tt("benchmark.title")}</h3>
         <button className="btn btn-sm" style={{ fontSize: "11px" }} onClick={() => setFullscreen((v) => !v)}>
           {fullscreen ? "✕" : "⛶"}
         </button>
@@ -82,7 +83,7 @@ export default function BenchmarkChart({
         </div>
         {s.sector_return != null && (
           <div>
-            <span className="text-secondary">섹터평균</span>
+            <span className="text-secondary">{tt("benchmark.sectorAvg")}</span>
             <span className={s.sector_return >= 0 ? "text-profit" : "text-loss"} style={{ marginLeft: "6px" }}>
               {s.sector_return >= 0 ? "+" : ""}{s.sector_return}%
             </span>
@@ -90,14 +91,14 @@ export default function BenchmarkChart({
         )}
         {s.portfolio_return != null && (
           <div>
-            <span className="text-secondary">내 투자</span>
+            <span className="text-secondary">{tt("benchmark.myInvestment")}</span>
             <span className={s.portfolio_return >= 0 ? "text-profit" : "text-loss"} style={{ marginLeft: "6px" }}>
               {s.portfolio_return >= 0 ? "+" : ""}{s.portfolio_return}%
             </span>
           </div>
         )}
         <div style={{ borderLeft: "1px solid #ddd", paddingLeft: "12px" }}>
-          <span className="text-secondary">알파(KOSPI)</span>
+          <span className="text-secondary">{tt("benchmark.alpha")}</span>
           <span className={`font-heavy ${s.alpha_vs_kospi >= 0 ? "text-profit" : "text-loss"}`} style={{ marginLeft: "6px" }}>
             {s.alpha_vs_kospi >= 0 ? "+" : ""}{s.alpha_vs_kospi}%p
           </span>
@@ -143,13 +144,13 @@ export default function BenchmarkChart({
             {data.series.sector && (
               <Line
                 type="linear" dataKey="sector" stroke="#16a34a"
-                strokeWidth={1.5} dot={false} strokeDasharray="3 3" name={`섹터평균 (${data.sector || ""})`}
+                strokeWidth={1.5} dot={false} strokeDasharray="3 3" name={`${tt("benchmark.sectorAvg")} (${data.sector || ""})`}
               />
             )}
             {data.series.portfolio && (
               <Line
                 type="linear" dataKey="portfolio" stroke="#d97706"
-                strokeWidth={2} dot={false} name="내 투자"
+                strokeWidth={2} dot={false} name={tt("benchmark.myInvestment")}
               />
             )}
           </LineChart>

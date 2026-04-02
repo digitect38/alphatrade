@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import DirectionValue from "../components/DirectionValue";
 import { apiGet, apiPost } from "../hooks/useApi";
-import { toNum, formatNumber, formatCompact } from "../lib/formatting";
+import { toNum, formatNumber, formatCompact, summarizeDetails } from "../lib/formatting";
 import { eventTypeLabel, orderStatusLabel } from "../lib/labels";
 import { EXECUTION_ISSUE_STATUSES } from "../lib/statusMapping";
 import type { OrderHistoryItem, Mover, EventCandidate } from "../types";
@@ -290,6 +290,5 @@ function StockTable({ rows, onRowClick, emptyText, t: _t }: {
   );
 }
 
-function summarize(details: Record<string, unknown>) {
-  return Object.entries(details).slice(0, 2).map(([k, v]) => `${k}: ${String(v)}`).join(" · ") || "-";
-}
+// summarize → use summarizeDetails from lib/formatting.ts
+const summarize = (d: Record<string, unknown>) => summarizeDetails(d, 2);

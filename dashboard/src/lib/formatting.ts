@@ -40,3 +40,9 @@ export function formatDate(value: string | Date): string {
 export function formatTime(value: string | Date): string {
   return new Date(value).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
 }
+
+/** Summarize object details into short string. */
+export function summarizeDetails(details: Record<string, unknown>, maxEntries = 3): string {
+  const entries = Object.entries(details).slice(0, maxEntries).map(([k, v]) => `${k}: ${String(v)}`);
+  return entries.length > 0 ? entries.join(" · ") : "-";
+}

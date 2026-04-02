@@ -64,6 +64,12 @@ const translations: Record<string, Record<Locale, string>> = {
   "risk.overallStatus": { en: "Overall Status", ko: "종합 상태" },
   "risk.kisMode": { en: "Trading Mode", ko: "매매 모드" },
 
+  // Benchmark
+  "benchmark.title": { en: "Benchmark Comparison", ko: "벤치마크 비교" },
+  "benchmark.sectorAvg": { en: "Sector Avg", ko: "섹터평균" },
+  "benchmark.myInvestment": { en: "My Investment", ko: "내 투자" },
+  "benchmark.alpha": { en: "Alpha (KOSPI)", ko: "알파(KOSPI)" },
+
   // Dashboard
   "dash.totalValue": { en: "Total Value", ko: "총 평가금액" },
   "dash.cash": { en: "Cash", ko: "현금" },
