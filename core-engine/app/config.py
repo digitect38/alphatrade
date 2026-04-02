@@ -75,7 +75,7 @@ class Settings(BaseSettings):
     market_open_time: str = "09:00"  # 정규장 시작
     market_close_time: str = "15:30"  # 종가 동시호가 종료
     market_regular_close: str = "15:20"  # 정규장 종료 (종가 동시호가 시작)
-    market_state_poll_interval_sec: int = 30  # WS 무수신 시 시장 상태 fallback polling 주기
+    market_state_poll_interval_sec: int = 60  # WS 무수신 시 시장 상태 fallback polling 주기 (KIS 차단 방지)
 
     # --- Strategy ---
     strategy_weight_momentum: float = 0.30
