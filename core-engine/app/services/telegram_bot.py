@@ -136,7 +136,7 @@ class TelegramAssistant:
 
         # === 시스템 관리 ===
         if cmd == "/health": return await self._api_get("/health", "헬스체크")
-        if cmd == "/reconcile": return await self._api_post("/trading/reconcile", "EOD 정합성")
+        if cmd == "/reconcile": return await self._cmd_reconcile(args)
         if cmd == "/cleanup": return await self._api_post("/trading/cleanup-orders", "주문 정리")
         if cmd == "/fills": return await self._api_post("/trading/check-fills", "체결 확인")
         if cmd == "/prelaunch": return await self._api_get("/trading/pre-launch-check", "실전 점검")
@@ -363,6 +363,19 @@ class TelegramAssistant:
             return f"알 수 없는 수집 대상: {target}\n사용 가능: {', '.join(routes.keys())}"
         path, label = routes[target]
         return await self._api_post(path, label)
+
+    async def _cmd_reconcile(self, args: list) -> str:
+        force = "force" in args
+        try:
+            resp = await self.client.post(f"{self._api}/trading/reconcile{'?force=true' if force else ''}", timeout=30)
+            data = resp.json()
+            if data.get("status") == "blocked":
+                return f"⚠️ <b>장중 대사 차단</b>\n{data.get('reason', '')}\n\n강제 실행: /reconcile force"
+            mismatches = data.get("mismatches", 0)
+            emoji = "✅" if mismatches == 0 else "⚠️"
+            return f"{emoji} <b>EOD 정합성 검증 완료</b>\n불일치: {mismatches}건"
+        except Exception as e:
+            return f"❌ 정합성 검증 실패: {e}"
 
     # === Walk-Forward ===
 

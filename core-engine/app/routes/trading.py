@@ -338,6 +338,7 @@ async def api_execution_quality(
 
 @router.post("/reconcile")
 async def api_eod_reconcile(
+    force: bool = False,
     pool: asyncpg.Pool = Depends(get_db),
     redis: aioredis.Redis = Depends(get_redis),
     kis_client: KISClient = Depends(get_kis_client),
@@ -350,8 +351,24 @@ async def api_eod_reconcile(
     2. Clean up remaining unresolved orders
     3. Compare internal positions/cash/orders with BROKER ledger via KIS API
 
+    Safety: Blocked during market hours unless force=true.
     Should be called daily after market close (via n8n WF or manually).
     """
+    from app.utils.market_calendar import MarketSession, get_current_session
+
+    session, description = get_current_session()
+    is_market_open = session in (
+        MarketSession.PRE_MARKET, MarketSession.OPENING_AUCTION,
+        MarketSession.REGULAR, MarketSession.CLOSING_AUCTION,
+    )
+
+    if is_market_open and not force:
+        return {
+            "status": "blocked",
+            "reason": f"장중에는 EOD 대사를 실행할 수 없습니다. (현재: {description})",
+            "hint": "장 마감 후(15:40 이후) 다시 시도하거나, force=true 파라미터를 추가하세요.",
+            "session": description,
+        }
     from app.services.audit import log_event
     from app.execution.fill_monitor import check_inflight_orders
     from app.execution.order_cleanup import cleanup_eod_orders

@@ -54,8 +54,20 @@ export default function ExecutionPage({ t: _t }: { t: (k: string) => string }) {
   const runReconcile = async () => {
     setReconciling(true);
     try {
+      // First try without force — server blocks during market hours
       const result = await apiPost<Record<string, unknown>>("/trading/reconcile");
-      setReconcileResult(result);
+      if (result.status === "blocked") {
+        // Market is open — ask user to confirm
+        const msg = `${result.reason}\n\n강제 실행하시겠습니까? (미체결 주문이 만료될 수 있습니다)`;
+        if (confirm(msg)) {
+          const forced = await apiPost<Record<string, unknown>>("/trading/reconcile?force=true");
+          setReconcileResult(forced);
+        } else {
+          setReconcileResult(result);
+        }
+      } else {
+        setReconcileResult(result);
+      }
     } catch (e) {
       setReconcileResult({ error: String(e) } as Record<string, unknown>);
     }

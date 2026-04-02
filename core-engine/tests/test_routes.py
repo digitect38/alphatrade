@@ -563,7 +563,7 @@ class TestTradingRoutes:
         })
         app.dependency_overrides[get_kis_client] = lambda: mock_kis
 
-        resp = client.post("/trading/reconcile")
+        resp = client.post("/trading/reconcile?force=true")
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "completed"
