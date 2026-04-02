@@ -34,8 +34,11 @@ class FakeConn:
     async def fetch(self, query, *args):
         return [{"stock_code": "005930"}, {"stock_code": "000660"}]
 
-    async def fetchrow(self, query, stock_code):
+    async def fetchrow(self, query, *args):
         return {"close": self.prev_close}
+
+    async def execute(self, query, *args):
+        return "INSERT 0 1"
 
 
 class FakeAcquire:

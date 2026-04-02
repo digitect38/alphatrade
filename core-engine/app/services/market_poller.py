@@ -81,6 +81,17 @@ async def refresh_market_state_once(
                     "received_at": datetime.now(timezone.utc).isoformat(),
                 }
             )
+
+            # Also save to DB as 1m tick for chart display
+            current.interval = "1m"
+            async with pool.acquire() as conn:
+                await conn.execute(
+                    """INSERT INTO ohlcv (time, stock_code, open, high, low, close, volume, value, interval)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)""",
+                    current.time, stock_code, current.open, current.high,
+                    current.low, current.close, current.volume, current.value, "1m",
+                )
+
             updated += 1
         except Exception as exc:
             failed += 1
