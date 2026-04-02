@@ -133,9 +133,11 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
         setChartInterval(chartResponse.interval || "1d");
         // Deduplicate by time (keep last entry for each timestamp)
         const rawPoints = chartResponse.points || [];
+        // Deduplicate by time + sort ascending
         const seen = new Map<string, AssetChartPoint>();
         for (const pt of rawPoints) seen.set(pt.time, pt);
-        setChartData([...seen.values()]);
+        const deduped = [...seen.values()].sort((a, b) => a.time.localeCompare(b.time));
+        setChartData(deduped);
         setPeriodReturns((Object.entries(returnsResponse.returns) as Array<[RangeKey, number]>).map(([key, value]) => ({ key, value })));
         setExecutionContext(executionResponse);
       })
@@ -477,8 +479,8 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
                   ) : null}
                 </>
               )}
-              {showMa20 ? <Line yAxisId="price" type="monotone" dataKey="ma20" stroke="#2563eb" strokeWidth={1.75} dot={false} connectNulls name={t("asset.overlay.ma20")} /> : null}
-              {showMa50 ? <Line yAxisId="price" type="monotone" dataKey="ma50" stroke="#f59e0b" strokeWidth={1.75} dot={false} connectNulls name={t("asset.overlay.ma50")} /> : null}
+              {showMa20 && chartPoints.some((p) => p.ma20 != null) ? <Line yAxisId="price" type="monotone" dataKey="ma20" stroke="#2563eb" strokeWidth={1.75} dot={false} connectNulls name={t("asset.overlay.ma20")} /> : null}
+              {showMa50 && chartPoints.some((p) => p.ma50 != null) ? <Line yAxisId="price" type="monotone" dataKey="ma50" stroke="#f59e0b" strokeWidth={1.75} dot={false} connectNulls name={t("asset.overlay.ma50")} /> : null}
             </ComposedChart>
           </ResponsiveContainer>
           <div className="asset-volume-panel">
