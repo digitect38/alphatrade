@@ -2556,21 +2556,24 @@ body {
    Mobile Chart Fixes
    ============================== */
 @media (max-width: 768px) {
-  /* Period preset buttons: horizontal scroll instead of wrap */
-  .analysis-toolbar-row-period {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-  }
-
+  /* Period preset buttons: 2-row grid on mobile */
   .analysis-toolbar-row-period .asset-range-group {
-    flex-wrap: nowrap;
-    min-width: max-content;
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 4px;
   }
 
   .analysis-toolbar-row-period .asset-range-chip {
-    flex-shrink: 0;
     font-size: 11px;
-    padding: 4px 8px;
+    padding: 6px 2px;
+    text-align: center;
+  }
+
+  /* Asset range: also grid */
+  .asset-range-strip .asset-range-group {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 4px;
   }
 
   /* Chart: reduce Y-axis width */

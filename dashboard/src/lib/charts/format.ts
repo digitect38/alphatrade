@@ -14,14 +14,19 @@ export const pctFormatter = (v: number) => `${v > 0 ? "+" : ""}${v.toFixed(2)}%`
 /** Format date for chart label based on period. */
 export function formatChartDate(value: string, period?: string): string {
   const d = new Date(value);
+  // Intraday: show time (HH:MM)
+  if (["1m", "10m", "1H", "1D"].includes(period || ""))
+    return d.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
+  // Long-term: year + month
   if (["1Y", "3Y", "5Y", "10Y", "ALL"].includes(period || ""))
     return d.toLocaleDateString("ko-KR", { year: "2-digit", month: "short" });
+  // Default: month + day
   return d.toLocaleDateString("ko-KR", { month: "short", day: "numeric" });
 }
 
 /** Format date for tooltip. */
 export const tooltipDateFormatter = (v: string) =>
-  new Date(v).toLocaleDateString("ko-KR");
+  new Date(v).toLocaleString("ko-KR");
 
 /** Format price for Y-axis label (k suffix). */
 export function priceAxisFormatter(v: number): string {
