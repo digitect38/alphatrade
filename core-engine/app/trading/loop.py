@@ -23,6 +23,14 @@ from app.trading.position_sizer import calculate_quantity, calculate_sell_quanti
 logger = logging.getLogger(__name__)
 
 
+def _normalize_intraday_snapshot(record):
+    """Quote endpoint returns session OHLC, not true 1m OHLC. Store snapshot bars as last price."""
+    record.open = record.close
+    record.high = record.close
+    record.low = record.close
+    return record
+
+
 async def run_trading_cycle(
     *,
     pool: asyncpg.Pool,
@@ -87,6 +95,7 @@ async def _step_collect_ohlcv(errors: list, *, pool: asyncpg.Pool, redis: aiored
                 if not record:
                     continue
                 record.interval = "1m"
+                record = _normalize_intraday_snapshot(record)
                 async with pool.acquire() as conn:
                     await conn.execute(
                         "INSERT INTO ohlcv (time, stock_code, open, high, low, close, volume, value, interval) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'1m')",

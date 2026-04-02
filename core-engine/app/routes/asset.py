@@ -115,20 +115,7 @@ async def _load_chart(pool: asyncpg.Pool, stock_code: str, range_key: str):
             )
 
         if interval == "1m" and _is_synthetic_intraday(rows):
-            fallback_limits = {"1m": 1, "10m": 1, "1H": 1, "1D": 5, "5D": 22}
-            fallback_limit = fallback_limits.get(range_key, 22)
-            rows = await conn.fetch(
-                """
-                SELECT time, open, high, low, close, volume
-                FROM ohlcv
-                WHERE stock_code = $1 AND interval = '1d'
-                ORDER BY time DESC
-                LIMIT $2
-                """,
-                stock_code,
-                fallback_limit,
-            )
-            interval = "1d"
+            rows = _normalize_intraday_rows(rows)
 
     points = [
         {
@@ -148,6 +135,11 @@ def _is_synthetic_intraday(rows) -> bool:
     if len(rows) < 10:
         return False
 
+    opens = [float(row["open"] or 0) for row in rows]
+    highs = [float(row["high"] or 0) for row in rows]
+    lows = [float(row["low"] or 0) for row in rows]
+    closes = [float(row["close"] or 0) for row in rows]
+
     unique_bars = {
         (
             float(row["open"] or 0),
@@ -158,7 +150,30 @@ def _is_synthetic_intraday(rows) -> bool:
         )
         for row in rows
     }
-    return len(unique_bars) <= 3
+    if len(unique_bars) <= 3:
+        return True
+
+    # Current-price snapshots from the quote endpoint leak session-wide open/high/low
+    # into every "1m" row. Detect that pattern and fall back to daily data.
+    return len(set(opens)) <= 3 and len(set(highs)) <= 3 and len(set(closes)) > 3
+
+
+def _normalize_intraday_rows(rows):
+    """Normalize leaked session OHLC rows into close-only snapshot bars for charting."""
+    normalized = []
+    for row in rows:
+        close = row["close"]
+        normalized.append(
+            {
+                "time": row["time"],
+                "open": close,
+                "high": close,
+                "low": close,
+                "close": close,
+                "volume": row["volume"],
+            }
+        )
+    return normalized
 
 
 async def _load_daily_bars(pool: asyncpg.Pool, stock_code: str) -> list[dict]:

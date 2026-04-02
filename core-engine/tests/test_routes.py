@@ -615,6 +615,31 @@ class TestAssetRoutes:
 
         assert _is_synthetic_intraday(rows) is True
 
+    def test_asset_intraday_quality_detector_flags_session_ohlc_leak(self):
+        from app.routes.asset import _is_synthetic_intraday
+
+        rows = [
+            {"open": Decimal("192600"), "high": Decimal("193600"), "low": Decimal("177300"), "close": Decimal(str(180100 - i * 10)), "volume": 1000 + i}
+            for i in range(12)
+        ]
+
+        assert _is_synthetic_intraday(rows) is True
+
+    def test_asset_intraday_normalization_uses_close_only_bars(self):
+        from app.routes.asset import _normalize_intraday_rows
+
+        rows = [
+            {"time": datetime.now(timezone.utc), "open": Decimal("192600"), "high": Decimal("193600"), "low": Decimal("177300"), "close": Decimal("178400"), "volume": 1000},
+            {"time": datetime.now(timezone.utc), "open": Decimal("192600"), "high": Decimal("193600"), "low": Decimal("177000"), "close": Decimal("178100"), "volume": 1100},
+        ]
+
+        normalized = _normalize_intraday_rows(rows)
+
+        assert normalized[0]["open"] == Decimal("178400")
+        assert normalized[0]["high"] == Decimal("178400")
+        assert normalized[0]["low"] == Decimal("178400")
+        assert normalized[1]["open"] == Decimal("178100")
+
     def test_asset_overview(self, client):
         from app.routes import asset as asset_route
 

@@ -116,11 +116,12 @@ async def _scan_prices(universe, now, *, pool: asyncpg.Pool, kis_client: KISClie
             prev_volume = int(prev["volume"]) if prev["volume"] else 0
             change_pct = (current_price - prev_close) / prev_close
             volume_ratio = current.volume / max(prev_volume, 1)
+            snapshot_price = current.close
 
             async with pool.acquire() as conn:
                 await conn.execute(
                     "INSERT INTO ohlcv (time, stock_code, open, high, low, close, volume, interval) VALUES ($1,$2,$3,$4,$5,$6,$7,'1m')",
-                    now, code, current.open, current.high, current.low, current.close, current.volume,
+                    now, code, snapshot_price, snapshot_price, snapshot_price, snapshot_price, current.volume,
                 )
 
             movers.append({

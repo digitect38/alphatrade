@@ -101,6 +101,8 @@ const RANGE_CONFIG: Record<RangeKey, { interval: string; limit: number; display:
   "1Y": { interval: "1d", limit: 310, display: 260 },
 };
 
+const CANDLE_SUPPORTED_RANGES = new Set<RangeKey>(["1M", "3M", "6M", "YTD", "1Y"]);
+
 export default function AssetDetailPage({ t, route }: { t: (k: string) => string; route: string }) {
   const stockCode = useMemo(() => route.split("/")[1] || "", [route]);
   const [range, setRange] = useState<RangeKey>("1M");
@@ -118,6 +120,7 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
   const [peerCandidates, setPeerCandidates] = useState<UniverseItem[]>([]);
   const [hoverPoint, setHoverPoint] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
+  const canUseCandles = CANDLE_SUPPORTED_RANGES.has(range);
 
   useEffect(() => {
     if (!stockCode) return;
@@ -165,6 +168,12 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
         setCompareChartData([]);
       });
   }, [compareCode, range]);
+
+  useEffect(() => {
+    if (!canUseCandles && chartMode === "candles") {
+      setChartMode("line");
+    }
+  }, [canUseCandles, chartMode]);
 
   useEffect(() => {
     if (!overview?.sector) return;
@@ -300,7 +309,14 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
           <button className={`asset-toggle-chip ${chartMode === "line" ? "is-active" : ""}`} onClick={() => setChartMode("line")}>
             {t("asset.chartType.line")}
           </button>
-          <button className={`asset-toggle-chip ${chartMode === "candles" ? "is-active" : ""}`} onClick={() => setChartMode("candles")}>
+          <button
+            className={`asset-toggle-chip ${chartMode === "candles" ? "is-active" : ""}`}
+            onClick={() => {
+              if (canUseCandles) setChartMode("candles");
+            }}
+            disabled={!canUseCandles}
+            title={canUseCandles ? undefined : "단기 구간에서는 캔들 차트를 지원하지 않습니다."}
+          >
             {t("asset.chartType.candles")}
           </button>
           <button className={`asset-toggle-chip ${showMa20 ? "is-active" : ""}`} onClick={() => setShowMa20((value) => !value)}>
@@ -418,6 +434,7 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
               <YAxis
                 yAxisId="price"
                 fontSize={11}
+                allowDataOverflow
                 domain={chartMode === "line" && compareCode ? ["auto", "auto"] : priceDomain}
                 tickFormatter={(value: number) => (chartMode === "line" && compareCode ? `${value.toFixed(1)}%` : value >= 1000 ? `${(value / 1000).toFixed(0)}k` : `${value}`)}
               />

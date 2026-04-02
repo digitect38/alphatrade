@@ -1,0 +1,11 @@
+{
+  "scripts": {
+    "test": "make test",
+    "test:unit": "make test-unit",
+    "test:gui": "node scripts/gui_audit.mjs",
+    "gui:audit": "node scripts/gui_audit.mjs"
+  },
+  "dependencies": {
+    "playwright": "^1.58.2"
+  }
+}
