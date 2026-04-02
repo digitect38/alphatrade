@@ -2644,7 +2644,6 @@ body {
 }
 
 @media (max-width: 480px) {
-  /* Even smaller: single column metrics */
   .metrics-grid-4 {
     grid-template-columns: 1fr !important;
   }
@@ -2653,9 +2652,57 @@ body {
     grid-template-columns: 1fr !important;
   }
 
-  /* Analysis toolbar: compact */
   .analysis-toolbar-row {
     flex-direction: column;
     gap: 6px;
+  }
+}
+
+/* Landscape mode: maximize chart area */
+@media (max-height: 500px) and (orientation: landscape) {
+  .page-title {
+    display: none;
+  }
+
+  .app-main {
+    padding: 4px 8px;
+  }
+
+  .analysis-toolbar {
+    padding: 6px !important;
+  }
+
+  .analysis-toolbar-row {
+    gap: 4px;
+  }
+
+  .card {
+    padding: 8px;
+    margin-bottom: 4px;
+  }
+
+  .recharts-responsive-container {
+    min-height: 200px;
+  }
+
+  /* Hide non-essential sections in landscape */
+  .asset-header-side,
+  .asset-compare-strip,
+  .asset-peer-strip,
+  .asset-swipe-hint {
+    display: none;
+  }
+
+  .asset-hero-strip {
+    display: none;
+  }
+
+  .asset-header-main {
+    flex-direction: row;
+    gap: 12px;
+  }
+
+  .asset-range-strip {
+    padding: 4px !important;
   }
 }
