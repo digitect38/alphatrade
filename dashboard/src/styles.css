@@ -2551,3 +2551,111 @@ body {
     align-items: stretch;
   }
 }
+
+/* ==============================
+   Mobile Chart Fixes
+   ============================== */
+@media (max-width: 768px) {
+  /* Period preset buttons: horizontal scroll instead of wrap */
+  .analysis-toolbar-row-period {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .analysis-toolbar-row-period .asset-range-group {
+    flex-wrap: nowrap;
+    min-width: max-content;
+  }
+
+  .analysis-toolbar-row-period .asset-range-chip {
+    flex-shrink: 0;
+    font-size: 11px;
+    padding: 4px 8px;
+  }
+
+  /* Chart: reduce Y-axis width */
+  .recharts-yAxis {
+    font-size: 9px !important;
+  }
+
+  /* Card title row: stack on mobile */
+  .card-title-row {
+    flex-direction: column;
+    gap: 6px;
+    align-items: flex-start;
+  }
+
+  /* Asset detail: compact header on mobile */
+  .asset-header-main {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .asset-hero-strip {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 6px;
+  }
+
+  .asset-hero-card {
+    padding: 8px !important;
+  }
+
+  .asset-hero-label {
+    font-size: 10px !important;
+  }
+
+  .asset-hero-value {
+    font-size: 12px !important;
+  }
+
+  /* Asset range strip: horizontal scroll */
+  .asset-range-strip {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .asset-range-strip .asset-range-group {
+    flex-wrap: nowrap;
+  }
+
+  .asset-chart-controls {
+    flex-wrap: nowrap;
+  }
+
+  /* Make chart taller on mobile landscape */
+  .recharts-responsive-container {
+    min-height: 280px;
+  }
+
+  /* Key stats: 2-column on mobile */
+  .metrics-grid-4 {
+    grid-template-columns: 1fr 1fr !important;
+  }
+
+  /* Event panel: smaller text */
+  .event-link {
+    font-size: 10px;
+  }
+
+  /* Benchmark chart summary: wrap */
+  .flex.gap-lg.flex-wrap {
+    font-size: 11px;
+  }
+}
+
+@media (max-width: 480px) {
+  /* Even smaller: single column metrics */
+  .metrics-grid-4 {
+    grid-template-columns: 1fr !important;
+  }
+
+  .asset-hero-strip {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Analysis toolbar: compact */
+  .analysis-toolbar-row {
+    flex-direction: column;
+    gap: 6px;
+  }
+}
