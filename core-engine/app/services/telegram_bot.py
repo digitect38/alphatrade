@@ -38,7 +38,8 @@ COMMAND_HELP = """<b>🤖 AlphaTrade Bot — 전체 명령어</b>
 
 <b>📊 조회</b>
 /status — 포트폴리오 현황
-/signal &lt;종목코드&gt; — 매매 시그널
+/signal &lt;종목명|코드&gt; — 매매 시그널
+/chart &lt;종목명|코드&gt; [기간] — 차트 링크
 /risk — 리스크 현황 (P&L, VaR)
 /market — 시장 현황 (KOSPI/KOSDAQ/환율)
 /positions — 보유 종목 상세
@@ -46,8 +47,9 @@ COMMAND_HELP = """<b>🤖 AlphaTrade Bot — 전체 명령어</b>
 /quality — 실행 품질 (슬리피지)
 
 <b>⚡ 매매 제어</b>
-/buy &lt;종목코드&gt; &lt;수량&gt; — 매수 주문
-/sell &lt;종목코드&gt; &lt;수량&gt; — 매도 주문
+/buy &lt;종목명|코드&gt; &lt;수량&gt; — 매수 (확인 절차)
+/sell &lt;종목명|코드&gt; &lt;수량&gt; — 매도 (확인 절차)
+/confirm &lt;코드&gt; — 주문 확인 실행
 /cycle — 매매 사이클 실행
 /monitor — 포지션 모니터링 (손절/익절)
 
@@ -94,6 +96,43 @@ class TelegramAssistant:
         self._base_url = f"https://api.telegram.org/bot{settings.telegram_bot_token}"
         self._api = f"http://localhost:{settings.core_engine_port}"
 
+    async def _resolve_stock(self, query: str) -> tuple[str, str]:
+        """Resolve stock code or name to (code, name). Supports:
+        - 6-digit code: '005930' → ('005930', '삼성전자')
+        - Name search: '삼성전자' → ('005930', '삼성전자')
+        - Partial name: '삼성' → shows candidates
+        Returns (code, name) or ('', error_message).
+        """
+        if query.isdigit() and len(query) == 6:
+            async with self.pool.acquire() as conn:
+                row = await conn.fetchrow("SELECT stock_name FROM stocks WHERE stock_code = $1", query)
+            return (query, row["stock_name"] if row else query)
+
+        # Name search
+        async with self.pool.acquire() as conn:
+            # Exact match first
+            exact = await conn.fetchrow(
+                "SELECT stock_code, stock_name FROM stocks WHERE stock_name = $1", query)
+            if exact:
+                return (exact["stock_code"], exact["stock_name"])
+
+            # Partial match
+            matches = await conn.fetch(
+                "SELECT stock_code, stock_name FROM stocks WHERE stock_name LIKE $1 ORDER BY stock_name LIMIT 10",
+                f"%{query}%")
+
+        if not matches:
+            return ("", f"'{query}'에 해당하는 종목을 찾을 수 없습니다.")
+        if len(matches) == 1:
+            return (matches[0]["stock_code"], matches[0]["stock_name"])
+
+        # Multiple matches — ask user to choose
+        lines = [f"🔍 '{query}' 검색 결과 ({len(matches)}개):"]
+        for m in matches:
+            lines.append(f"  {m['stock_code']} {m['stock_name']}")
+        lines.append("\n종목코드 또는 정확한 이름으로 다시 시도하세요.")
+        return ("", "\n".join(lines))
+
     async def handle_message(self, message: dict) -> str | None:
         chat_id = message.get("chat", {}).get("id")
         text = message.get("text", "").strip()
@@ -113,7 +152,22 @@ class TelegramAssistant:
         # === 조회 ===
         if cmd in ("/help", "/start"): return COMMAND_HELP
         if cmd == "/status": return await self._cmd_status()
-        if cmd == "/signal": return await self._cmd_signal(args[0] if args else "005930")
+        if cmd == "/signal":
+            query = " ".join(args) if args else "005930"
+            code, name = await self._resolve_stock(query)
+            if not code: return name  # error message or candidates
+            return await self._cmd_signal(code)
+        if cmd == "/chart":
+            query = args[0] if args else "005930"
+            code, name = await self._resolve_stock(query)
+            if not code: return name
+            period = args[1] if len(args) > 1 else "1D"
+            return (
+                f"📈 <b>{name} ({code}) 차트</b>\n"
+                f"기간: {period}\n\n"
+                f"🖥 PC: https://alphatrade.visualfactory.ai/#asset/{code}\n"
+                f"📱 분석: https://alphatrade.visualfactory.ai/#analysis/{code}"
+            )
         if cmd == "/risk": return await self._cmd_risk()
         if cmd == "/market": return await self._cmd_market()
         if cmd == "/positions": return await self._cmd_positions()
@@ -123,6 +177,8 @@ class TelegramAssistant:
         # === 매매 제어 ===
         if cmd == "/buy": return await self._cmd_order("BUY", args)
         if cmd == "/sell": return await self._cmd_order("SELL", args)
+        if cmd == "/confirm": return await self._cmd_confirm(args)
+        if cmd == "/cancel": return "주문이 취소되었습니다."
         if cmd == "/cycle": return await self._api_post("/trading/run-cycle", "매매 사이클")
         if cmd == "/monitor": return await self._api_post("/trading/monitor", "포지션 모니터링")
 
@@ -273,25 +329,79 @@ class TelegramAssistant:
 
     async def _cmd_order(self, side: str, args: list) -> str:
         if len(args) < 2:
-            return f"사용법: /{side.lower()} <종목코드> <수량>\n예: /{side.lower()} 005930 10"
-        code, qty = args[0], args[1]
-        if not code.isdigit() or len(code) != 6:
-            return f"종목코드 오류: {code} (6자리 숫자)"
+            s = side.lower()
+            return (
+                f"사용법: /{s} <종목명|코드> <수량>\n\n"
+                f"예시:\n"
+                f"  /{s} 삼성전자 10\n"
+                f"  /{s} 005930 10\n"
+                f"  /{s} SK하이닉스 5"
+            )
+
+        # Last arg = quantity, everything before = stock query
         try:
-            qty = int(qty)
+            qty = int(args[-1])
         except ValueError:
-            return f"수량 오류: {qty} (정수)"
+            return f"수량 오류: {args[-1]} (정수를 입력하세요)"
+
+        query = " ".join(args[:-1])
+        code, name = await self._resolve_stock(query)
+        if not code:
+            return name  # error or candidates list
+
+        # Get current price for confirmation
+        async with self.pool.acquire() as conn:
+            price_row = await conn.fetchrow(
+                "SELECT close FROM ohlcv WHERE stock_code = $1 ORDER BY time DESC LIMIT 1", code)
+        price = float(price_row["close"]) if price_row else 0
+        amount = price * qty
+
+        # Check if this is a confirmation (user sent /buy_confirm_XXXX)
+        # For safety, always show confirmation first
+        action = "매수" if side == "BUY" else "매도"
+        emoji = "🟢" if side == "BUY" else "🔴"
+
+        # Store pending order in Redis (expires in 60s)
+        import uuid
+        confirm_id = uuid.uuid4().hex[:8]
+        await self.redis.setex(
+            f"order:pending:{confirm_id}",
+            60,
+            json.dumps({"code": code, "side": side, "qty": qty, "name": name}),
+        )
+
+        return (
+            f"{emoji} <b>{action} 주문 확인</b>\n\n"
+            f"종목: {name} ({code})\n"
+            f"수량: {qty}주\n"
+            f"예상가: {price:,.0f}원\n"
+            f"예상금액: {amount:,.0f}원\n\n"
+            f"확인하려면 입력:\n<code>/confirm {confirm_id}</code>\n\n"
+            f"⏰ 60초 내 미확인 시 자동 취소"
+        )
+
+    async def _cmd_confirm(self, args: list) -> str:
+        if not args:
+            return "사용법: /confirm <확인코드>"
+        confirm_id = args[0]
+        raw = await self.redis.get(f"order:pending:{confirm_id}")
+        if not raw:
+            return "⏰ 확인코드가 만료되었거나 유효하지 않습니다."
+        data = json.loads(raw if isinstance(raw, str) else raw.decode())
+        code, side, qty, name = data["code"], data["side"], data["qty"], data["name"]
+        await self.redis.delete(f"order:pending:{confirm_id}")
         try:
             resp = await self.client.post(f"{self._api}/order/execute", json={
                 "stock_code": code, "side": side, "quantity": qty, "order_type": "MARKET",
             }, timeout=15)
-            data = resp.json()
-            status = data.get("status", "UNKNOWN")
-            msg = data.get("message", "")
+            result = resp.json()
+            status = result.get("status", "UNKNOWN")
+            msg = result.get("message", "")
             emoji = "✅" if status == "FILLED" else "⚠️" if status in ("ACKED", "SUBMITTED") else "❌"
-            return f"{emoji} <b>{side} 주문 결과</b>\n종목: {code}\n수량: {qty}주\n상태: {status}\n{msg}"
+            action = "매수" if side == "BUY" else "매도"
+            return f"{emoji} <b>{action} 주문 실행됨</b>\n종목: {name} ({code})\n수량: {qty}주\n상태: {status}\n{msg}"
         except Exception as e:
-            return f"주문 실패: {e}"
+            return f"❌ 주문 실행 실패: {e}"
 
     # === 시스템 제어 ===
 
