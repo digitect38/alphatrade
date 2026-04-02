@@ -18,7 +18,7 @@ import { orderStatusLabel } from "../lib/labels";
 import { apiGet } from "../hooks/useApi";
 import type { OrderHistoryItem, NewsItem } from "../types";
 
-type RangeKey = "1D" | "5D" | "1M" | "3M" | "6M" | "YTD" | "1Y";
+type RangeKey = "1m" | "10m" | "1H" | "1D" | "5D" | "1M" | "3M" | "6M" | "YTD" | "1Y";
 type ChartMode = "line" | "candles";
 
 // NewsItem imported from types.ts
@@ -89,6 +89,9 @@ interface UniverseItem {
 
 // display = bars to show, fetch = bars to request (extra for MA50 pre-computation)
 const RANGE_CONFIG: Record<RangeKey, { interval: string; limit: number; display: number }> = {
+  "1m": { interval: "1m", limit: 30, display: 30 },
+  "10m": { interval: "1m", limit: 60, display: 60 },
+  "1H": { interval: "1m", limit: 120, display: 120 },
   "1D": { interval: "1m", limit: 240, display: 240 },
   "5D": { interval: "1m", limit: 600, display: 600 },
   "1M": { interval: "1d", limit: 80, display: 30 },    // fetch 80, show 30 (MA50 needs 50 extra)
@@ -585,7 +588,7 @@ function AssetStat({ label, value }: { label: string; value: string }) {
 
 function formatChartLabel(value: string, range: RangeKey, interval = "1d") {
   const date = new Date(value);
-  if ((range === "1D" || range === "5D") && interval === "1m") {
+  if (["1m", "10m", "1H", "1D", "5D"].includes(range) && interval === "1m") {
     return date.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
   }
   return date.toLocaleDateString("ko-KR", { month: "short", day: "numeric" });

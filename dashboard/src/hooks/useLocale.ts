@@ -380,6 +380,9 @@ const translations: Record<string, Record<Locale, string>> = {
   // Asset Detail
   "asset.backCommand": { en: "Back to Command Center", ko: "커맨드 센터로" },
   "asset.backIntel": { en: "Back to Market Intel", ko: "시장 인텔로" },
+  "asset.range.1m": { en: "1m", ko: "1분" },
+  "asset.range.10m": { en: "10m", ko: "10분" },
+  "asset.range.1H": { en: "1H", ko: "1시간" },
   "asset.range.1D": { en: "1D", ko: "1일" },
   "asset.range.5D": { en: "5D", ko: "5일" },
   "asset.range.1M": { en: "1M", ko: "1개월" },
