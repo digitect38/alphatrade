@@ -60,6 +60,12 @@ async def execute_order(
     now = datetime.now(timezone.utc)
     order_id = f"ORD-{uuid.uuid4().hex[:12].upper()}"
 
+    # -2. Cooldown check — prevent rapid-fire retries after FAILED/BLOCKED (BUY only)
+    # SELL orders (stop-loss, take-profit) are always allowed
+    cooldown_key = f"order:cooldown:{request.stock_code}:{request.side}"
+    if request.side == "BUY" and await redis.exists(cooldown_key):
+        return _build_result(order_id, request, now, status="FAILED", message=f"쿨다운 중: {request.stock_code} {request.side} (5분 내 재시도 불가)")
+
     # -1. Idempotency check (v1.31 16.5.2)
     idem_key = generate_idempotency_key(request.signal_id, request.stock_code, request.side)
     if await check_duplicate_order(pool, idem_key):
@@ -73,6 +79,7 @@ async def execute_order(
         if not guard_ok:
             msg = f"거래 안전 차단: {'; '.join(guard_violations)}"
             await _store_order(now, order_id, request, status="BLOCKED", message=msg, pool=pool, idempotency_key=idem_key)
+            await redis.setex(cooldown_key, 300, "blocked")  # 5분 쿨다운
             return _build_result(order_id, request, now, status="BLOCKED", message=msg, risk_checks=guard_violations)
 
     portfolio_value, cash = await _get_portfolio_state(pool=pool)
@@ -88,6 +95,7 @@ async def execute_order(
     if not risk_result.allowed:
         msg = f"리스크 체크 실패: {'; '.join(risk_result.violations)}"
         await _store_order(now, order_id, request, status="FAILED", message=msg, pool=pool, idempotency_key=idem_key)
+        await redis.setex(cooldown_key, 300, "risk_failed")  # 5분 쿨다운
         return _build_result(order_id, request, now, status="FAILED", message=msg, risk_checks=risk_result.violations)
 
     # 2. Store CREATED order, then VALIDATED

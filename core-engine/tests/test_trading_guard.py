@@ -186,7 +186,7 @@ class TestStalePriceGate:
     @pytest.mark.asyncio
     async def test_old_data_blocked(self, guard):
         from app.execution.trading_guard import TradingGuard
-        old_time = datetime.now(timezone.utc) - timedelta(seconds=60)
+        old_time = datetime.now(timezone.utc) - timedelta(seconds=120)
         conn = MockConn(fetchrow={"time": old_time})
         guard_old = TradingGuard(pool=MockPool(conn), redis=MockRedis())
         ok, age = await guard_old.check_price_freshness("005930")

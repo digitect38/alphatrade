@@ -142,6 +142,12 @@ class MockRedis:
         self._store[key] = str(int(self._store.get(key, "0")) + 1)
         return int(self._store[key])
 
+    async def exists(self, key):
+        return key in self._store
+
+    async def setex(self, key, ttl, value):
+        self._store[key] = value
+
     async def expire(self, *a, **kw):
         pass
 

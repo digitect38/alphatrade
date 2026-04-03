@@ -26,7 +26,7 @@ class TestRiskManagerConstants:
         assert self.rm.MAX_DAILY_LOSS_PCT == -0.02
 
     def test_max_daily_trades(self):
-        assert self.rm.MAX_DAILY_TRADES == 10
+        assert self.rm.MAX_DAILY_TRADES == 50
 
     def test_max_position_ratio(self):
         assert self.rm.MAX_POSITION_RATIO == 0.10

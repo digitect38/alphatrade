@@ -63,9 +63,9 @@ class Settings(BaseSettings):
     risk_take_profit_pct: float = 0.10  # 익절 기준
     risk_max_daily_loss_pct: float = -0.02  # 일간 최대 손실 → 킬 스위치 발동
     risk_max_strategy_daily_loss_pct: float = -0.01  # 전략별 일간 손실 (v1.31: -1%)
-    risk_max_daily_trades: int = 10  # 일간 최대 거래
+    risk_max_daily_trades: int = 50  # 일간 최대 거래 (10→50, 사이클 기반 운영)
     risk_max_participation_rate: float = 0.01  # 20일 평균 거래대금 대비 참여율 (v1.31: 1%)
-    risk_stale_price_seconds: int = 30  # 시세 유효 기간 (v1.31: 30초)
+    risk_stale_price_seconds: int = 90  # 시세 유효 기간 (폴링 60초 + 여유 30초)
     risk_broker_max_failures: int = 3  # 브로커 연속 실패 차단 횟수
     risk_session_open_delay_min: int = 5  # 장 개시 후 진입 대기 (분)
     risk_session_close_buffer_min: int = 20  # 장 마감 전 진입 차단 (분)
