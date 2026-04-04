@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 // Recharts still used for Volume/RSI/MACD panels
 import { RSIPanel, MACDPanel, LightweightChart } from "../components/charts";
 import DirectionValue from "../components/DirectionValue";
@@ -115,8 +115,63 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
   const [hoverPoint, setHoverPoint] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const canUseCandles = CANDLE_SUPPORTED_RANGES.has(range);
+  const autoRangeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const skipAutoRange = useRef(true);  // true on mount — wait for first data load to settle
+  const lastAutoTarget = useRef<RangeKey | null>(null);
 
-  useEffect(() => { setZoomStart(0); setZoomEnd(100); setZoomLabel(null); }, [range, stockCode]);
+  // Auto-switch range based on zoom level (debounced)
+  const handleAutoRange = useCallback((visibleBars: number) => {
+    // After a range change, skip auto-range until the chart settles
+    if (skipAutoRange.current) return;
+
+    let target: RangeKey | null = null;
+    if (chartInterval === "1d") {
+      if (visibleBars <= 7) target = "5D";         // zoomed in very far on daily → switch to intraday
+      else if (visibleBars <= 35) target = "1M";
+      else if (visibleBars <= 100) target = "3M";
+      else if (visibleBars <= 200) target = "6M";
+      else target = "1Y";
+    } else {
+      // intraday
+      if (visibleBars <= 30) target = "1m";
+      else if (visibleBars <= 70) target = "10m";
+      else if (visibleBars <= 130) target = "1H";
+      else if (visibleBars <= 300) target = "1D";
+      else target = "1M";                           // zoomed out very far on intraday → switch to daily
+    }
+
+    if (target) setZoomLabel(target);
+
+    // Auto-switch: skip if target equals current range or if we just came FROM this target (prevents A→B→A oscillation)
+    if (target && target !== range && target !== lastAutoTarget.current) {
+      if (autoRangeTimer.current) clearTimeout(autoRangeTimer.current);
+      autoRangeTimer.current = setTimeout(() => {
+        skipAutoRange.current = true;
+        lastAutoTarget.current = range;  // remember where we came from
+        setRange(target);
+      }, 600);
+    }
+  }, [chartInterval, range]);
+
+  useEffect(() => {
+    setZoomStart(0); setZoomEnd(100); setZoomLabel(null);
+    skipAutoRange.current = true;  // block auto-range until new data settles
+    if (autoRangeTimer.current) { clearTimeout(autoRangeTimer.current); autoRangeTimer.current = null; }
+  }, [range, stockCode, chartInterval]);
+
+  // Reset auto-range skip flag after chart data loads
+  useEffect(() => {
+    if (!loading) {
+      const timer = setTimeout(() => { skipAutoRange.current = false; }, 800);
+      return () => clearTimeout(timer);
+    }
+  }, [loading, chartData]);
+
+  // Clear oscillation guard when user manually clicks a range button
+  const handleManualRange = useCallback((key: RangeKey) => {
+    lastAutoTarget.current = null;
+    setRange(key);
+  }, []);
 
   useEffect(() => {
     if (!stockCode) return;
@@ -241,6 +296,7 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
     return Math.round(chartData.reduce((sum, item) => sum + item.volume, 0) / chartData.length);
   }, [chartData]);
   const relativeVolume = averageVolume > 0 && overview ? overview.volume / averageVolume : 0;
+  const lwChartData = useMemo(() => chartData.map(d => ({ time: d.time, open: d.open, high: d.high, low: d.low, close: d.close, volume: d.volume })), [chartData]);
   const activePoint = hoverPoint ?? zoomedPoints[zoomedPoints.length - 1] ?? null;
   // priceDomain no longer needed — LightweightChart auto-scales
 
@@ -302,7 +358,7 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
             <button
               key={key}
               className={`asset-range-chip ${range === key ? "is-active" : ""} ${zoomLabel === key && range !== key ? "is-zoom-hint" : ""}`}
-              onClick={() => setRange(key)}
+              onClick={() => handleManualRange(key)}
             >
               {t(`asset.range.${key}`)}
             </button>
@@ -394,7 +450,7 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
         <div className="card asset-chart-card">
           <div className="asset-section-header">
             <div>
-              <h3 className="card-title">{t("asset.chart")}</h3>
+              <h3 className="card-title">{overview?.stock_name || stockCode} ({stockCode}) — {t("asset.chart")}</h3>
               <div className="asset-chart-note">{compareCode && chartMode === "line" ? t("asset.compareModeNote") : t("asset.chartModeNote")}</div>
             </div>
             <div className="asset-live-header">
@@ -418,12 +474,14 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
           </div>
           {/* TradingView Lightweight Chart — zoom/pan/pinch built-in */}
           <LightweightChart
-            data={chartData.map(d => ({ time: d.time, open: d.open, high: d.high, low: d.low, close: d.close, volume: d.volume }))}
+            data={lwChartData}
             mode={chartMode === "candles" && canUseCandles ? "candle" : "line"}
             volume
             showMA20={showMa20}
             showMA50={showMa50}
             height={460}
+            displayBars={RANGE_CONFIG[range].display}
+            intraday={chartInterval === "1m"}
             upColor="#16a34a"
             downColor="#dc2626"
             lineColor={priceStroke}
@@ -431,23 +489,7 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
               if (pt) setHoverPoint({ ...pt, label: "", interval: chartInterval, ma20: null, ma50: null, primaryNormalized: 0, compareNormalized: null, rsi14: null, macd: null, macdSignal: null, macdHist: null, candleBase: 0, candleBody: 0, isUpBar: true, priceLine: pt.close });
               else setHoverPoint(null);
             }}
-            onVisibleRangeChange={(visibleBars) => {
-              // Update range label to reflect current zoom level (visual only, no data refetch)
-              let label: RangeKey | null = null;
-              if (chartInterval === "1d") {
-                if (visibleBars <= 7) label = "5D";
-                else if (visibleBars <= 35) label = "1M";
-                else if (visibleBars <= 100) label = "3M";
-                else if (visibleBars <= 200) label = "6M";
-                else label = "1Y";
-              } else {
-                if (visibleBars <= 30) label = "1m";
-                else if (visibleBars <= 70) label = "10m";
-                else if (visibleBars <= 130) label = "1H";
-                else label = "1D";
-              }
-              if (label) setZoomLabel(label);
-            }}
+            onVisibleRangeChange={handleAutoRange}
           />
           {/* Volume now built into LightweightChart above */}
           <div className="asset-indicator-stack">

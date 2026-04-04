@@ -50,6 +50,10 @@ interface Props {
   onCrosshairMove?: (point: OHLCVPoint | null) => void;
   /** Called when visible range changes (zoom/pan). Returns visible bar count. */
   onVisibleRangeChange?: (visibleBars: number) => void;
+  /** Initial number of bars to show (from the end). If omitted, fitContent() shows all. */
+  displayBars?: number;
+  /** Explicit intraday flag — avoids misdetection from timestamp gaps (e.g. 5D over weekend) */
+  intraday?: boolean;
 }
 
 function toTime(isoTime: string, intraday: boolean): Time {
@@ -74,18 +78,24 @@ export default function LightweightChart({
   data, mode = "candle", volume = true, markers, height = 400,
   showMA20 = false, showMA50 = false,
   upColor = "#16a34a", downColor = "#dc2626", lineColor = "#1a1a2e",
-  onCrosshairMove, onVisibleRangeChange,
+  onCrosshairMove, onVisibleRangeChange, displayBars, intraday: intradayProp,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
+  // Store callbacks in refs to avoid chart recreation when they change
+  const onVisibleRangeChangeRef = useRef(onVisibleRangeChange);
+  onVisibleRangeChangeRef.current = onVisibleRangeChange;
+  const onCrosshairMoveRef = useRef(onCrosshairMove);
+  onCrosshairMoveRef.current = onCrosshairMove;
 
   useEffect(() => {
     if (!containerRef.current || !data.length) return;
 
     if (chartRef.current) { chartRef.current.remove(); chartRef.current = null; }
 
-    const intraday = isIntraday(data);
+    // Fix #2: Use explicit intraday prop when available (avoids 5D weekend gap misdetection)
+    const intraday = intradayProp ?? isIntraday(data);
     const tt = (t: string) => toTime(t, intraday);
     const valid = data.filter(d => d.close > 0);
 
@@ -101,8 +111,16 @@ export default function LightweightChart({
     });
     chartRef.current = chart;
 
+    // Fix #1: Detect flat/synthetic intraday data (open=high=low=close) → force line mode
+    // Candles with zero body are meaningless doji bars
+    let effectiveMode = mode;
+    if (mode === "candle" && intraday && valid.length >= 5) {
+      const flatCount = valid.filter(d => d.open === d.close && d.high === d.close && d.low === d.close).length;
+      if (flatCount / valid.length > 0.8) effectiveMode = "line";
+    }
+
     // Main series
-    if (mode === "candle") {
+    if (effectiveMode === "candle") {
       const s = chart.addSeries(CandlestickSeries, {
         upColor, downColor, borderUpColor: upColor, borderDownColor: downColor,
         wickUpColor: upColor, wickDownColor: downColor,
@@ -117,7 +135,7 @@ export default function LightweightChart({
           shape: "circle" as const, text: m.label, size: 1,
         })).sort((a, b) => (a.time as number) - (b.time as number)));
       }
-    } else if (mode === "area") {
+    } else if (effectiveMode === "area") {
       const s = chart.addSeries(AreaSeries, {
         lineColor, topColor: `${lineColor}33`, bottomColor: `${lineColor}05`, lineWidth: 2,
       });
@@ -145,32 +163,42 @@ export default function LightweightChart({
         priceFormat: { type: "volume" }, priceScaleId: "vol",
       });
       chart.priceScale("vol").applyOptions({ scaleMargins: { top: 0.85, bottom: 0 } });
-      vs.setData(valid.filter(d => d.volume > 0).map((d, i) => ({
+      // Fix #3: Volume color — compare with previous bar in the filtered array, not the original
+      const volBars = valid.filter(d => d.volume > 0);
+      vs.setData(volBars.map((d, i) => ({
         time: tt(d.time), value: d.volume,
-        color: i === 0 || d.close >= valid[Math.max(0, i - 1)].close ? "rgba(22,163,74,0.3)" : "rgba(220,38,38,0.25)",
+        color: i === 0 || d.close >= volBars[i - 1].close ? "rgba(22,163,74,0.3)" : "rgba(220,38,38,0.25)",
       })));
     }
 
     // Crosshair
-    if (onCrosshairMove) {
-      chart.subscribeCrosshairMove((param) => {
-        if (!param.time) { onCrosshairMove(null); return; }
-        const idx = valid.findIndex(d => tt(d.time) === param.time);
-        onCrosshairMove(idx >= 0 ? valid[idx] : null);
-      });
-    }
+    chart.subscribeCrosshairMove((param) => {
+      if (!onCrosshairMoveRef.current) return;
+      if (!param.time) { onCrosshairMoveRef.current(null); return; }
+      const idx = valid.findIndex(d => tt(d.time) === param.time);
+      onCrosshairMoveRef.current(idx >= 0 ? valid[idx] : null);
+    });
 
-    chart.timeScale().fitContent();
+    // Show only the last `displayBars` bars if specified, otherwise fit all
+    if (displayBars && displayBars < valid.length) {
+      chart.timeScale().setVisibleLogicalRange({
+        from: valid.length - displayBars,
+        to: valid.length - 1,
+      });
+    } else {
+      chart.timeScale().fitContent();
+    }
 
     // Notify parent of visible range changes (zoom/pan)
-    if (onVisibleRangeChange) {
-      chart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
-        if (range) {
-          const bars = Math.round(range.to - range.from);
-          onVisibleRangeChange(bars);
-        }
-      });
-    }
+    // Skip initial callbacks that fire during chart setup (fitContent / setVisibleLogicalRange)
+    // Subscribe — skip initial setup callbacks (chart init fires 2-4 times)
+    let initSkip = 4;
+    chart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
+      if (initSkip > 0) { initSkip--; return; }
+      if (!range || !onVisibleRangeChangeRef.current) return;
+      const bars = Math.round(range.to - range.from);
+      onVisibleRangeChangeRef.current(bars);
+    });
 
     const ro = new ResizeObserver(() => {
       if (containerRef.current) chart.applyOptions({ width: containerRef.current.clientWidth });
@@ -178,7 +206,7 @@ export default function LightweightChart({
     ro.observe(containerRef.current);
 
     return () => { ro.disconnect(); chart.remove(); chartRef.current = null; };
-  }, [data, mode, volume, markers, height, showMA20, showMA50, upColor, downColor, lineColor, fullscreen, onVisibleRangeChange]);
+  }, [data, mode, volume, markers, height, showMA20, showMA50, upColor, downColor, lineColor, fullscreen, displayBars, intradayProp]);
 
   return (
     <div style={{ position: "relative" }}>
