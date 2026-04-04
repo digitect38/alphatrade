@@ -1,14 +1,12 @@
 /**
- * Reusable Lightweight Charts (TradingView) v5 wrapper for React.
+ * LightweightChart — Multi-pane TradingView Lightweight Charts v5 component.
  *
- * Single chart instance with optional overlays:
- * - Price: candlestick / line / area
- * - Volume histogram (bottom 15%)
- * - MA20 / MA50 overlays
- * - RSI(14) pane (bottom region, separate priceScale)
- * - MACD(12,26,9) pane (bottom region, separate priceScale)
+ * Pane 1: Price (candle/line/area) + Volume + MA20/MA50 overlays + Markers
+ * Pane 2 (optional): RSI(14) with overbought/oversold reference lines
+ * Pane 3 (optional): MACD(12,26,9) — histogram + MACD line + signal line
  *
- * Built-in: mouse/touch zoom, pan, pinch zoom, auto Y-scale, crosshair.
+ * All panes share a single chart instance: synced time scale, crosshair, zoom/pan.
+ * Pane dividers are draggable (built-in Lightweight Charts feature).
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -61,64 +59,69 @@ interface Props {
   intraday?: boolean;
 }
 
-function toTime(isoTime: string, intraday: boolean): Time {
-  if (intraday) return Math.floor(new Date(isoTime).getTime() / 1000) as Time;
-  return new Date(isoTime).toISOString().slice(0, 10) as Time;
+// ─── Time helpers ────────────────────────────────────────────────
+
+function toTime(iso: string, intraday: boolean): Time {
+  if (intraday) return Math.floor(new Date(iso).getTime() / 1000) as Time;
+  return new Date(iso).toISOString().slice(0, 10) as Time;
 }
 
-function isIntraday(data: OHLCVPoint[]): boolean {
+function isIntradayData(data: OHLCVPoint[]): boolean {
   if (data.length < 2) return false;
   return Math.abs(new Date(data[1].time).getTime() - new Date(data[0].time).getTime()) < 86400000;
 }
 
+// ─── Indicator computations ──────────────────────────────────────
+
 function computeMA(closes: number[], period: number): (number | null)[] {
   return closes.map((_, i) => {
     if (i + 1 < period) return null;
-    const slice = closes.slice(i + 1 - period, i + 1);
-    return slice.reduce((s, v) => s + v, 0) / period;
+    return closes.slice(i + 1 - period, i + 1).reduce((s, v) => s + v, 0) / period;
   });
 }
 
 function computeRSI(closes: number[], period = 14): (number | null)[] {
-  const result: (number | null)[] = Array(closes.length).fill(null);
-  if (closes.length < period + 1) return result;
-  let avgGain = 0, avgLoss = 0;
+  const r: (number | null)[] = Array(closes.length).fill(null);
+  if (closes.length < period + 1) return r;
+  let ag = 0, al = 0;
   for (let i = 1; i <= period; i++) {
     const d = closes[i] - closes[i - 1];
-    if (d >= 0) avgGain += d; else avgLoss += Math.abs(d);
+    if (d >= 0) ag += d; else al -= d;
   }
-  avgGain /= period; avgLoss /= period;
-  result[period] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+  ag /= period; al /= period;
+  r[period] = al === 0 ? 100 : 100 - 100 / (1 + ag / al);
   for (let i = period + 1; i < closes.length; i++) {
     const d = closes[i] - closes[i - 1];
-    avgGain = ((avgGain * (period - 1)) + Math.max(d, 0)) / period;
-    avgLoss = ((avgLoss * (period - 1)) + Math.max(-d, 0)) / period;
-    result[i] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+    ag = (ag * (period - 1) + Math.max(d, 0)) / period;
+    al = (al * (period - 1) + Math.max(-d, 0)) / period;
+    r[i] = al === 0 ? 100 : 100 - 100 / (1 + ag / al);
   }
-  return result;
+  return r;
 }
 
-function computeEMA(values: number[], period: number, mask?: (number | null)[]): (number | null)[] {
-  const result: (number | null)[] = Array(values.length).fill(null);
-  const k = 2 / (period + 1);
+function computeEMA(vals: number[], p: number, mask?: (number | null)[]): (number | null)[] {
+  const r: (number | null)[] = Array(vals.length).fill(null);
+  const k = 2 / (p + 1);
   let prev: number | null = null;
-  for (let i = 0; i < values.length; i++) {
+  for (let i = 0; i < vals.length; i++) {
     if (mask && mask[i] == null) continue;
-    if (prev == null) { prev = values[i]; result[i] = prev; continue; }
-    prev = (values[i] - prev) * k + prev;
-    result[i] = prev;
+    if (prev == null) { prev = vals[i]; r[i] = prev; continue; }
+    prev = (vals[i] - prev) * k + prev;
+    r[i] = prev;
   }
-  return result;
+  return r;
 }
 
-function computeMACD(closes: number[]): { macd: (number | null)[]; signal: (number | null)[]; hist: (number | null)[] } {
-  const ema12 = computeEMA(closes, 12);
-  const ema26 = computeEMA(closes, 26);
-  const macd = closes.map((_, i) => (ema12[i] != null && ema26[i] != null) ? ema12[i]! - ema26[i]! : null);
+function computeMACD(closes: number[]) {
+  const e12 = computeEMA(closes, 12);
+  const e26 = computeEMA(closes, 26);
+  const macd = closes.map((_, i) => (e12[i] != null && e26[i] != null) ? e12[i]! - e26[i]! : null);
   const signal = computeEMA(macd.map(v => v ?? 0), 9, macd);
   const hist = macd.map((v, i) => (v != null && signal[i] != null) ? v - signal[i]! : null);
   return { macd, signal, hist };
 }
+
+// ─── Component ───────────────────────────────────────────────────
 
 export default function LightweightChart({
   data, mode = "candle", volume = true, markers, height = 400,
@@ -134,64 +137,64 @@ export default function LightweightChart({
   const onCrosshairMoveRef = useRef(onCrosshairMove);
   onCrosshairMoveRef.current = onCrosshairMove;
 
-  // Layout: price chart on top, then gap, RSI, gap, MACD at bottom.
-  // Each pane gets a fixed pixel height; gaps are 12px visual spacers.
+  // Dynamic height: base + RSI pane + MACD pane
   const baseH = fullscreen ? window.innerHeight - 40 : height;
-  const rsiPx = showRSI ? 100 : 0;
-  const macdPx = showMACD ? 110 : 0;
-  const gapPx = (showRSI || showMACD) ? 12 : 0;
-  const gap2Px = (showRSI && showMACD) ? 12 : 0;
-  const totalHeight = baseH + gapPx + rsiPx + gap2Px + macdPx;
-
-  // Convert pixel regions to 0-1 fractions for scaleMargins
-  const priceFrac = baseH / totalHeight;        // e.g. 0.70
-  const gapFrac = gapPx / totalHeight;          // small spacer
-  const rsiFrac = rsiPx / totalHeight;           // e.g. 0.15
-  const gap2Frac = gap2Px / totalHeight;
-
-  // Price area: top 2% padding to priceFrac (leave rest for indicators below)
-  const priceBottom = 1 - priceFrac + 0.02;
-  // Volume: sits in bottom 12% of the price area
-  const volTop = priceFrac - 0.14;
-  const volBottom = 1 - priceFrac;
-  // RSI area: starts after price+gap, ends before MACD gap
-  const rsiTop = priceFrac + gapFrac;
-  const rsiEnd = rsiTop + rsiFrac;
-  // MACD area: starts after RSI+gap2, goes to bottom
-  const macdTop = rsiEnd + gap2Frac;
+  const totalHeight = baseH + (showRSI ? 160 : 0) + (showMACD ? 180 : 0);
 
   useEffect(() => {
     if (!containerRef.current || !data.length) return;
-
     if (chartRef.current) { chartRef.current.remove(); chartRef.current = null; }
 
-    const intraday = intradayProp ?? isIntraday(data);
+    const intraday = intradayProp ?? isIntradayData(data);
     const tt = (t: string) => toTime(t, intraday);
     const valid = data.filter(d => d.close > 0);
-
-    const chart = createChart(containerRef.current, {
-      width: containerRef.current.clientWidth,
-      height: totalHeight,
-      layout: { background: { type: ColorType.Solid, color: "#fff" }, textColor: "#333", fontSize: 11 },
-      grid: { vertLines: { color: "#f0f0f0" }, horzLines: { color: "#f0f0f0" } },
-      crosshair: { mode: CrosshairMode.Normal },
-      rightPriceScale: {
-        borderVisible: false, autoScale: true,
-        scaleMargins: { top: 0.02, bottom: priceBottom },
-      },
-      timeScale: { borderVisible: false, timeVisible: intraday, secondsVisible: false },
-      handleScroll: { vertTouchDrag: false },
-    });
-    chartRef.current = chart;
+    if (!valid.length) return;
 
     // Detect flat/synthetic intraday data → force line mode
-    let effectiveMode = mode;
+    let effectiveMode: ChartMode = mode;
     if (mode === "candle" && intraday && valid.length >= 5) {
       const flatCount = valid.filter(d => d.open === d.close && d.high === d.close && d.low === d.close).length;
       if (flatCount / valid.length > 0.8) effectiveMode = "line";
     }
 
-    // Main series
+    // ── Create chart ──
+    const chart = createChart(containerRef.current, {
+      width: containerRef.current.clientWidth,
+      height: totalHeight,
+      layout: {
+        background: { type: ColorType.Solid, color: "#fff" },
+        textColor: "#333", fontSize: 11,
+        panes: { separatorColor: "#e0e0e0", separatorHoverColor: "#bdbdbd" },
+      },
+      grid: { vertLines: { color: "#f0f0f0" }, horzLines: { color: "#f0f0f0" } },
+      crosshair: { mode: CrosshairMode.Normal },
+      rightPriceScale: { borderVisible: false, autoScale: true },
+      timeScale: { borderVisible: false, timeVisible: intraday, secondsVisible: false },
+      handleScroll: { vertTouchDrag: false },
+    });
+    chartRef.current = chart;
+
+    // ── Create panes ──
+    const pricePane = chart.panes()[0];
+    let rsiPaneIdx: number | undefined;
+    let macdPaneIdx: number | undefined;
+
+    if (showRSI) {
+      rsiPaneIdx = chart.addPane().paneIndex();
+    }
+    if (showMACD) {
+      macdPaneIdx = chart.addPane().paneIndex();
+    }
+
+    // Set pane proportions
+    pricePane.setStretchFactor(600);
+    if (rsiPaneIdx != null) chart.panes()[rsiPaneIdx].setStretchFactor(200);
+    if (macdPaneIdx != null) chart.panes()[macdPaneIdx].setStretchFactor(200);
+
+    // ══════════════════════════════════════════════════════════════
+    // PANE 0 — Price + Volume + MA + Markers
+    // ══════════════════════════════════════════════════════════════
+
     if (effectiveMode === "candle") {
       const s = chart.addSeries(CandlestickSeries, {
         upColor, downColor, borderUpColor: upColor, borderDownColor: downColor,
@@ -217,14 +220,15 @@ export default function LightweightChart({
     }
 
     // MA overlays
+    const closes = valid.map(d => d.close);
     if (showMA20 && valid.length >= 20) {
       const ma = chart.addSeries(LineSeries, { color: "#2563eb", lineWidth: 1, priceLineVisible: false });
-      const vals = computeMA(valid.map(d => d.close), 20);
+      const vals = computeMA(closes, 20);
       ma.setData(valid.map((d, i) => vals[i] != null ? { time: tt(d.time), value: vals[i]! } : null).filter(Boolean) as any[]);
     }
     if (showMA50 && valid.length >= 50) {
       const ma = chart.addSeries(LineSeries, { color: "#f59e0b", lineWidth: 1, priceLineVisible: false });
-      const vals = computeMA(valid.map(d => d.close), 50);
+      const vals = computeMA(closes, 50);
       ma.setData(valid.map((d, i) => vals[i] != null ? { time: tt(d.time), value: vals[i]! } : null).filter(Boolean) as any[]);
     }
 
@@ -233,76 +237,65 @@ export default function LightweightChart({
       const vs = chart.addSeries(HistogramSeries, {
         priceFormat: { type: "volume" }, priceScaleId: "vol",
       });
-      chart.priceScale("vol").applyOptions({ scaleMargins: { top: volTop, bottom: volBottom } });
-      const volBars = valid.filter(d => d.volume > 0);
-      vs.setData(volBars.map((d, i) => ({
+      chart.priceScale("vol").applyOptions({ scaleMargins: { top: 0.85, bottom: 0 } });
+      const vb = valid.filter(d => d.volume > 0);
+      vs.setData(vb.map((d, i) => ({
         time: tt(d.time), value: d.volume,
-        color: i === 0 || d.close >= volBars[i - 1].close ? "rgba(22,163,74,0.3)" : "rgba(220,38,38,0.25)",
+        color: i === 0 || d.close >= vb[i - 1].close ? "rgba(22,163,74,0.25)" : "rgba(220,38,38,0.2)",
       })));
     }
 
-    // --- RSI pane (same chart, dedicated priceScale at bottom) ---
-    if (showRSI && valid.length >= 15) {
-      const rsiScaleId = "rsi";
-      chart.priceScale(rsiScaleId).applyOptions({
-        scaleMargins: { top: rsiTop, bottom: 1 - rsiEnd },
-        borderVisible: false,
-      });
+    // ══════════════════════════════════════════════════════════════
+    // PANE 1 — RSI(14)
+    // ══════════════════════════════════════════════════════════════
 
-      const rsiValues = computeRSI(valid.map(d => d.close), 14);
+    if (showRSI && rsiPaneIdx != null && valid.length >= 15) {
+      const rsiVals = computeRSI(closes, 14);
       const rsiLine = chart.addSeries(LineSeries, {
-        color: "#2563eb", lineWidth: 2, priceLineVisible: false, priceScaleId: rsiScaleId,
-        lastValueVisible: true,
-      });
-      rsiLine.setData(valid.map((d, i) => rsiValues[i] != null ? { time: tt(d.time), value: rsiValues[i]! } : null).filter(Boolean) as any[]);
+        color: "#7c3aed", lineWidth: 2, priceLineVisible: false, lastValueVisible: true,
+      }, rsiPaneIdx);
+      rsiLine.setData(valid.map((d, i) => rsiVals[i] != null ? { time: tt(d.time), value: rsiVals[i]! } : null).filter(Boolean) as any[]);
 
-      // Overbought (70) / oversold (30) reference lines
+      const refTimes = valid.filter((_, i) => rsiVals[i] != null);
       const ob = chart.addSeries(LineSeries, {
-        color: "#ef4444", lineWidth: 1, lineStyle: 2, priceLineVisible: false,
-        priceScaleId: rsiScaleId, crosshairMarkerVisible: false, lastValueVisible: false,
-      });
-      const os = chart.addSeries(LineSeries, {
-        color: "#10b981", lineWidth: 1, lineStyle: 2, priceLineVisible: false,
-        priceScaleId: rsiScaleId, crosshairMarkerVisible: false, lastValueVisible: false,
-      });
-      const refTimes = valid.filter((_, i) => rsiValues[i] != null);
+        color: "#ef4444", lineWidth: 1, lineStyle: 2,
+        priceLineVisible: false, crosshairMarkerVisible: false, lastValueVisible: false,
+      }, rsiPaneIdx);
       ob.setData(refTimes.map(d => ({ time: tt(d.time), value: 70 })));
+      const os = chart.addSeries(LineSeries, {
+        color: "#10b981", lineWidth: 1, lineStyle: 2,
+        priceLineVisible: false, crosshairMarkerVisible: false, lastValueVisible: false,
+      }, rsiPaneIdx);
       os.setData(refTimes.map(d => ({ time: tt(d.time), value: 30 })));
     }
 
-    // --- MACD pane (same chart, dedicated priceScale at very bottom) ---
-    if (showMACD && valid.length >= 27) {
-      const macdScaleId = "macd";
-      chart.priceScale(macdScaleId).applyOptions({
-        scaleMargins: { top: macdTop, bottom: 0 },
-        borderVisible: false,
-      });
+    // ══════════════════════════════════════════════════════════════
+    // PANE 2 — MACD(12, 26, 9)
+    // ══════════════════════════════════════════════════════════════
 
-      const closes = valid.map(d => d.close);
-      const { macd: macdVals, signal: sigVals, hist: histVals } = computeMACD(closes);
+    if (showMACD && macdPaneIdx != null && valid.length >= 27) {
+      const { macd, signal, hist } = computeMACD(closes);
 
-      const histSeries = chart.addSeries(HistogramSeries, {
-        priceLineVisible: false, priceScaleId: macdScaleId, lastValueVisible: false,
-      });
-      histSeries.setData(valid.map((d, i) => histVals[i] != null ? {
-        time: tt(d.time), value: histVals[i]!,
-        color: histVals[i]! >= 0 ? "rgba(22,163,74,0.4)" : "rgba(220,38,38,0.35)",
+      const histS = chart.addSeries(HistogramSeries, {
+        priceLineVisible: false, lastValueVisible: false,
+      }, macdPaneIdx);
+      histS.setData(valid.map((d, i) => hist[i] != null ? {
+        time: tt(d.time), value: hist[i]!,
+        color: hist[i]! >= 0 ? "rgba(22,163,74,0.45)" : "rgba(220,38,38,0.4)",
       } : null).filter(Boolean) as any[]);
 
       const macdLine = chart.addSeries(LineSeries, {
-        color: "#7c3aed", lineWidth: 2, priceLineVisible: false,
-        priceScaleId: macdScaleId, lastValueVisible: true,
-      });
-      macdLine.setData(valid.map((d, i) => macdVals[i] != null ? { time: tt(d.time), value: macdVals[i]! } : null).filter(Boolean) as any[]);
+        color: "#7c3aed", lineWidth: 2, priceLineVisible: false, lastValueVisible: true,
+      }, macdPaneIdx);
+      macdLine.setData(valid.map((d, i) => macd[i] != null ? { time: tt(d.time), value: macd[i]! } : null).filter(Boolean) as any[]);
 
       const sigLine = chart.addSeries(LineSeries, {
-        color: "#f59e0b", lineWidth: 2, priceLineVisible: false,
-        priceScaleId: macdScaleId, lastValueVisible: false,
-      });
-      sigLine.setData(valid.map((d, i) => sigVals[i] != null ? { time: tt(d.time), value: sigVals[i]! } : null).filter(Boolean) as any[]);
+        color: "#f59e0b", lineWidth: 2, priceLineVisible: false, lastValueVisible: false,
+      }, macdPaneIdx);
+      sigLine.setData(valid.map((d, i) => signal[i] != null ? { time: tt(d.time), value: signal[i]! } : null).filter(Boolean) as any[]);
     }
 
-    // Crosshair
+    // ── Crosshair ──
     chart.subscribeCrosshairMove((param) => {
       if (!onCrosshairMoveRef.current) return;
       if (!param.time) { onCrosshairMoveRef.current(null); return; }
@@ -310,7 +303,7 @@ export default function LightweightChart({
       onCrosshairMoveRef.current(idx >= 0 ? valid[idx] : null);
     });
 
-    // Show only the last `displayBars` bars if specified, otherwise fit all
+    // ── Initial visible range ──
     if (displayBars && displayBars < valid.length) {
       chart.timeScale().setVisibleLogicalRange({
         from: valid.length - displayBars,
@@ -320,7 +313,7 @@ export default function LightweightChart({
       chart.timeScale().fitContent();
     }
 
-    // Visible range change subscription — skip initial setup callbacks
+    // ── Visible range change subscription (skip initial setup callbacks) ──
     let initSkip = 4;
     const totalBars = valid.length;
     chart.timeScale().subscribeVisibleLogicalRangeChange((lr) => {
@@ -332,6 +325,7 @@ export default function LightweightChart({
       onVisibleRangeChangeRef.current(bars, fromIdx, toIdx);
     });
 
+    // ── Resize observer ──
     const ro = new ResizeObserver(() => {
       if (containerRef.current) chart.applyOptions({ width: containerRef.current.clientWidth });
     });
