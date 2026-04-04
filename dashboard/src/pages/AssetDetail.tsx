@@ -1,19 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import {
-  CartesianGrid,
-  ComposedChart,
-  Customized,
-  Line,
-  ReferenceLine,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
-import { renderCandlesticks, VolumePanel, RSIPanel, MACDPanel } from "../components/charts";
+// Recharts still used for Volume/RSI/MACD panels
+import { VolumePanel, RSIPanel, MACDPanel, LightweightChart } from "../components/charts";
 import DirectionValue from "../components/DirectionValue";
 import StockSearch from "../components/StockSearch";
-import { calcOHLCDomain } from "../lib/charts/domain";
+// calcOHLCDomain no longer needed — LightweightChart auto-scales
 import { orderStatusLabel } from "../lib/labels";
 import { apiGet } from "../hooks/useApi";
 import type { OrderHistoryItem, NewsItem } from "../types";
@@ -238,8 +228,6 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
     return chartPoints.slice(startIdx, endIdx);
   }, [chartPoints, zoomStart, zoomEnd]);
 
-  const isZoomed = zoomStart > 0 || zoomEnd < 100;
-
   const latestOrder = executionContext?.latest_order || null;
   const activeRangeReturn = periodReturns.find((item) => item.key === range)?.value ?? 0;
   const isPositiveRange = activeRangeReturn >= 0;
@@ -252,10 +240,7 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
   }, [chartData]);
   const relativeVolume = averageVolume > 0 && overview ? overview.volume / averageVolume : 0;
   const activePoint = hoverPoint ?? zoomedPoints[zoomedPoints.length - 1] ?? null;
-  const priceDomain = useMemo(
-    () => calcOHLCDomain(zoomedPoints.flatMap((d) => [d.open, d.high, d.low, d.close])),
-    [zoomedPoints],
-  );
+  // priceDomain no longer needed — LightweightChart auto-scales
 
   if (!stockCode) return <div className="card">{t("asset.noCode")}</div>;
   if (loading) return <p className="text-secondary p-xl">{t("asset.loading")}</p>;
@@ -429,112 +414,22 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
               </div>
             </div>
           </div>
-          <ResponsiveContainer width="100%" height={460}>
-            <ComposedChart
-              data={zoomedPoints}
-              syncId="asset-detail"
-              onMouseMove={(state) => {
-                const payload = state?.activePayload?.[0]?.payload;
-                if (payload) setHoverPoint(payload);
-              }}
-              onMouseLeave={() => setHoverPoint(null)}
-            >
-              <defs>
-                <linearGradient id="assetChartFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={priceStroke} stopOpacity={0.24} />
-                  <stop offset="100%" stopColor={priceStroke} stopOpacity={0.02} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-light)" />
-              <XAxis dataKey="label" fontSize={11} minTickGap={24} />
-              <YAxis
-                yAxisId="price"
-                fontSize={11}
-                allowDataOverflow
-                domain={chartMode === "line" && compareCode ? ["auto", "auto"] : priceDomain}
-                tickFormatter={(value: number) => (chartMode === "line" && compareCode ? `${value.toFixed(1)}%` : value >= 1000 ? `${(value / 1000).toFixed(0)}k` : `${value}`)}
-              />
-              <Tooltip
-                content={({ active, payload, label }) => {
-                  if (!active || !payload?.length) return null;
-                  const point = payload[0]?.payload;
-                  if (!point) return null;
-
-                  return (
-                    <div className="asset-chart-tooltip">
-                      <div className="asset-chart-tooltip-time">{label ? new Date(point.time).toLocaleString("ko-KR") : ""}</div>
-                      <div className="asset-chart-tooltip-grid">
-                        <span>{t("asset.open")}</span><strong>{point.open.toLocaleString()}</strong>
-                        <span>{t("asset.high")}</span><strong>{point.high.toLocaleString()}</strong>
-                        <span>{t("asset.low")}</span><strong>{point.low.toLocaleString()}</strong>
-                        <span>{t("asset.close")}</span><strong>{point.close.toLocaleString()}</strong>
-                        <span>{t("asset.volume")}</span><strong>{point.volume.toLocaleString()}</strong>
-                        {compareCode && chartMode === "line" ? (
-                          <>
-                            <span>{t("asset.compareBase")}</span><strong>{`${point.primaryNormalized?.toFixed(2) ?? "0.00"}%`}</strong>
-                            <span>{t("asset.compareTarget")}</span><strong>{point.compareNormalized != null ? `${point.compareNormalized.toFixed(2)}%` : "-"}</strong>
-                          </>
-                        ) : null}
-                      </div>
-                    </div>
-                  );
-                }}
-                labelFormatter={(_label, payload) => payload?.[0]?.payload?.time ? new Date(payload[0].payload.time).toLocaleString("ko-KR") : ""}
-              />
-              {overview?.current_price ? <ReferenceLine yAxisId="price" y={overview.current_price - overview.change} stroke="#94a3b8" strokeDasharray="4 4" /> : null}
-              {chartMode === "candles" ? (
-                <Customized component={(cProps: any) =>
-                  renderCandlesticks({ data: chartPoints, yAxisMap: cProps.yAxisMap, xAxisMap: cProps.xAxisMap })
-                } />
-              ) : null}
-              {showMa20 && zoomedPoints.some((p) => p.ma20 != null) ? <Line yAxisId="price" type="monotone" dataKey="ma20" stroke="#2563eb" strokeWidth={1.75} dot={false} connectNulls name={t("asset.overlay.ma20")} /> : null}
-              {showMa50 && zoomedPoints.some((p) => p.ma50 != null) ? <Line yAxisId="price" type="monotone" dataKey="ma50" stroke="#f59e0b" strokeWidth={1.75} dot={false} connectNulls name={t("asset.overlay.ma50")} /> : null}
-              {chartMode !== "candles" ? (
-                <Line
-                  key="asset-price-line"
-                  yAxisId="price"
-                  type="monotone"
-                  dataKey={compareCode ? "primaryNormalized" : "priceLine"}
-                  stroke={priceStroke}
-                  strokeWidth={3}
-                  dot={false}
-                  connectNulls
-                  isAnimationActive={false}
-                  name={overview?.stock_name || stockCode}
-                />
-              ) : null}
-              {chartMode !== "candles" && compareCode ? (
-                <Line
-                  key="asset-compare-line"
-                  yAxisId="price"
-                  type="monotone"
-                  dataKey="compareNormalized"
-                  stroke="#7c3aed"
-                  strokeWidth={2.2}
-                  dot={false}
-                  connectNulls
-                  isAnimationActive={false}
-                  name={compareOverview?.stock_name || compareCode}
-                />
-              ) : null}
-            </ComposedChart>
-          </ResponsiveContainer>
-          {/* Zoom slider */}
-          <div className="flex gap-sm items-center" style={{ padding: "6px 0", fontSize: "11px" }}>
-            <span className="text-secondary">Zoom:</span>
-            <input type="range" min={0} max={Math.max(0, zoomEnd - 5)} value={zoomStart}
-              onChange={(e) => setZoomStart(Number(e.target.value))}
-              style={{ flex: 1, accentColor: "var(--color-accent)" }} />
-            <input type="range" min={Math.min(100, zoomStart + 5)} max={100} value={zoomEnd}
-              onChange={(e) => setZoomEnd(Number(e.target.value))}
-              style={{ flex: 1, accentColor: "var(--color-accent)" }} />
-            <span className="text-secondary">{zoomedPoints.length}pts</span>
-            {isZoomed && (
-              <button className="btn btn-sm" style={{ fontSize: "10px" }} onClick={() => { setZoomStart(0); setZoomEnd(100); }}>
-                Reset
-              </button>
-            )}
-          </div>
+          {/* TradingView Lightweight Chart — zoom/pan/pinch built-in */}
+          <LightweightChart
+            data={chartData.map(d => ({ time: d.time, open: d.open, high: d.high, low: d.low, close: d.close, volume: d.volume }))}
+            mode={chartMode === "candles" && canUseCandles ? "candle" : "line"}
+            volume
+            showMA20={showMa20}
+            showMA50={showMa50}
+            height={460}
+            upColor="#16a34a"
+            downColor="#dc2626"
+            lineColor={priceStroke}
+            onCrosshairMove={(pt) => {
+              if (pt) setHoverPoint({ ...pt, label: "", interval: chartInterval, ma20: null, ma50: null, primaryNormalized: 0, compareNormalized: null, rsi14: null, macd: null, macdSignal: null, macdHist: null, candleBase: 0, candleBody: 0, isUpBar: true, priceLine: pt.close });
+              else setHoverPoint(null);
+            }}
+          />
           <div className="asset-volume-panel">
             <VolumePanel data={zoomedPoints} syncId="asset-detail" t={t} />
           </div>
