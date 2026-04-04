@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
-// Recharts still used for Volume/RSI/MACD panels
-import { RSIPanel, MACDPanel, LightweightChart } from "../components/charts";
+import { LightweightChart } from "../components/charts";
 import DirectionValue from "../components/DirectionValue";
 import StockSearch from "../components/StockSearch";
 // calcOHLCDomain no longer needed — LightweightChart auto-scales
@@ -101,6 +100,8 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
   const [chartMode, setChartMode] = useState<ChartMode>("line");
   const [showMa20, setShowMa20] = useState(true);
   const [showMa50, setShowMa50] = useState(true);
+  const [showRsi, setShowRsi] = useState(false);
+  const [showMacd, setShowMacd] = useState(false);
   const [compareCode, setCompareCode] = useState("");
   const [overview, setOverview] = useState<AssetOverview | null>(null);
   const [compareOverview, setCompareOverview] = useState<AssetOverview | null>(null);
@@ -394,6 +395,12 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
           <button className={`asset-toggle-chip ${showMa50 ? "is-active" : ""}`} onClick={() => setShowMa50((value) => !value)}>
             {t("asset.overlay.ma50")}
           </button>
+          <button className={`asset-toggle-chip ${showRsi ? "is-active" : ""}`} onClick={() => setShowRsi((v) => !v)}>
+            RSI
+          </button>
+          <button className={`asset-toggle-chip ${showMacd ? "is-active" : ""}`} onClick={() => setShowMacd((v) => !v)}>
+            MACD
+          </button>
         </div>
       </section>
 
@@ -493,6 +500,8 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
             volume
             showMA20={showMa20}
             showMA50={showMa50}
+            showRSI={showRsi}
+            showMACD={showMacd}
             height={460}
             displayBars={RANGE_CONFIG[range].display}
             intraday={chartInterval === "1m"}
@@ -505,15 +514,7 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
             }}
             onVisibleRangeChange={handleAutoRange}
           />
-          {/* Volume now built into LightweightChart above */}
-          <div className="asset-indicator-stack">
-            <div className="asset-indicator-panel">
-              <RSIPanel data={zoomedPoints} syncId="asset-detail" t={t} />
-            </div>
-            <div className="asset-indicator-panel">
-              <MACDPanel data={zoomedPoints} syncId="asset-detail" t={t} />
-            </div>
-          </div>
+          {/* RSI/MACD now integrated into LightweightChart with synced time scales */}
         </div>
 
         <div className="card asset-side-card">

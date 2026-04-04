@@ -44,6 +44,8 @@ interface Props {
   height?: number;
   showMA20?: boolean;
   showMA50?: boolean;
+  showRSI?: boolean;
+  showMACD?: boolean;
   upColor?: string;
   downColor?: string;
   lineColor?: string;
@@ -74,14 +76,59 @@ function computeMA(closes: number[], period: number): (number | null)[] {
   });
 }
 
+function computeRSI(closes: number[], period = 14): (number | null)[] {
+  const result: (number | null)[] = Array(closes.length).fill(null);
+  if (closes.length < period + 1) return result;
+  let avgGain = 0, avgLoss = 0;
+  for (let i = 1; i <= period; i++) {
+    const d = closes[i] - closes[i - 1];
+    if (d >= 0) avgGain += d; else avgLoss += Math.abs(d);
+  }
+  avgGain /= period; avgLoss /= period;
+  result[period] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+  for (let i = period + 1; i < closes.length; i++) {
+    const d = closes[i] - closes[i - 1];
+    avgGain = ((avgGain * (period - 1)) + Math.max(d, 0)) / period;
+    avgLoss = ((avgLoss * (period - 1)) + Math.max(-d, 0)) / period;
+    result[i] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+  }
+  return result;
+}
+
+function computeEMA(values: number[], period: number, mask?: (number | null)[]): (number | null)[] {
+  const result: (number | null)[] = Array(values.length).fill(null);
+  const k = 2 / (period + 1);
+  let prev: number | null = null;
+  for (let i = 0; i < values.length; i++) {
+    if (mask && mask[i] == null) continue;
+    if (prev == null) { prev = values[i]; result[i] = prev; continue; }
+    prev = (values[i] - prev) * k + prev;
+    result[i] = prev;
+  }
+  return result;
+}
+
+function computeMACD(closes: number[]): { macd: (number | null)[]; signal: (number | null)[]; hist: (number | null)[] } {
+  const ema12 = computeEMA(closes, 12);
+  const ema26 = computeEMA(closes, 26);
+  const macd = closes.map((_, i) => (ema12[i] != null && ema26[i] != null) ? ema12[i]! - ema26[i]! : null);
+  const signal = computeEMA(macd.map(v => v ?? 0), 9, macd);
+  const hist = macd.map((v, i) => (v != null && signal[i] != null) ? v - signal[i]! : null);
+  return { macd, signal, hist };
+}
+
 export default function LightweightChart({
   data, mode = "candle", volume = true, markers, height = 400,
-  showMA20 = false, showMA50 = false,
+  showMA20 = false, showMA50 = false, showRSI = false, showMACD = false,
   upColor = "#16a34a", downColor = "#dc2626", lineColor = "#1a1a2e",
   onCrosshairMove, onVisibleRangeChange, displayBars, intraday: intradayProp,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const rsiContainerRef = useRef<HTMLDivElement>(null);
+  const macdContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
+  const rsiChartRef = useRef<IChartApi | null>(null);
+  const macdChartRef = useRef<IChartApi | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
   // Store callbacks in refs to avoid chart recreation when they change
   const onVisibleRangeChangeRef = useRef(onVisibleRangeChange);
@@ -203,13 +250,86 @@ export default function LightweightChart({
       onVisibleRangeChangeRef.current(bars, fromIdx, toIdx);
     });
 
+    // RSI pane (separate chart, synced time scale)
+    if (rsiChartRef.current) { rsiChartRef.current.remove(); rsiChartRef.current = null; }
+    if (showRSI && rsiContainerRef.current && valid.length >= 15) {
+      const rsiChart = createChart(rsiContainerRef.current, {
+        width: containerRef.current.clientWidth,
+        height: 120,
+        layout: { background: { type: ColorType.Solid, color: "#fff" }, textColor: "#888", fontSize: 10 },
+        grid: { vertLines: { color: "#f5f5f5" }, horzLines: { color: "#f5f5f5" } },
+        crosshair: { mode: CrosshairMode.Normal },
+        rightPriceScale: { borderVisible: false, scaleMargins: { top: 0.05, bottom: 0.05 } },
+        timeScale: { borderVisible: false, timeVisible: intraday, secondsVisible: false, visible: false },
+        handleScroll: { vertTouchDrag: false },
+      });
+      rsiChartRef.current = rsiChart;
+
+      const rsiValues = computeRSI(valid.map(d => d.close), 14);
+      const rsiLine = rsiChart.addSeries(LineSeries, { color: "#2563eb", lineWidth: 2, priceLineVisible: false });
+      rsiLine.setData(valid.map((d, i) => rsiValues[i] != null ? { time: tt(d.time), value: rsiValues[i]! } : null).filter(Boolean) as any[]);
+
+      // Overbought/oversold reference lines
+      const ob = rsiChart.addSeries(LineSeries, { color: "#ef4444", lineWidth: 1, lineStyle: 2, priceLineVisible: false, crosshairMarkerVisible: false });
+      const os = rsiChart.addSeries(LineSeries, { color: "#10b981", lineWidth: 1, lineStyle: 2, priceLineVisible: false, crosshairMarkerVisible: false });
+      const refData = [{ time: tt(valid[0].time), value: 0 }, { time: tt(valid[valid.length - 1].time), value: 0 }];
+      ob.setData(refData.map(d => ({ ...d, value: 70 })));
+      os.setData(refData.map(d => ({ ...d, value: 30 })));
+
+      // Sync time scales
+      chart.timeScale().subscribeVisibleLogicalRangeChange((lr) => { if (lr) rsiChart.timeScale().setVisibleLogicalRange(lr); });
+      rsiChart.timeScale().subscribeVisibleLogicalRangeChange((lr) => { if (lr) chart.timeScale().setVisibleLogicalRange(lr); });
+    }
+
+    // MACD pane (separate chart, synced time scale)
+    if (macdChartRef.current) { macdChartRef.current.remove(); macdChartRef.current = null; }
+    if (showMACD && macdContainerRef.current && valid.length >= 27) {
+      const macdChart = createChart(macdContainerRef.current, {
+        width: containerRef.current.clientWidth,
+        height: 140,
+        layout: { background: { type: ColorType.Solid, color: "#fff" }, textColor: "#888", fontSize: 10 },
+        grid: { vertLines: { color: "#f5f5f5" }, horzLines: { color: "#f5f5f5" } },
+        crosshair: { mode: CrosshairMode.Normal },
+        rightPriceScale: { borderVisible: false, scaleMargins: { top: 0.05, bottom: 0.05 } },
+        timeScale: { borderVisible: false, timeVisible: intraday, secondsVisible: false, visible: false },
+        handleScroll: { vertTouchDrag: false },
+      });
+      macdChartRef.current = macdChart;
+
+      const closes = valid.map(d => d.close);
+      const { macd: macdVals, signal: sigVals, hist: histVals } = computeMACD(closes);
+
+      const histSeries = macdChart.addSeries(HistogramSeries, { priceLineVisible: false });
+      histSeries.setData(valid.map((d, i) => histVals[i] != null ? { time: tt(d.time), value: histVals[i]!, color: histVals[i]! >= 0 ? "rgba(22,163,74,0.4)" : "rgba(220,38,38,0.35)" } : null).filter(Boolean) as any[]);
+
+      const macdLine = macdChart.addSeries(LineSeries, { color: "#7c3aed", lineWidth: 2, priceLineVisible: false });
+      macdLine.setData(valid.map((d, i) => macdVals[i] != null ? { time: tt(d.time), value: macdVals[i]! } : null).filter(Boolean) as any[]);
+
+      const sigLine = macdChart.addSeries(LineSeries, { color: "#f59e0b", lineWidth: 2, priceLineVisible: false });
+      sigLine.setData(valid.map((d, i) => sigVals[i] != null ? { time: tt(d.time), value: sigVals[i]! } : null).filter(Boolean) as any[]);
+
+      // Sync time scales
+      chart.timeScale().subscribeVisibleLogicalRangeChange((lr) => { if (lr) macdChart.timeScale().setVisibleLogicalRange(lr); });
+      macdChart.timeScale().subscribeVisibleLogicalRangeChange((lr) => { if (lr) chart.timeScale().setVisibleLogicalRange(lr); });
+    }
+
     const ro = new ResizeObserver(() => {
-      if (containerRef.current) chart.applyOptions({ width: containerRef.current.clientWidth });
+      const w = containerRef.current?.clientWidth;
+      if (w) {
+        chart.applyOptions({ width: w });
+        if (rsiChartRef.current) rsiChartRef.current.applyOptions({ width: w });
+        if (macdChartRef.current) macdChartRef.current.applyOptions({ width: w });
+      }
     });
     ro.observe(containerRef.current);
 
-    return () => { ro.disconnect(); chart.remove(); chartRef.current = null; };
-  }, [data, mode, volume, markers, height, showMA20, showMA50, upColor, downColor, lineColor, fullscreen, displayBars, intradayProp]);
+    return () => {
+      ro.disconnect();
+      chart.remove(); chartRef.current = null;
+      if (rsiChartRef.current) { rsiChartRef.current.remove(); rsiChartRef.current = null; }
+      if (macdChartRef.current) { macdChartRef.current.remove(); macdChartRef.current = null; }
+    };
+  }, [data, mode, volume, markers, height, showMA20, showMA50, showRSI, showMACD, upColor, downColor, lineColor, fullscreen, displayBars, intradayProp]);
 
   return (
     <div style={{ position: "relative" }}>
@@ -219,6 +339,18 @@ export default function LightweightChart({
       </button>
       <div ref={containerRef} className={fullscreen ? "chart-fullscreen" : ""}
         style={{ width: "100%", height: fullscreen ? "100vh" : height }} />
+      {showRSI && (
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 600, color: "#888", margin: "8px 0 2px" }}>RSI (14)</div>
+          <div ref={rsiContainerRef} style={{ width: "100%", height: 120 }} />
+        </div>
+      )}
+      {showMACD && (
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 600, color: "#888", margin: "8px 0 2px" }}>MACD (12, 26, 9)</div>
+          <div ref={macdContainerRef} style={{ width: "100%", height: 140 }} />
+        </div>
+      )}
     </div>
   );
 }
