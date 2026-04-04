@@ -170,10 +170,16 @@ export default function LightweightChart({
       grid: { vertLines: { color: "#f0f0f0" }, horzLines: { color: "#f0f0f0" } },
       crosshair: { mode: CrosshairMode.Normal },
       rightPriceScale: { borderVisible: false, autoScale: true },
-      timeScale: { borderVisible: false, timeVisible: intraday, secondsVisible: false },
+      timeScale: { borderVisible: false, timeVisible: intraday, secondsVisible: false, minBarSpacing: 0.5 },
       handleScroll: { vertTouchDrag: false },
+      handleScale: { mouseWheel: true, pinch: true, axisPressedMouseMove: true },
     });
     chartRef.current = chart;
+
+    // Prevent page scroll when wheeling on chart (enables zoom-out)
+    const el = containerRef.current;
+    const preventScroll = (e: WheelEvent) => { e.preventDefault(); };
+    el.addEventListener("wheel", preventScroll, { passive: false });
 
     // ── Create panes ──
     const pricePane = chart.panes()[0];
@@ -332,7 +338,7 @@ export default function LightweightChart({
     });
     ro.observe(containerRef.current);
 
-    return () => { ro.disconnect(); chart.remove(); chartRef.current = null; };
+    return () => { ro.disconnect(); el.removeEventListener("wheel", preventScroll); chart.remove(); chartRef.current = null; };
   }, [data, mode, volume, markers, totalHeight, showMA20, showMA50, showRSI, showMACD, upColor, downColor, lineColor, fullscreen, displayBars, intradayProp]);
 
   return (
