@@ -1,7 +1,13 @@
 /**
  * Reusable Lightweight Charts (TradingView) v5 wrapper for React.
  *
- * Supports: candlestick, line, area, volume histogram, MA overlays.
+ * Single chart instance with optional overlays:
+ * - Price: candlestick / line / area
+ * - Volume histogram (bottom 15%)
+ * - MA20 / MA50 overlays
+ * - RSI(14) pane (bottom region, separate priceScale)
+ * - MACD(12,26,9) pane (bottom region, separate priceScale)
+ *
  * Built-in: mouse/touch zoom, pan, pinch zoom, auto Y-scale, crosshair.
  */
 
@@ -50,11 +56,8 @@ interface Props {
   downColor?: string;
   lineColor?: string;
   onCrosshairMove?: (point: OHLCVPoint | null) => void;
-  /** Called when visible range changes (zoom/pan). Returns visible bar count and logical range. */
   onVisibleRangeChange?: (visibleBars: number, fromIdx: number, toIdx: number) => void;
-  /** Initial number of bars to show (from the end). If omitted, fitContent() shows all. */
   displayBars?: number;
-  /** Explicit intraday flag — avoids misdetection from timestamp gaps (e.g. 5D over weekend) */
   intraday?: boolean;
 }
 
@@ -124,42 +127,48 @@ export default function LightweightChart({
   onCrosshairMove, onVisibleRangeChange, displayBars, intraday: intradayProp,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const rsiContainerRef = useRef<HTMLDivElement>(null);
-  const macdContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
-  const rsiChartRef = useRef<IChartApi | null>(null);
-  const macdChartRef = useRef<IChartApi | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
-  // Store callbacks in refs to avoid chart recreation when they change
   const onVisibleRangeChangeRef = useRef(onVisibleRangeChange);
   onVisibleRangeChangeRef.current = onVisibleRangeChange;
   const onCrosshairMoveRef = useRef(onCrosshairMove);
   onCrosshairMoveRef.current = onCrosshairMove;
+
+  // Compute total height: main chart + indicator panes
+  const rsiHeight = showRSI ? 80 : 0;
+  const macdHeight = showMACD ? 90 : 0;
+  const totalHeight = (fullscreen ? window.innerHeight - 40 : height) + rsiHeight + macdHeight;
+
+  // Compute scaleMargins for the main price series to leave room at the bottom
+  const paneCount = (showRSI ? 1 : 0) + (showMACD ? 1 : 0);
+  const bottomReserved = paneCount > 0 ? (rsiHeight + macdHeight) / totalHeight : 0;
+  const volTop = 1 - bottomReserved - 0.15; // volume sits just above indicator area
 
   useEffect(() => {
     if (!containerRef.current || !data.length) return;
 
     if (chartRef.current) { chartRef.current.remove(); chartRef.current = null; }
 
-    // Fix #2: Use explicit intraday prop when available (avoids 5D weekend gap misdetection)
     const intraday = intradayProp ?? isIntraday(data);
     const tt = (t: string) => toTime(t, intraday);
     const valid = data.filter(d => d.close > 0);
 
     const chart = createChart(containerRef.current, {
       width: containerRef.current.clientWidth,
-      height: fullscreen ? window.innerHeight - 40 : height,
+      height: totalHeight,
       layout: { background: { type: ColorType.Solid, color: "#fff" }, textColor: "#333", fontSize: 11 },
       grid: { vertLines: { color: "#f0f0f0" }, horzLines: { color: "#f0f0f0" } },
       crosshair: { mode: CrosshairMode.Normal },
-      rightPriceScale: { borderVisible: false, autoScale: true },
+      rightPriceScale: {
+        borderVisible: false, autoScale: true,
+        scaleMargins: { top: 0.02, bottom: bottomReserved + 0.02 },
+      },
       timeScale: { borderVisible: false, timeVisible: intraday, secondsVisible: false },
       handleScroll: { vertTouchDrag: false },
     });
     chartRef.current = chart;
 
-    // Fix #1: Detect flat/synthetic intraday data (open=high=low=close) → force line mode
-    // Candles with zero body are meaningless doji bars
+    // Detect flat/synthetic intraday data → force line mode
     let effectiveMode = mode;
     if (mode === "candle" && intraday && valid.length >= 5) {
       const flatCount = valid.filter(d => d.open === d.close && d.high === d.close && d.low === d.close).length;
@@ -175,7 +184,6 @@ export default function LightweightChart({
       s.setData(valid.filter(d => d.open > 0 && d.high > 0 && d.low > 0).map(d => ({
         time: tt(d.time), open: d.open, high: d.high, low: d.low, close: d.close,
       })));
-      // Markers
       if (markers?.length) {
         createSeriesMarkers(s, markers.map(m => ({
           time: tt(m.time), position: "aboveBar" as const, color: m.color,
@@ -209,13 +217,70 @@ export default function LightweightChart({
       const vs = chart.addSeries(HistogramSeries, {
         priceFormat: { type: "volume" }, priceScaleId: "vol",
       });
-      chart.priceScale("vol").applyOptions({ scaleMargins: { top: 0.85, bottom: 0 } });
-      // Fix #3: Volume color — compare with previous bar in the filtered array, not the original
+      chart.priceScale("vol").applyOptions({ scaleMargins: { top: volTop, bottom: bottomReserved } });
       const volBars = valid.filter(d => d.volume > 0);
       vs.setData(volBars.map((d, i) => ({
         time: tt(d.time), value: d.volume,
         color: i === 0 || d.close >= volBars[i - 1].close ? "rgba(22,163,74,0.3)" : "rgba(220,38,38,0.25)",
       })));
+    }
+
+    // --- RSI pane (same chart, dedicated priceScale at bottom) ---
+    if (showRSI && valid.length >= 15) {
+      const rsiScaleId = "rsi";
+      const rsiBottom = showMACD ? macdHeight / totalHeight : 0;
+      const rsiTop = 1 - rsiBottom - rsiHeight / totalHeight;
+      chart.priceScale(rsiScaleId).applyOptions({ scaleMargins: { top: rsiTop, bottom: rsiBottom }, borderVisible: false });
+
+      const rsiValues = computeRSI(valid.map(d => d.close), 14);
+      const rsiLine = chart.addSeries(LineSeries, {
+        color: "#2563eb", lineWidth: 2, priceLineVisible: false, priceScaleId: rsiScaleId,
+        lastValueVisible: true,
+      });
+      rsiLine.setData(valid.map((d, i) => rsiValues[i] != null ? { time: tt(d.time), value: rsiValues[i]! } : null).filter(Boolean) as any[]);
+
+      // Overbought (70) / oversold (30) reference lines
+      const ob = chart.addSeries(LineSeries, {
+        color: "#ef4444", lineWidth: 1, lineStyle: 2, priceLineVisible: false,
+        priceScaleId: rsiScaleId, crosshairMarkerVisible: false, lastValueVisible: false,
+      });
+      const os = chart.addSeries(LineSeries, {
+        color: "#10b981", lineWidth: 1, lineStyle: 2, priceLineVisible: false,
+        priceScaleId: rsiScaleId, crosshairMarkerVisible: false, lastValueVisible: false,
+      });
+      const refTimes = valid.filter((_, i) => rsiValues[i] != null);
+      ob.setData(refTimes.map(d => ({ time: tt(d.time), value: 70 })));
+      os.setData(refTimes.map(d => ({ time: tt(d.time), value: 30 })));
+    }
+
+    // --- MACD pane (same chart, dedicated priceScale at very bottom) ---
+    if (showMACD && valid.length >= 27) {
+      const macdScaleId = "macd";
+      const macdTop = 1 - macdHeight / totalHeight;
+      chart.priceScale(macdScaleId).applyOptions({ scaleMargins: { top: macdTop, bottom: 0 }, borderVisible: false });
+
+      const closes = valid.map(d => d.close);
+      const { macd: macdVals, signal: sigVals, hist: histVals } = computeMACD(closes);
+
+      const histSeries = chart.addSeries(HistogramSeries, {
+        priceLineVisible: false, priceScaleId: macdScaleId, lastValueVisible: false,
+      });
+      histSeries.setData(valid.map((d, i) => histVals[i] != null ? {
+        time: tt(d.time), value: histVals[i]!,
+        color: histVals[i]! >= 0 ? "rgba(22,163,74,0.4)" : "rgba(220,38,38,0.35)",
+      } : null).filter(Boolean) as any[]);
+
+      const macdLine = chart.addSeries(LineSeries, {
+        color: "#7c3aed", lineWidth: 2, priceLineVisible: false,
+        priceScaleId: macdScaleId, lastValueVisible: true,
+      });
+      macdLine.setData(valid.map((d, i) => macdVals[i] != null ? { time: tt(d.time), value: macdVals[i]! } : null).filter(Boolean) as any[]);
+
+      const sigLine = chart.addSeries(LineSeries, {
+        color: "#f59e0b", lineWidth: 2, priceLineVisible: false,
+        priceScaleId: macdScaleId, lastValueVisible: false,
+      });
+      sigLine.setData(valid.map((d, i) => sigVals[i] != null ? { time: tt(d.time), value: sigVals[i]! } : null).filter(Boolean) as any[]);
     }
 
     // Crosshair
@@ -236,9 +301,7 @@ export default function LightweightChart({
       chart.timeScale().fitContent();
     }
 
-    // Notify parent of visible range changes (zoom/pan)
-    // Skip initial callbacks that fire during chart setup (fitContent / setVisibleLogicalRange)
-    // Subscribe — skip initial setup callbacks (chart init fires 2-4 times)
+    // Visible range change subscription — skip initial setup callbacks
     let initSkip = 4;
     const totalBars = valid.length;
     chart.timeScale().subscribeVisibleLogicalRangeChange((lr) => {
@@ -250,86 +313,13 @@ export default function LightweightChart({
       onVisibleRangeChangeRef.current(bars, fromIdx, toIdx);
     });
 
-    // RSI pane (separate chart, synced time scale)
-    if (rsiChartRef.current) { rsiChartRef.current.remove(); rsiChartRef.current = null; }
-    if (showRSI && rsiContainerRef.current && valid.length >= 15) {
-      const rsiChart = createChart(rsiContainerRef.current, {
-        width: containerRef.current.clientWidth,
-        height: 120,
-        layout: { background: { type: ColorType.Solid, color: "#fff" }, textColor: "#888", fontSize: 10 },
-        grid: { vertLines: { color: "#f5f5f5" }, horzLines: { color: "#f5f5f5" } },
-        crosshair: { mode: CrosshairMode.Normal },
-        rightPriceScale: { borderVisible: false, scaleMargins: { top: 0.05, bottom: 0.05 } },
-        timeScale: { borderVisible: false, timeVisible: intraday, secondsVisible: false, visible: false },
-        handleScroll: { vertTouchDrag: false },
-      });
-      rsiChartRef.current = rsiChart;
-
-      const rsiValues = computeRSI(valid.map(d => d.close), 14);
-      const rsiLine = rsiChart.addSeries(LineSeries, { color: "#2563eb", lineWidth: 2, priceLineVisible: false });
-      rsiLine.setData(valid.map((d, i) => rsiValues[i] != null ? { time: tt(d.time), value: rsiValues[i]! } : null).filter(Boolean) as any[]);
-
-      // Overbought/oversold reference lines
-      const ob = rsiChart.addSeries(LineSeries, { color: "#ef4444", lineWidth: 1, lineStyle: 2, priceLineVisible: false, crosshairMarkerVisible: false });
-      const os = rsiChart.addSeries(LineSeries, { color: "#10b981", lineWidth: 1, lineStyle: 2, priceLineVisible: false, crosshairMarkerVisible: false });
-      const refData = [{ time: tt(valid[0].time), value: 0 }, { time: tt(valid[valid.length - 1].time), value: 0 }];
-      ob.setData(refData.map(d => ({ ...d, value: 70 })));
-      os.setData(refData.map(d => ({ ...d, value: 30 })));
-
-      // Sync time scales
-      chart.timeScale().subscribeVisibleLogicalRangeChange((lr) => { if (lr) rsiChart.timeScale().setVisibleLogicalRange(lr); });
-      rsiChart.timeScale().subscribeVisibleLogicalRangeChange((lr) => { if (lr) chart.timeScale().setVisibleLogicalRange(lr); });
-    }
-
-    // MACD pane (separate chart, synced time scale)
-    if (macdChartRef.current) { macdChartRef.current.remove(); macdChartRef.current = null; }
-    if (showMACD && macdContainerRef.current && valid.length >= 27) {
-      const macdChart = createChart(macdContainerRef.current, {
-        width: containerRef.current.clientWidth,
-        height: 140,
-        layout: { background: { type: ColorType.Solid, color: "#fff" }, textColor: "#888", fontSize: 10 },
-        grid: { vertLines: { color: "#f5f5f5" }, horzLines: { color: "#f5f5f5" } },
-        crosshair: { mode: CrosshairMode.Normal },
-        rightPriceScale: { borderVisible: false, scaleMargins: { top: 0.05, bottom: 0.05 } },
-        timeScale: { borderVisible: false, timeVisible: intraday, secondsVisible: false, visible: false },
-        handleScroll: { vertTouchDrag: false },
-      });
-      macdChartRef.current = macdChart;
-
-      const closes = valid.map(d => d.close);
-      const { macd: macdVals, signal: sigVals, hist: histVals } = computeMACD(closes);
-
-      const histSeries = macdChart.addSeries(HistogramSeries, { priceLineVisible: false });
-      histSeries.setData(valid.map((d, i) => histVals[i] != null ? { time: tt(d.time), value: histVals[i]!, color: histVals[i]! >= 0 ? "rgba(22,163,74,0.4)" : "rgba(220,38,38,0.35)" } : null).filter(Boolean) as any[]);
-
-      const macdLine = macdChart.addSeries(LineSeries, { color: "#7c3aed", lineWidth: 2, priceLineVisible: false });
-      macdLine.setData(valid.map((d, i) => macdVals[i] != null ? { time: tt(d.time), value: macdVals[i]! } : null).filter(Boolean) as any[]);
-
-      const sigLine = macdChart.addSeries(LineSeries, { color: "#f59e0b", lineWidth: 2, priceLineVisible: false });
-      sigLine.setData(valid.map((d, i) => sigVals[i] != null ? { time: tt(d.time), value: sigVals[i]! } : null).filter(Boolean) as any[]);
-
-      // Sync time scales
-      chart.timeScale().subscribeVisibleLogicalRangeChange((lr) => { if (lr) macdChart.timeScale().setVisibleLogicalRange(lr); });
-      macdChart.timeScale().subscribeVisibleLogicalRangeChange((lr) => { if (lr) chart.timeScale().setVisibleLogicalRange(lr); });
-    }
-
     const ro = new ResizeObserver(() => {
-      const w = containerRef.current?.clientWidth;
-      if (w) {
-        chart.applyOptions({ width: w });
-        if (rsiChartRef.current) rsiChartRef.current.applyOptions({ width: w });
-        if (macdChartRef.current) macdChartRef.current.applyOptions({ width: w });
-      }
+      if (containerRef.current) chart.applyOptions({ width: containerRef.current.clientWidth });
     });
     ro.observe(containerRef.current);
 
-    return () => {
-      ro.disconnect();
-      chart.remove(); chartRef.current = null;
-      if (rsiChartRef.current) { rsiChartRef.current.remove(); rsiChartRef.current = null; }
-      if (macdChartRef.current) { macdChartRef.current.remove(); macdChartRef.current = null; }
-    };
-  }, [data, mode, volume, markers, height, showMA20, showMA50, showRSI, showMACD, upColor, downColor, lineColor, fullscreen, displayBars, intradayProp]);
+    return () => { ro.disconnect(); chart.remove(); chartRef.current = null; };
+  }, [data, mode, volume, markers, totalHeight, showMA20, showMA50, showRSI, showMACD, upColor, downColor, lineColor, fullscreen, displayBars, intradayProp, bottomReserved, volTop, rsiHeight, macdHeight]);
 
   return (
     <div style={{ position: "relative" }}>
@@ -338,19 +328,7 @@ export default function LightweightChart({
         {fullscreen ? "✕" : "⛶"}
       </button>
       <div ref={containerRef} className={fullscreen ? "chart-fullscreen" : ""}
-        style={{ width: "100%", height: fullscreen ? "100vh" : height }} />
-      {showRSI && (
-        <div>
-          <div style={{ fontSize: 11, fontWeight: 600, color: "#888", margin: "8px 0 2px" }}>RSI (14)</div>
-          <div ref={rsiContainerRef} style={{ width: "100%", height: 120 }} />
-        </div>
-      )}
-      {showMACD && (
-        <div>
-          <div style={{ fontSize: 11, fontWeight: 600, color: "#888", margin: "8px 0 2px" }}>MACD (12, 26, 9)</div>
-          <div ref={macdContainerRef} style={{ width: "100%", height: 140 }} />
-        </div>
-      )}
+        style={{ width: "100%", height: totalHeight }} />
     </div>
   );
 }
