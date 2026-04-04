@@ -134,15 +134,31 @@ export default function LightweightChart({
   const onCrosshairMoveRef = useRef(onCrosshairMove);
   onCrosshairMoveRef.current = onCrosshairMove;
 
-  // Compute total height: main chart + indicator panes
-  const rsiHeight = showRSI ? 80 : 0;
-  const macdHeight = showMACD ? 90 : 0;
-  const totalHeight = (fullscreen ? window.innerHeight - 40 : height) + rsiHeight + macdHeight;
+  // Layout: price chart on top, then gap, RSI, gap, MACD at bottom.
+  // Each pane gets a fixed pixel height; gaps are 12px visual spacers.
+  const baseH = fullscreen ? window.innerHeight - 40 : height;
+  const rsiPx = showRSI ? 100 : 0;
+  const macdPx = showMACD ? 110 : 0;
+  const gapPx = (showRSI || showMACD) ? 12 : 0;
+  const gap2Px = (showRSI && showMACD) ? 12 : 0;
+  const totalHeight = baseH + gapPx + rsiPx + gap2Px + macdPx;
 
-  // Compute scaleMargins for the main price series to leave room at the bottom
-  const paneCount = (showRSI ? 1 : 0) + (showMACD ? 1 : 0);
-  const bottomReserved = paneCount > 0 ? (rsiHeight + macdHeight) / totalHeight : 0;
-  const volTop = 1 - bottomReserved - 0.15; // volume sits just above indicator area
+  // Convert pixel regions to 0-1 fractions for scaleMargins
+  const priceFrac = baseH / totalHeight;        // e.g. 0.70
+  const gapFrac = gapPx / totalHeight;          // small spacer
+  const rsiFrac = rsiPx / totalHeight;           // e.g. 0.15
+  const gap2Frac = gap2Px / totalHeight;
+
+  // Price area: top 2% padding to priceFrac (leave rest for indicators below)
+  const priceBottom = 1 - priceFrac + 0.02;
+  // Volume: sits in bottom 12% of the price area
+  const volTop = priceFrac - 0.14;
+  const volBottom = 1 - priceFrac;
+  // RSI area: starts after price+gap, ends before MACD gap
+  const rsiTop = priceFrac + gapFrac;
+  const rsiEnd = rsiTop + rsiFrac;
+  // MACD area: starts after RSI+gap2, goes to bottom
+  const macdTop = rsiEnd + gap2Frac;
 
   useEffect(() => {
     if (!containerRef.current || !data.length) return;
@@ -161,7 +177,7 @@ export default function LightweightChart({
       crosshair: { mode: CrosshairMode.Normal },
       rightPriceScale: {
         borderVisible: false, autoScale: true,
-        scaleMargins: { top: 0.02, bottom: bottomReserved + 0.02 },
+        scaleMargins: { top: 0.02, bottom: priceBottom },
       },
       timeScale: { borderVisible: false, timeVisible: intraday, secondsVisible: false },
       handleScroll: { vertTouchDrag: false },
@@ -217,7 +233,7 @@ export default function LightweightChart({
       const vs = chart.addSeries(HistogramSeries, {
         priceFormat: { type: "volume" }, priceScaleId: "vol",
       });
-      chart.priceScale("vol").applyOptions({ scaleMargins: { top: volTop, bottom: bottomReserved } });
+      chart.priceScale("vol").applyOptions({ scaleMargins: { top: volTop, bottom: volBottom } });
       const volBars = valid.filter(d => d.volume > 0);
       vs.setData(volBars.map((d, i) => ({
         time: tt(d.time), value: d.volume,
@@ -228,9 +244,10 @@ export default function LightweightChart({
     // --- RSI pane (same chart, dedicated priceScale at bottom) ---
     if (showRSI && valid.length >= 15) {
       const rsiScaleId = "rsi";
-      const rsiBottom = showMACD ? macdHeight / totalHeight : 0;
-      const rsiTop = 1 - rsiBottom - rsiHeight / totalHeight;
-      chart.priceScale(rsiScaleId).applyOptions({ scaleMargins: { top: rsiTop, bottom: rsiBottom }, borderVisible: false });
+      chart.priceScale(rsiScaleId).applyOptions({
+        scaleMargins: { top: rsiTop, bottom: 1 - rsiEnd },
+        borderVisible: false,
+      });
 
       const rsiValues = computeRSI(valid.map(d => d.close), 14);
       const rsiLine = chart.addSeries(LineSeries, {
@@ -256,8 +273,10 @@ export default function LightweightChart({
     // --- MACD pane (same chart, dedicated priceScale at very bottom) ---
     if (showMACD && valid.length >= 27) {
       const macdScaleId = "macd";
-      const macdTop = 1 - macdHeight / totalHeight;
-      chart.priceScale(macdScaleId).applyOptions({ scaleMargins: { top: macdTop, bottom: 0 }, borderVisible: false });
+      chart.priceScale(macdScaleId).applyOptions({
+        scaleMargins: { top: macdTop, bottom: 0 },
+        borderVisible: false,
+      });
 
       const closes = valid.map(d => d.close);
       const { macd: macdVals, signal: sigVals, hist: histVals } = computeMACD(closes);
@@ -319,7 +338,7 @@ export default function LightweightChart({
     ro.observe(containerRef.current);
 
     return () => { ro.disconnect(); chart.remove(); chartRef.current = null; };
-  }, [data, mode, volume, markers, totalHeight, showMA20, showMA50, showRSI, showMACD, upColor, downColor, lineColor, fullscreen, displayBars, intradayProp, bottomReserved, volTop, rsiHeight, macdHeight]);
+  }, [data, mode, volume, markers, totalHeight, showMA20, showMA50, showRSI, showMACD, upColor, downColor, lineColor, fullscreen, displayBars, intradayProp]);
 
   return (
     <div style={{ position: "relative" }}>
