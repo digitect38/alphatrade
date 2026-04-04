@@ -1,5 +1,7 @@
 /**
- * Reusable volume bar chart panel.
+ * @deprecated Use LightweightChart with volume={true} instead.
+ * This component is kept for backward compatibility but is no longer used
+ * since LightweightChart includes built-in volume rendering.
  */
 import { Bar, Cell, ComposedChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 

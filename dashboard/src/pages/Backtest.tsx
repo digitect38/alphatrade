@@ -1,7 +1,8 @@
-import { useState, type ReactNode } from "react";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
+import { useMemo, useState, type ReactNode } from "react";
 import DirectionValue from "../components/DirectionValue";
 import StockSearch from "../components/StockSearch";
+import { LightweightChart } from "../components/charts";
+import type { OHLCVPoint } from "../components/charts";
 import { apiPost } from "../hooks/useApi";
 
 interface BacktestTrade {
@@ -62,11 +63,20 @@ export default function BacktestPage({ t: _t }: { t: (k: string) => string }) {
     setLoading(false);
   };
 
-  const equityData = result?.equity_curve.map((v, i) => ({
-    day: i + 1,
-    equity: v,
-    initial: result.initial_capital,
-  })) || [];
+  const equityData = useMemo<OHLCVPoint[]>(() => {
+    if (!result?.equity_curve.length) return [];
+    // Generate synthetic daily dates starting from computed_at
+    const baseDate = result.computed_at ? new Date(result.computed_at) : new Date();
+    baseDate.setDate(baseDate.getDate() - result.equity_curve.length);
+    return result.equity_curve.map((v, i) => {
+      const d = new Date(baseDate);
+      d.setDate(d.getDate() + i);
+      return {
+        time: d.toISOString().slice(0, 10),
+        open: v, high: v, low: v, close: v, volume: 0,
+      };
+    });
+  }, [result]);
 
   const edgeVsBenchmark = result && result.benchmark_return != null
     ? result.total_return - result.benchmark_return
@@ -184,16 +194,13 @@ export default function BacktestPage({ t: _t }: { t: (k: string) => string }) {
           {equityData.length > 0 && (
             <div className="card">
               <h3 className="card-title">{_t("bt.equityCurve")}</h3>
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={equityData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis dataKey="day" fontSize={11} label={{ value: "일", position: "insideBottomRight", offset: -5 }} />
-                  <YAxis fontSize={11} tickFormatter={(v: number) => `${(v / 10000).toFixed(0)}만`} />
-                  <Tooltip formatter={(v: number) => [`${v.toLocaleString()}원`, "자산"]} />
-                  <ReferenceLine y={result.initial_capital} stroke="#888" strokeDasharray="3 3" label={_t("bt.initialCapital")} />
-                  <Line type="monotone" dataKey="equity" stroke="#1a1a2e" strokeWidth={2} dot={false} />
-                </LineChart>
-              </ResponsiveContainer>
+              <LightweightChart
+                data={equityData}
+                mode="line"
+                volume={false}
+                height={300}
+                lineColor="#1a1a2e"
+              />
             </div>
           )}
 

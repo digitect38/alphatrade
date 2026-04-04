@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import DirectionValue from "../components/DirectionValue";
+import { LightweightChart } from "../components/charts";
+import type { OHLCVPoint } from "../components/charts";
 import { apiGet, apiPost } from "../hooks/useApi";
 import { eventTypeLabel, orderStatusLabel } from "../lib/labels";
 import type { EventCandidate } from "../types";
@@ -407,26 +408,10 @@ export default function TrendPage({ t }: { t: (k: string) => string }) {
 
               <div className="trend-sector-chart">
                 {selectedIntel.trend.length > 0 ? (
-                  <ResponsiveContainer width="100%" height={260}>
-                    <AreaChart data={selectedIntel.trend}>
-                      <defs>
-                        <linearGradient id="sectorTrendFill" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#1a1a2e" stopOpacity={0.22} />
-                          <stop offset="100%" stopColor="#1a1a2e" stopOpacity={0} />
-                        </linearGradient>
-                      </defs>
-                      <XAxis dataKey="date" fontSize={11} tickMargin={8} />
-                      <YAxis fontSize={11} tickFormatter={(value: number) => `${value}%`} />
-                      <Tooltip formatter={(value: number) => `${Number(value).toFixed(2)}%`} />
-                      <Area
-                        type="monotone"
-                        dataKey="cumulative"
-                        stroke={selectedIntel.cumulativeReturn >= 0 ? "var(--color-profit)" : "var(--color-loss)"}
-                        fill="url(#sectorTrendFill)"
-                        strokeWidth={2.5}
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
+                  <SectorTrendChart
+                    trend={selectedIntel.trend}
+                    lineColor={selectedIntel.cumulativeReturn >= 0 ? "#16a34a" : "#dc2626"}
+                  />
                 ) : (
                   <div className="trend-empty">{t("trend.noHistory")}</div>
                 )}
@@ -499,6 +484,29 @@ export default function TrendPage({ t }: { t: (k: string) => string }) {
         </div>
       </section>
     </div>
+  );
+}
+
+function SectorTrendChart({ trend, lineColor }: { trend: TrendPoint[]; lineColor: string }) {
+  const chartData = useMemo<OHLCVPoint[]>(() => {
+    return trend.map((pt) => ({
+      time: pt.date,
+      open: pt.cumulative,
+      high: pt.cumulative,
+      low: pt.cumulative,
+      close: pt.cumulative,
+      volume: 0,
+    }));
+  }, [trend]);
+
+  return (
+    <LightweightChart
+      data={chartData}
+      mode="area"
+      volume={false}
+      height={260}
+      lineColor={lineColor}
+    />
   );
 }
 
