@@ -48,8 +48,8 @@ interface Props {
   downColor?: string;
   lineColor?: string;
   onCrosshairMove?: (point: OHLCVPoint | null) => void;
-  /** Called when visible range changes (zoom/pan). Returns visible bar count. */
-  onVisibleRangeChange?: (visibleBars: number) => void;
+  /** Called when visible range changes (zoom/pan). Returns visible bar count and logical range. */
+  onVisibleRangeChange?: (visibleBars: number, fromIdx: number, toIdx: number) => void;
   /** Initial number of bars to show (from the end). If omitted, fitContent() shows all. */
   displayBars?: number;
   /** Explicit intraday flag — avoids misdetection from timestamp gaps (e.g. 5D over weekend) */
@@ -193,11 +193,14 @@ export default function LightweightChart({
     // Skip initial callbacks that fire during chart setup (fitContent / setVisibleLogicalRange)
     // Subscribe — skip initial setup callbacks (chart init fires 2-4 times)
     let initSkip = 4;
-    chart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
+    const totalBars = valid.length;
+    chart.timeScale().subscribeVisibleLogicalRangeChange((lr) => {
       if (initSkip > 0) { initSkip--; return; }
-      if (!range || !onVisibleRangeChangeRef.current) return;
-      const bars = Math.round(range.to - range.from);
-      onVisibleRangeChangeRef.current(bars);
+      if (!lr || !onVisibleRangeChangeRef.current) return;
+      const bars = Math.round(lr.to - lr.from);
+      const fromIdx = Math.max(0, Math.round(lr.from));
+      const toIdx = Math.min(totalBars - 1, Math.round(lr.to));
+      onVisibleRangeChangeRef.current(bars, fromIdx, toIdx);
     });
 
     const ro = new ResizeObserver(() => {

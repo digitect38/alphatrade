@@ -83,14 +83,15 @@ async def refresh_market_state_once(
             )
 
             # Also save to DB as 1m tick for chart display (skip bad data)
-            if float(current.open) > 0 and float(current.high) > 0 and float(current.low) > 0:
-                current.interval = "1m"
+            # Normalize: KIS returns session OHLC, not true 1m OHLC — store as close-only snapshot
+            if float(current.close) > 0:
+                close_val = current.close
                 async with pool.acquire() as conn:
                     await conn.execute(
                     """INSERT INTO ohlcv (time, stock_code, open, high, low, close, volume, value, interval)
                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)""",
-                    current.time, stock_code, current.open, current.high,
-                    current.low, current.close, current.volume, current.value, "1m",
+                    current.time, stock_code, close_val, close_val,
+                    close_val, close_val, current.volume, current.value, "1m",
                 )
 
             updated += 1

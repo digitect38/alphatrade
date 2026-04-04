@@ -119,8 +119,15 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
   const skipAutoRange = useRef(true);  // true on mount — wait for first data load to settle
   const lastAutoTarget = useRef<RangeKey | null>(null);
 
-  // Auto-switch range based on zoom level (debounced)
-  const handleAutoRange = useCallback((visibleBars: number) => {
+  // Auto-switch range based on zoom level (debounced) + sync indicator panels
+  const handleAutoRange = useCallback((visibleBars: number, fromIdx: number, toIdx: number) => {
+    // Sync indicator panels with visible range
+    const total = chartData.length;
+    if (total > 0) {
+      setZoomStart(Math.max(0, Math.round((fromIdx / total) * 100)));
+      setZoomEnd(Math.min(100, Math.round((toIdx / total) * 100)));
+    }
+
     // After a range change, skip auto-range until the chart settles
     if (skipAutoRange.current) return;
 
@@ -151,7 +158,7 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
         setRange(target);
       }, 600);
     }
-  }, [chartInterval, range]);
+  }, [chartInterval, range, chartData.length]);
 
   useEffect(() => {
     setZoomStart(0); setZoomEnd(100); setZoomLabel(null);
@@ -451,7 +458,11 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
           <div className="asset-section-header">
             <div>
               <h3 className="card-title">{overview?.stock_name || stockCode} ({stockCode}) — {t("asset.chart")}</h3>
-              <div className="asset-chart-note">{compareCode && chartMode === "line" ? t("asset.compareModeNote") : t("asset.chartModeNote")}</div>
+              <div className="asset-chart-note">
+                {compareCode && chartMode === "line" ? t("asset.compareModeNote")
+                  : chartMode === "candles" && chartInterval === "1m" ? t("asset.intradayLineNote")
+                  : t("asset.chartModeNote")}
+              </div>
             </div>
             <div className="asset-live-header">
               <div className="asset-live-price">

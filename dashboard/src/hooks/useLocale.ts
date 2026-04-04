@@ -431,6 +431,7 @@ const translations: Record<string, Record<Locale, string>> = {
   "asset.compareTarget": { en: "Compare", ko: "비교 종목" },
   "asset.compareModeNote": { en: "Normalized performance comparison view", ko: "정규화된 상대 수익률 비교 보기" },
   "asset.chartModeNote": { en: "Toggle candles, line, and moving averages", ko: "캔들, 라인, 이동평균을 전환할 수 있습니다" },
+  "asset.intradayLineNote": { en: "Intraday data is snapshot-based — shown as line chart", ko: "분봉 데이터는 스냅샷 기반이므로 라인 차트로 표시됩니다" },
   "asset.rangeReturn": { en: "Selected Range Return", ko: "선택 구간 수익률" },
   "asset.dayRange": { en: "Visible Price Range", ko: "표시 구간 가격 범위" },
   "asset.avgVolume": { en: "Average Volume", ko: "평균 거래량" },
