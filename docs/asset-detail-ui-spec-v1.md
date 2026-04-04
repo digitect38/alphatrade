@@ -19,17 +19,22 @@ It exists to answer a different question:
 Implemented now:
 - dedicated `#asset/{code}` route
 - chart-first layout with large primary chart area
-- `1D / 5D / 1M / 3M / 6M / YTD / 1Y`
-- `Line / Candles` toggle
+- **Lightweight Charts (TradingView) v5** — native zoom/pan/pinch, auto Y-scale
+- `1m / 10m / 1H / 1D / 5D / 1M / 3M / 6M / YTD / 1Y` (10 ranges)
+- **Auto-range on zoom** — mouse wheel zoom automatically switches range with 600ms debounce, oscillation-safe
+- `Line / Candles` toggle (auto-fallback to line when intraday data is flat/synthetic)
 - `MA20 / MA50` toggle
-- OHLC + volume hover detail
-- separate volume panel below price chart
+- OHLC + volume hover detail (crosshair)
+- integrated volume histogram below price (single Lightweight Charts instance)
 - normalized compare overlay using a second ticker
+- peer compare presets (same-sector stocks)
+- chart title shows stock name + code (e.g. "셀트리온 (068270) — 가격 차트")
 - latest news and execution context panels
 - asset-specific backend APIs
+- `displayBars` prop — initial visible bars trimmed to display count (extra data for MA pre-computation)
+- explicit `intraday` prop — avoids misdetection on 5D weekend timestamp gaps
 
 Still not implemented:
-- peer compare presets
 - indicator drawer beyond `MA20 / MA50`
 - advanced crosshair/header sync
 - earnings/financials/analyst modules
@@ -97,45 +102,45 @@ Right:
 
 ### 2. Range Selector
 
-Primary controls:
-- `1D`
-- `5D`
-- `1M`
-- `3M`
-- `6M`
-- `YTD`
-- `1Y`
-
-Optional later:
-- `3Y`
-- `5Y`
-- `MAX`
+Primary controls (10 ranges):
+- `1m / 10m / 1H / 1D / 5D` — intraday (`interval: "1m"`)
+- `1M / 3M / 6M / YTD / 1Y` — daily (`interval: "1d"`)
 
 Behavior:
-- active range must be visually prominent
-- range change should update chart without full page refresh
-- `1D` and `5D` should use intraday/intraperiod data if available
-- `1M+` should use aggregated bars
+- active range must be visually prominent (`.is-active` class)
+- zoom hint highlights matching range button (`.is-zoom-hint` class) during user zoom
+- **auto-range switching**: mouse wheel zoom in/out automatically changes range after 600ms debounce
+  - daily→intraday boundary: ≤7 visible bars triggers switch to 5D
+  - intraday→daily boundary: >300 visible bars triggers switch to 1M
+  - oscillation prevention via `lastAutoTarget` guard
+- range change triggers API refetch without full page refresh
+- manual button click clears oscillation guard (`handleManualRange`)
 
-### 3. Main Price Chart
+### 3. Main Price Chart (Lightweight Charts v5)
 
 Core behavior:
-- Yahoo-style wide chart area
-- hover tooltip with date/time, OHLC, volume
-- color by direction
-- subtle area fill under line
-- stronger line than current default charts
+- TradingView Lightweight Charts with native zoom/pan/pinch
+- crosshair with OHLC + volume detail in header
+- color by direction (green up, red down)
+- auto Y-scale on price axis
+- fullscreen toggle (⛶ button)
 
-Required overlays:
-- separate volume panel below price
-- previous close line for `1D`
-- moving averages toggle
-- line/candles toggle
+Chart modes:
+- **Line**: default for all ranges
+- **Candle**: available for all ranges; auto-fallback to line when 80%+ bars are flat (synthetic intraday data where open=high=low=close)
 
-Visual rules:
-- rising range: green line/fill
-- falling range: red line/fill
-- neutral: gray line/fill
+Integrated overlays:
+- volume histogram (bottom 15% of chart, same Lightweight Charts instance)
+- MA20 (blue, 1px) and MA50 (amber, 1px) toggle
+- volume bar color: green if close ≥ previous close, red otherwise (fixed: compares filtered array correctly)
+
+Performance:
+- `data` prop stabilized with `useMemo` to prevent chart re-creation on parent re-render
+- callbacks stored in `useRef` to avoid useEffect dependency churn
+- initial subscription callbacks skipped (chart setup fires 2-4 times)
+
+Known limitation:
+- intraday OHLCV is snapshot-based (KIS API returns session-level open/high/low); candle bodies are flat. Auto-fallback to line mode handles this gracefully.
 
 ### 4. Period Return Strip
 
