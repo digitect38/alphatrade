@@ -91,6 +91,18 @@ const RANGE_CONFIG: Record<RangeKey, { interval: string; limit: number; display:
   "1Y": { interval: "1d", limit: 310, display: 260 },
 };
 
+const PREFETCH_NEIGHBORS: Partial<Record<RangeKey, RangeKey[]>> = {
+  "5D": ["1D", "1M"],
+  "1M": ["5D", "3M"],
+  "3M": ["1M", "6M"],
+  "6M": ["3M", "1Y"],
+  "1Y": ["6M"],
+  "1D": ["1H", "5D"],
+  "1H": ["10m", "1D"],
+  "10m": ["1m", "1H"],
+  "1m": ["10m"],
+};
+
 // All ranges now support candles (Lightweight Charts handles any data count)
 const CANDLE_SUPPORTED_RANGES = new Set<RangeKey>(["1m", "10m", "1H", "1D", "5D", "1M", "3M", "6M", "YTD", "1Y"]);
 
@@ -116,11 +128,25 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
   const [zoomEnd, setZoomEnd] = useState(100);
   const [zoomLabel, setZoomLabel] = useState<RangeKey | null>(null);
   const [hoverPoint, setHoverPoint] = useState<any | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [isRangeSwitching, setIsRangeSwitching] = useState(false);
   const canUseCandles = CANDLE_SUPPORTED_RANGES.has(range) && dataQuality !== "snapshot";
   const autoRangeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const skipAutoRange = useRef(true);  // true on mount — wait for first data load to settle
   const lastAutoTarget = useRef<RangeKey | null>(null);
+  const wasAutoRange = useRef(false);
+  const chartCacheRef = useRef<Map<string, AssetChartResponse>>(new Map());
+  const activeChartRequestRef = useRef(0);
+  const prevStockCodeRef = useRef(stockCode);
+
+  const applyChartResponse = useCallback((chartResponse: AssetChartResponse) => {
+    setChartInterval(chartResponse.interval || "1d");
+    setDataQuality(chartResponse.data_quality || "true_ohlc");
+    const seen = new Map<string, AssetChartPoint>();
+    for (const pt of chartResponse.points || []) seen.set(pt.time, pt);
+    const deduped = [...seen.values()].sort((a, b) => a.time.localeCompare(b.time));
+    setChartData(deduped);
+  }, []);
 
   // Auto-switch range based on zoom level (debounced) + sync indicator panels
   const handleAutoRange = useCallback((visibleBars: number, fromIdx: number, toIdx: number) => {
@@ -136,18 +162,48 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
 
     let target: RangeKey | null = null;
     if (chartInterval === "1d") {
-      if (visibleBars <= 7) target = "5D";         // zoomed in very far on daily → switch to intraday
-      else if (visibleBars <= 35) target = "1M";
-      else if (visibleBars <= 100) target = "3M";
-      else if (visibleBars <= 200) target = "6M";
-      else target = "1Y";
+      if (range === "1Y") {
+        if (visibleBars <= 170) target = "6M";
+      } else if (range === "6M") {
+        if (visibleBars <= 90) target = "3M";
+        else if (visibleBars >= 230) target = "1Y";
+      } else if (range === "3M") {
+        if (visibleBars <= 28) target = "1M";
+        else if (visibleBars >= 130) target = "6M";
+      } else if (range === "1M") {
+        if (visibleBars <= 6) target = "5D";
+        else if (visibleBars >= 55) target = "3M";
+      } else if (range === "5D") {
+        if (visibleBars >= 12) target = "1M";
+      } else {
+        if (visibleBars <= 7) target = "5D";
+        else if (visibleBars <= 35) target = "1M";
+        else if (visibleBars <= 100) target = "3M";
+        else if (visibleBars <= 200) target = "6M";
+        else target = "1Y";
+      }
     } else {
-      // intraday
-      if (visibleBars <= 30) target = "1m";
-      else if (visibleBars <= 70) target = "10m";
-      else if (visibleBars <= 130) target = "1H";
-      else if (visibleBars <= 300) target = "1D";
-      else target = "1M";                           // zoomed out very far on intraday → switch to daily
+      if (range === "5D") {
+        if (visibleBars <= 220) target = "1D";
+        else if (visibleBars >= 520) target = "1M";
+      } else if (range === "1D") {
+        if (visibleBars <= 110) target = "1H";
+        else if (visibleBars >= 340) target = "5D";
+      } else if (range === "1H") {
+        if (visibleBars <= 55) target = "10m";
+        else if (visibleBars >= 170) target = "1D";
+      } else if (range === "10m") {
+        if (visibleBars <= 22) target = "1m";
+        else if (visibleBars >= 95) target = "1H";
+      } else if (range === "1m") {
+        if (visibleBars >= 45) target = "10m";
+      } else {
+        if (visibleBars <= 30) target = "1m";
+        else if (visibleBars <= 70) target = "10m";
+        else if (visibleBars <= 130) target = "1H";
+        else if (visibleBars <= 300) target = "1D";
+        else target = "1M";
+      }
     }
 
     if (target) setZoomLabel(target);
@@ -157,7 +213,8 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
       if (autoRangeTimer.current) clearTimeout(autoRangeTimer.current);
       autoRangeTimer.current = setTimeout(() => {
         skipAutoRange.current = true;
-        lastAutoTarget.current = range;  // remember where we came from
+        lastAutoTarget.current = range;
+        wasAutoRange.current = true;  // skip displayBars on next load → fitContent instead
         setRange(target);
       }, 600);
     }
@@ -171,43 +228,85 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
 
   // Reset auto-range skip flag after chart data loads
   useEffect(() => {
-    if (!loading) {
+    if (!initialLoading && !isRangeSwitching) {
       const timer = setTimeout(() => { skipAutoRange.current = false; }, 800);
       return () => clearTimeout(timer);
     }
-  }, [loading, chartData]);
+  }, [initialLoading, isRangeSwitching, chartData]);
 
   // Clear oscillation guard when user manually clicks a range button
   const handleManualRange = useCallback((key: RangeKey) => {
     lastAutoTarget.current = null;
+    wasAutoRange.current = false;  // manual click → use displayBars normally
     setRange(key);
   }, []);
 
   useEffect(() => {
     if (!stockCode) return;
-    setLoading(true);
+    const stockChanged = prevStockCodeRef.current !== stockCode;
+    prevStockCodeRef.current = stockCode;
+    if (stockChanged) {
+      chartCacheRef.current.clear();
+      setOverview(null);
+      setPeriodReturns([]);
+      setExecutionContext(null);
+      setChartData([]);
+      setInitialLoading(true);
+      setIsRangeSwitching(false);
+    }
+
     Promise.all([
       apiGet<AssetOverview>(`/asset/${stockCode}/overview`),
-      apiGet<AssetChartResponse>(`/asset/${stockCode}/chart?range=${range}`),
       apiGet<AssetReturnsResponse>(`/asset/${stockCode}/period-returns`),
       apiGet<AssetExecutionContext>(`/asset/${stockCode}/execution-context`),
     ])
-      .then(([overviewData, chartResponse, returnsResponse, executionResponse]) => {
+      .then(([overviewData, returnsResponse, executionResponse]) => {
         setOverview(overviewData);
-        setChartInterval(chartResponse.interval || "1d");
-        setDataQuality(chartResponse.data_quality || "true_ohlc");
-        // Deduplicate by time (keep last entry for each timestamp)
-        const rawPoints = chartResponse.points || [];
-        // Deduplicate by time + sort ascending
-        const seen = new Map<string, AssetChartPoint>();
-        for (const pt of rawPoints) seen.set(pt.time, pt);
-        const deduped = [...seen.values()].sort((a, b) => a.time.localeCompare(b.time));
-        setChartData(deduped);
         setPeriodReturns((Object.entries(returnsResponse.returns) as Array<[RangeKey, number]>).map(([key, value]) => ({ key, value })));
         setExecutionContext(executionResponse);
       })
       .catch(console.error)
-      .finally(() => setLoading(false));
+      .finally(() => setInitialLoading(false));
+  }, [stockCode]);
+
+  useEffect(() => {
+    if (!stockCode) return;
+    const cacheKey = `${stockCode}:${range}`;
+    const cached = chartCacheRef.current.get(cacheKey);
+    if (cached) {
+      applyChartResponse(cached);
+      setIsRangeSwitching(false);
+      return;
+    }
+
+    const requestId = ++activeChartRequestRef.current;
+    const hasExistingChart = chartData.length > 0;
+    if (hasExistingChart) setIsRangeSwitching(true);
+
+    apiGet<AssetChartResponse>(`/asset/${stockCode}/chart?range=${range}`)
+      .then((chartResponse) => {
+        if (requestId !== activeChartRequestRef.current) return;
+        chartCacheRef.current.set(cacheKey, chartResponse);
+        applyChartResponse(chartResponse);
+      })
+      .catch(console.error)
+      .finally(() => {
+        if (requestId === activeChartRequestRef.current) setIsRangeSwitching(false);
+      });
+  }, [applyChartResponse, range, stockCode]);
+
+  useEffect(() => {
+    if (!stockCode) return;
+    const neighbors = PREFETCH_NEIGHBORS[range] || [];
+    neighbors.forEach((neighbor) => {
+      const cacheKey = `${stockCode}:${neighbor}`;
+      if (chartCacheRef.current.has(cacheKey)) return;
+      apiGet<AssetChartResponse>(`/asset/${stockCode}/chart?range=${neighbor}`)
+        .then((response) => {
+          chartCacheRef.current.set(cacheKey, response);
+        })
+        .catch(() => undefined);
+    });
   }, [range, stockCode]);
 
   useEffect(() => {
@@ -312,7 +411,7 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
   // priceDomain no longer needed — LightweightChart auto-scales
 
   if (!stockCode) return <div className="card">{t("asset.noCode")}</div>;
-  if (loading) return <p className="text-secondary p-xl">{t("asset.loading")}</p>;
+  if (initialLoading && !overview && chartData.length === 0) return <p className="text-secondary p-xl">{t("asset.loading")}</p>;
 
   return (
     <div className="page-content asset-detail-page">
@@ -472,6 +571,7 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
                 {compareCode && chartMode === "line" ? t("asset.compareModeNote")
                   : dataQuality === "snapshot" ? t("asset.intradayLineNote")
                   : t("asset.chartModeNote")}
+                {isRangeSwitching ? <span className="text-secondary"> · syncing range...</span> : null}
               </div>
             </div>
             <div className="asset-live-header">
@@ -503,7 +603,7 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
             showRSI={showRsi}
             showMACD={showMacd}
             height={460}
-            displayBars={RANGE_CONFIG[range].display}
+            displayBars={wasAutoRange.current ? undefined : RANGE_CONFIG[range].display}
             intraday={chartInterval === "1m"}
             upColor="#16a34a"
             downColor="#dc2626"
@@ -514,7 +614,6 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
             }}
             onVisibleRangeChange={handleAutoRange}
           />
-          {/* RSI/MACD now integrated into LightweightChart with synced time scales */}
         </div>
 
         <div className="card asset-side-card">
