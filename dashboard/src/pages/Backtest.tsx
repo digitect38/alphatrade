@@ -2,7 +2,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import DirectionValue from "../components/DirectionValue";
 import StockSearch from "../components/StockSearch";
 import { LightweightChart } from "../components/charts";
-import type { OHLCVPoint } from "../components/charts";
+import type { OHLCVPoint, ChartMarker } from "../components/charts";
 import { apiPost } from "../hooks/useApi";
 
 interface BacktestTrade {
@@ -11,7 +11,8 @@ interface BacktestTrade {
   price: number;
   quantity: number;
   pnl: number | null;
-  holding_bars?: number | null;
+  holding_bars: number | null;
+  reason: string | null;
 }
 
 interface BacktestResult {
@@ -25,21 +26,41 @@ interface BacktestResult {
   annual_return: number | null;
   max_drawdown: number;
   sharpe_ratio: number | null;
+  sortino_ratio: number | null;
+  calmar_ratio: number | null;
   win_rate: number;
   profit_factor: number | null;
   avg_trade_pnl: number | null;
   avg_holding_bars: number | null;
   max_consecutive_losses: number;
   total_trades: number;
+  expectancy: number | null;
+  exposure_pct: number | null;
   trades: BacktestTrade[];
   equity_curve: number[];
+  equity_series: Array<{ time: string; equity: number; benchmark?: number; drawdown?: number }> | null;
+  trade_markers: Array<{ time: string; action: string; price: number }> | null;
+  monthly_returns: Array<{ month: string; return_pct: number }> | null;
   computed_at: string;
+  start_date: string | null;
+  end_date: string | null;
+  interval: string;
 }
+
+type TradeFilter = "all" | "buys" | "sells" | "winners" | "losers";
 
 const strategyKeys: Record<string, string> = {
   ensemble: "bt.ensemble",
   momentum: "bt.momentum",
   mean_reversion: "bt.meanReversion",
+};
+
+const tradeFilterKeys: Record<TradeFilter, string> = {
+  all: "bt.tradeFilter.all",
+  buys: "bt.tradeFilter.buys",
+  sells: "bt.tradeFilter.sells",
+  winners: "bt.tradeFilter.winners",
+  losers: "bt.tradeFilter.losers",
 };
 
 export default function BacktestPage({ t: _t }: { t: (k: string) => string }) {
@@ -49,12 +70,38 @@ export default function BacktestPage({ t: _t }: { t: (k: string) => string }) {
   const [result, setResult] = useState<BacktestResult | null>(null);
   const [loading, setLoading] = useState(false);
 
+  // New input states
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [interval, setInterval] = useState("1d");
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [buyFeeRate, setBuyFeeRate] = useState(0.00015);
+  const [sellFeeRate, setSellFeeRate] = useState(0.00015);
+  const [sellTaxRate, setSellTaxRate] = useState(0.0018);
+  const [slippageRate, setSlippageRate] = useState(0.001);
+  const [capitalFraction, setCapitalFraction] = useState(1.0);
+  const [maxDrawdownStop, setMaxDrawdownStop] = useState(8);
+
+  // Trade filter
+  const [tradeFilter, setTradeFilter] = useState<TradeFilter>("all");
+
   const runBacktest = async () => {
     setLoading(true);
     setResult(null);
     try {
       const res = await apiPost<BacktestResult>("/strategy/backtest", {
-        stock_code: stockCode, strategy, initial_capital: capital,
+        stock_code: stockCode,
+        strategy,
+        initial_capital: capital,
+        interval,
+        start_date: startDate || undefined,
+        end_date: endDate || undefined,
+        buy_fee_rate: buyFeeRate,
+        sell_fee_rate: sellFeeRate,
+        sell_tax_rate: sellTaxRate,
+        slippage_rate: slippageRate,
+        capital_fraction: capitalFraction,
+        max_drawdown_stop: maxDrawdownStop,
       });
       setResult(res);
     } catch (e) {
@@ -64,8 +111,15 @@ export default function BacktestPage({ t: _t }: { t: (k: string) => string }) {
   };
 
   const equityData = useMemo<OHLCVPoint[]>(() => {
-    if (!result?.equity_curve.length) return [];
-    // Generate synthetic daily dates starting from computed_at
+    // Prefer real equity_series from API
+    if (result?.equity_series?.length) {
+      return result.equity_series.map(pt => ({
+        time: pt.time,
+        open: pt.equity, high: pt.equity, low: pt.equity, close: pt.equity, volume: 0,
+      }));
+    }
+    // Fallback: synthetic dates from equity_curve
+    if (!result?.equity_curve?.length) return [];
     const baseDate = result.computed_at ? new Date(result.computed_at) : new Date();
     baseDate.setDate(baseDate.getDate() - result.equity_curve.length);
     return result.equity_curve.map((v, i) => {
@@ -78,11 +132,36 @@ export default function BacktestPage({ t: _t }: { t: (k: string) => string }) {
     });
   }, [result]);
 
+  const markers = useMemo<ChartMarker[]>(() => {
+    if (!result?.trade_markers) return [];
+    return result.trade_markers.map(m => ({
+      time: m.time,
+      label: m.action === "BUY" ? "B" : "S",
+      color: m.action === "BUY" ? "#16a34a" : "#dc2626",
+    }));
+  }, [result]);
+
   const edgeVsBenchmark = result && result.benchmark_return != null
     ? result.total_return - result.benchmark_return
     : null;
 
   const sells = result?.trades.filter((trade) => trade.action === "SELL") ?? [];
+
+  // Filtered trades
+  const filteredTrades = useMemo(() => {
+    if (!result) return [];
+    const trades = result.trades;
+    switch (tradeFilter) {
+      case "buys": return trades.filter(t => t.action === "BUY");
+      case "sells": return trades.filter(t => t.action === "SELL");
+      case "winners": return trades.filter(t => t.pnl != null && t.pnl > 0);
+      case "losers": return trades.filter(t => t.pnl != null && t.pnl < 0);
+      default: return trades;
+    }
+  }, [result, tradeFilter]);
+
+  const winCount = result?.trades.filter(t => t.pnl != null && t.pnl > 0).length ?? 0;
+  const lossCount = result?.trades.filter(t => t.pnl != null && t.pnl < 0).length ?? 0;
 
   return (
     <div className="page-content">
@@ -115,9 +194,141 @@ export default function BacktestPage({ t: _t }: { t: (k: string) => string }) {
           />
           <span className="text-secondary" style={{ fontSize: "13px" }}>{_t("common.won")}</span>
         </div>
+
+        {/* Date range */}
+        <div className="flex items-center gap-xs">
+          <label className="text-secondary" style={{ fontSize: "13px" }}>{_t("bt.startDate")}</label>
+          <input
+            type="date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            className="input"
+            style={{ width: "140px" }}
+          />
+        </div>
+        <div className="flex items-center gap-xs">
+          <label className="text-secondary" style={{ fontSize: "13px" }}>{_t("bt.endDate")}</label>
+          <input
+            type="date"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+            className="input"
+            style={{ width: "140px" }}
+          />
+        </div>
+
+        {/* Interval */}
+        <div className="flex items-center gap-xs">
+          <label className="text-secondary" style={{ fontSize: "13px" }}>{_t("bt.interval")}</label>
+          <select
+            value={interval}
+            onChange={(e) => setInterval(e.target.value)}
+            className="select"
+            style={{ width: "80px" }}
+          >
+            <option value="1d">1d</option>
+            <option value="1m">1m</option>
+          </select>
+        </div>
+
+        {/* Max DD Stop */}
+        <div className="flex items-center gap-xs">
+          <label className="text-secondary" style={{ fontSize: "13px" }}>{_t("bt.maxDdStop")}</label>
+          <input
+            type="number"
+            value={maxDrawdownStop}
+            onChange={(e) => setMaxDrawdownStop(Number(e.target.value))}
+            step={1}
+            min={1}
+            max={50}
+            className="input"
+            style={{ width: "70px" }}
+          />
+          <span className="text-secondary" style={{ fontSize: "13px" }}>%</span>
+        </div>
+
         <button onClick={runBacktest} disabled={loading} className="btn btn-primary">
           {loading ? _t("bt.running") : _t("bt.run")}
         </button>
+      </div>
+
+      {/* Advanced Settings (collapsible) */}
+      <div className="card">
+        <button
+          onClick={() => setShowAdvanced(!showAdvanced)}
+          style={{
+            background: "none", border: "none", cursor: "pointer",
+            padding: 0, fontSize: "14px", fontWeight: 600,
+            color: "var(--text-secondary, #666)",
+          }}
+        >
+          {showAdvanced ? "▾" : "▸"} {_t("bt.advanced")}
+        </button>
+        {showAdvanced && (
+          <div className="flex gap-md items-center flex-wrap" style={{ marginTop: "12px" }}>
+            <div className="flex items-center gap-xs">
+              <label className="text-secondary" style={{ fontSize: "13px" }}>{_t("bt.buyFee")}</label>
+              <input
+                type="number"
+                value={buyFeeRate}
+                onChange={(e) => setBuyFeeRate(Number(e.target.value))}
+                step={0.00001}
+                min={0}
+                className="input"
+                style={{ width: "100px" }}
+              />
+            </div>
+            <div className="flex items-center gap-xs">
+              <label className="text-secondary" style={{ fontSize: "13px" }}>{_t("bt.sellFee")}</label>
+              <input
+                type="number"
+                value={sellFeeRate}
+                onChange={(e) => setSellFeeRate(Number(e.target.value))}
+                step={0.00001}
+                min={0}
+                className="input"
+                style={{ width: "100px" }}
+              />
+            </div>
+            <div className="flex items-center gap-xs">
+              <label className="text-secondary" style={{ fontSize: "13px" }}>{_t("bt.sellTax")}</label>
+              <input
+                type="number"
+                value={sellTaxRate}
+                onChange={(e) => setSellTaxRate(Number(e.target.value))}
+                step={0.0001}
+                min={0}
+                className="input"
+                style={{ width: "100px" }}
+              />
+            </div>
+            <div className="flex items-center gap-xs">
+              <label className="text-secondary" style={{ fontSize: "13px" }}>{_t("bt.slippage")}</label>
+              <input
+                type="number"
+                value={slippageRate}
+                onChange={(e) => setSlippageRate(Number(e.target.value))}
+                step={0.0001}
+                min={0}
+                className="input"
+                style={{ width: "100px" }}
+              />
+            </div>
+            <div className="flex items-center gap-xs">
+              <label className="text-secondary" style={{ fontSize: "13px" }}>{_t("bt.capitalFraction")}</label>
+              <input
+                type="number"
+                value={capitalFraction}
+                onChange={(e) => setCapitalFraction(Number(e.target.value))}
+                step={0.1}
+                min={0.1}
+                max={1.0}
+                className="input"
+                style={{ width: "80px" }}
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       {result && (
@@ -147,6 +358,29 @@ export default function BacktestPage({ t: _t }: { t: (k: string) => string }) {
               label={_t("bt.sharpe")}
               value={result.sharpe_ratio?.toFixed(2) ?? "-"}
               colorClass={result.sharpe_ratio && result.sharpe_ratio > 1 ? "text-profit" : "text-neutral"}
+            />
+          </div>
+
+          {/* New metric cards: Sortino, Calmar, Expectancy, Exposure */}
+          <div className="metrics-grid metrics-grid-4">
+            <MetricCard
+              label={_t("bt.sortino")}
+              value={result.sortino_ratio?.toFixed(2) ?? "-"}
+              colorClass={result.sortino_ratio && result.sortino_ratio > 1 ? "text-profit" : "text-neutral"}
+            />
+            <MetricCard
+              label={_t("bt.calmar")}
+              value={result.calmar_ratio?.toFixed(2) ?? "-"}
+              colorClass={result.calmar_ratio && result.calmar_ratio > 1 ? "text-profit" : "text-neutral"}
+            />
+            <MetricCard
+              label={_t("bt.expectancy")}
+              value={result.expectancy != null ? formatWon(result.expectancy, _t) : "-"}
+              colorClass={result.expectancy != null ? (result.expectancy >= 0 ? "text-profit" : "text-loss") : "text-neutral"}
+            />
+            <MetricCard
+              label={_t("bt.exposure")}
+              value={result.exposure_pct != null ? `${result.exposure_pct.toFixed(1)}%` : "-"}
             />
           </div>
 
@@ -200,6 +434,7 @@ export default function BacktestPage({ t: _t }: { t: (k: string) => string }) {
                 volume={false}
                 height={300}
                 lineColor="#1a1a2e"
+                markers={markers}
               />
             </div>
           )}
@@ -207,7 +442,26 @@ export default function BacktestPage({ t: _t }: { t: (k: string) => string }) {
           {/* Trade History */}
           {result.trades.length > 0 && (
             <div className="card">
-              <h3 className="card-title">{_t("bt.tradeHistory")} ({result.trades.length})</h3>
+              <h3 className="card-title">
+                {_t("bt.tradeHistory")} ({filteredTrades.length} / {result.trades.length}
+                {" — "}
+                {winCount}W / {lossCount}L)
+              </h3>
+
+              {/* Filter toggles */}
+              <div className="flex gap-xs" style={{ marginBottom: "12px" }}>
+                {(Object.keys(tradeFilterKeys) as TradeFilter[]).map(f => (
+                  <button
+                    key={f}
+                    onClick={() => setTradeFilter(f)}
+                    className={`btn ${tradeFilter === f ? "btn-primary" : ""}`}
+                    style={{ fontSize: "12px", padding: "4px 10px" }}
+                  >
+                    {_t(tradeFilterKeys[f])}
+                  </button>
+                ))}
+              </div>
+
               <table className="data-table">
                 <thead>
                   <tr>
@@ -215,12 +469,13 @@ export default function BacktestPage({ t: _t }: { t: (k: string) => string }) {
                     <th>{_t("th.action")}</th>
                     <th className="text-right">{_t("th.price")}</th>
                     <th className="text-right">{_t("th.qty")}</th>
-                    <th className="text-right">{_t("bt.avgHoldingBars")}</th>
+                    <th className="text-right">{_t("th.holdingBars")}</th>
                     <th className="text-right">{_t("th.pnl")}</th>
+                    <th>{_t("th.reason")}</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {result.trades.map((t, i) => (
+                  {filteredTrades.map((t, i) => (
                     <tr key={i}>
                       <td style={{ fontSize: "12px" }}>{t.date}</td>
                       <td className={"font-heavy " + (t.action === "BUY" ? "text-up" : "text-down")}>
@@ -232,6 +487,7 @@ export default function BacktestPage({ t: _t }: { t: (k: string) => string }) {
                       <td className={"text-right font-bold " + (t.pnl != null ? (t.pnl >= 0 ? "text-profit" : "text-loss") : "text-neutral")}>
                         {t.pnl != null ? `${t.pnl >= 0 ? "+" : ""}${t.pnl.toLocaleString()}원` : "-"}
                       </td>
+                      <td style={{ fontSize: "12px" }}>{t.reason ?? "-"}</td>
                     </tr>
                   ))}
                 </tbody>

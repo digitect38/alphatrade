@@ -89,6 +89,14 @@ async def api_backtest(
         initial_capital=request.initial_capital,
         strategy=request.strategy,
         interval=request.interval,
+        start_date=request.start_date,
+        end_date=request.end_date,
+        buy_fee_rate=request.buy_fee_rate,
+        sell_fee_rate=request.sell_fee_rate,
+        sell_tax_rate=request.sell_tax_rate,
+        slippage_rate=request.slippage_rate,
+        capital_fraction=request.capital_fraction,
+        max_drawdown_stop=request.max_drawdown_stop,
         pool=pool,
     )
 
