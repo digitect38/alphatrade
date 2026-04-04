@@ -40,46 +40,53 @@ class TestGenerateBacktestSignals:
     @pytest.mark.parametrize("strategy", ["ensemble", "momentum", "mean_reversion"])
     def test_returns_series(self, strategy):
         df = _make_df(60)
-        signals = _generate_backtest_signals(df, strategy)
+        signals, reasons = _generate_backtest_signals(df, strategy)
         assert isinstance(signals, pd.Series)
+        assert isinstance(reasons, pd.Series)
         assert len(signals) == len(df)
+        assert len(reasons) == len(df)
 
     @pytest.mark.parametrize("strategy", ["ensemble", "momentum", "mean_reversion"])
     def test_signal_values(self, strategy):
         df = _make_df(60)
-        signals = _generate_backtest_signals(df, strategy)
+        signals, _ = _generate_backtest_signals(df, strategy)
         unique_vals = set(signals.unique())
         assert unique_vals.issubset({-1, 0, 1})
 
     def test_short_df_no_crash(self):
         df = _make_df(5)
-        signals = _generate_backtest_signals(df, "ensemble")
+        signals, _ = _generate_backtest_signals(df, "ensemble")
         assert len(signals) == 5
 
     @pytest.mark.parametrize("n", [10, 20, 30, 60, 100])
     def test_various_lengths(self, n):
         df = _make_df(n)
-        signals = _generate_backtest_signals(df, "ensemble")
+        signals, _ = _generate_backtest_signals(df, "ensemble")
         assert len(signals) == n
 
     def test_uptrend_generates_buy(self):
         df = _make_df(60, trend=500)  # strong uptrend
-        signals = _generate_backtest_signals(df, "momentum")
+        signals, _ = _generate_backtest_signals(df, "momentum")
         assert 1 in signals.values  # should have at least one buy
 
     def test_downtrend_has_signals(self):
         df = _make_df(60, trend=-500)  # strong downtrend
-        signals = _generate_backtest_signals(df, "momentum")
+        signals, _ = _generate_backtest_signals(df, "momentum")
         # Downtrend may trigger sell or RSI oversold buy — just verify signals exist
         assert len(signals) == 60
         assert signals.abs().sum() > 0  # at least some non-zero signals
+
+
+def _empty_reasons(df):
+    """Helper to create an empty reasons series matching df index."""
+    return pd.Series("", index=df.index)
 
 
 class TestSimulateTrades:
     def test_no_signals_no_trades(self):
         df = _make_df(30)
         signals = pd.Series(0, index=df.index)
-        trades, equity = _simulate_trades(df, signals, 10_000_000)
+        trades, equity, _ = _simulate_trades(df, signals, _empty_reasons(df), 10_000_000)
         assert len(trades) == 0
         assert len(equity) == 30
         assert all(e == 10_000_000 for e in equity)
@@ -88,7 +95,7 @@ class TestSimulateTrades:
         df = _make_df(30)
         signals = pd.Series(0, index=df.index)
         signals.iloc[0] = 1  # buy on first day
-        trades, equity = _simulate_trades(df, signals, 10_000_000)
+        trades, equity, _ = _simulate_trades(df, signals, _empty_reasons(df), 10_000_000)
         assert len(trades) == 2
         assert trades[0].action == "BUY"
         assert trades[1].action == "SELL"
@@ -99,7 +106,7 @@ class TestSimulateTrades:
         signals = pd.Series(0, index=df.index)
         signals.iloc[0] = 1   # buy
         signals.iloc[15] = -1  # sell
-        trades, equity = _simulate_trades(df, signals, 10_000_000)
+        trades, equity, _ = _simulate_trades(df, signals, _empty_reasons(df), 10_000_000)
         assert len(trades) == 2
         assert trades[0].action == "BUY"
         assert trades[1].action == "SELL"
@@ -108,7 +115,7 @@ class TestSimulateTrades:
     def test_equity_length_matches_df(self):
         df = _make_df(50)
         signals = pd.Series(0, index=df.index)
-        _, equity = _simulate_trades(df, signals, 10_000_000)
+        _, equity, _ = _simulate_trades(df, signals, _empty_reasons(df), 10_000_000)
         assert len(equity) == 50
 
     @pytest.mark.parametrize("capital", [1_000_000, 5_000_000, 10_000_000, 50_000_000])
@@ -116,7 +123,7 @@ class TestSimulateTrades:
         df = _make_df(30)
         signals = pd.Series(0, index=df.index)
         signals.iloc[0] = 1
-        trades, equity = _simulate_trades(df, signals, capital)
+        trades, equity, _ = _simulate_trades(df, signals, _empty_reasons(df), capital)
         assert equity[0] <= capital  # can't exceed initial
         assert trades[0].quantity * trades[0].price <= capital
 
@@ -124,7 +131,7 @@ class TestSimulateTrades:
         df = _make_df(10)
         signals = pd.Series(0, index=df.index)
         signals.iloc[5] = -1  # sell without position
-        trades, _ = _simulate_trades(df, signals, 10_000_000)
+        trades, _, _ = _simulate_trades(df, signals, _empty_reasons(df), 10_000_000)
         assert len(trades) == 0
 
     def test_multiple_buy_sell_cycles(self):
@@ -134,15 +141,15 @@ class TestSimulateTrades:
         signals.iloc[15] = -1  # sell
         signals.iloc[25] = 1   # buy again
         signals.iloc[40] = -1  # sell again
-        trades, _ = _simulate_trades(df, signals, 10_000_000)
+        trades, _, _ = _simulate_trades(df, signals, _empty_reasons(df), 10_000_000)
         assert len(trades) == 4
         sells = [t for t in trades if t.action == "SELL"]
         assert all(t.pnl is not None for t in sells)
 
     def test_equity_never_negative(self):
         df = _make_df(60)
-        signals = _generate_backtest_signals(df, "ensemble")
-        _, equity = _simulate_trades(df, signals, 10_000_000)
+        signals, reasons = _generate_backtest_signals(df, "ensemble")
+        _, equity, _ = _simulate_trades(df, signals, reasons, 10_000_000)
         assert all(e >= 0 for e in equity)
 
     def test_intraday_entry_blocked_before_open_delay(self):
@@ -152,7 +159,7 @@ class TestSimulateTrades:
             {"time": pd.Timestamp("2026-03-31 09:02:00", tz=KST), "open": 10100, "high": 10150, "low": 10050, "close": 10120, "volume": 120000},
         ])
         signals = pd.Series([1, 0, 0], index=df.index)
-        trades, _ = _simulate_trades(df, signals, 1_000_000, interval="1m")
+        trades, _, _ = _simulate_trades(df, signals, _empty_reasons(df), 1_000_000, interval="1m")
         assert len(trades) == 0
 
     def test_entry_bar_allowed_during_regular_window(self):

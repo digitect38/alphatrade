@@ -260,11 +260,11 @@ async def run_walk_forward(
         # Generate signals using training data pattern,
         # then apply those same rules to the test data
         # (the signals function only uses the data it's given)
-        test_signals = _generate_backtest_signals(test_df, strategy)
+        test_signals, test_reasons = _generate_backtest_signals(test_df, strategy)
 
         # Simulate trades on OOS data
-        trades, equity_curve = _simulate_trades(
-            test_df, test_signals, initial_capital, interval=interval
+        trades, equity_curve, _ = _simulate_trades(
+            test_df, test_signals, test_reasons, initial_capital, interval=interval
         )
 
         # Calculate OOS metrics
