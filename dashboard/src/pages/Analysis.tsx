@@ -125,6 +125,7 @@ export default function AnalysisPage({ t: _t, initialCode }: { t: (k: string) =>
           sma20={technical?.indicators.sma_20}
           sma60={technical?.indicators.sma_60}
           periodLabel={preset}
+          interval={ANALYSIS_PRESETS[preset].interval}
           t={_t}
         />
       )}
