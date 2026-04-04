@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 // Recharts still used for Volume/RSI/MACD panels
-import { VolumePanel, RSIPanel, MACDPanel, LightweightChart } from "../components/charts";
+import { RSIPanel, MACDPanel, LightweightChart } from "../components/charts";
 import DirectionValue from "../components/DirectionValue";
 import StockSearch from "../components/StockSearch";
 // calcOHLCDomain no longer needed — LightweightChart auto-scales
@@ -91,7 +91,8 @@ const RANGE_CONFIG: Record<RangeKey, { interval: string; limit: number; display:
   "1Y": { interval: "1d", limit: 310, display: 260 },
 };
 
-const CANDLE_SUPPORTED_RANGES = new Set<RangeKey>(["1M", "3M", "6M", "YTD", "1Y"]);
+// All ranges now support candles (Lightweight Charts handles any data count)
+const CANDLE_SUPPORTED_RANGES = new Set<RangeKey>(["1m", "10m", "1H", "1D", "5D", "1M", "3M", "6M", "YTD", "1Y"]);
 
 export default function AssetDetailPage({ t, route }: { t: (k: string) => string; route: string }) {
   const stockCode = useMemo(() => route.split("/")[1] || "", [route]);
@@ -430,9 +431,7 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
               else setHoverPoint(null);
             }}
           />
-          <div className="asset-volume-panel">
-            <VolumePanel data={zoomedPoints} syncId="asset-detail" t={t} />
-          </div>
+          {/* Volume now built into LightweightChart above */}
           <div className="asset-indicator-stack">
             <div className="asset-indicator-panel">
               <RSIPanel data={zoomedPoints} syncId="asset-detail" t={t} />
