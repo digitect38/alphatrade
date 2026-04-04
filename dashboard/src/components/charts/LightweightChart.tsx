@@ -48,6 +48,8 @@ interface Props {
   downColor?: string;
   lineColor?: string;
   onCrosshairMove?: (point: OHLCVPoint | null) => void;
+  /** Called when visible range changes (zoom/pan). Returns visible bar count. */
+  onVisibleRangeChange?: (visibleBars: number) => void;
 }
 
 function toTime(isoTime: string, intraday: boolean): Time {
@@ -72,7 +74,7 @@ export default function LightweightChart({
   data, mode = "candle", volume = true, markers, height = 400,
   showMA20 = false, showMA50 = false,
   upColor = "#16a34a", downColor = "#dc2626", lineColor = "#1a1a2e",
-  onCrosshairMove,
+  onCrosshairMove, onVisibleRangeChange,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -160,13 +162,23 @@ export default function LightweightChart({
 
     chart.timeScale().fitContent();
 
+    // Notify parent of visible range changes (zoom/pan)
+    if (onVisibleRangeChange) {
+      chart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
+        if (range) {
+          const bars = Math.round(range.to - range.from);
+          onVisibleRangeChange(bars);
+        }
+      });
+    }
+
     const ro = new ResizeObserver(() => {
       if (containerRef.current) chart.applyOptions({ width: containerRef.current.clientWidth });
     });
     ro.observe(containerRef.current);
 
     return () => { ro.disconnect(); chart.remove(); chartRef.current = null; };
-  }, [data, mode, volume, markers, height, showMA20, showMA50, upColor, downColor, lineColor, fullscreen]);
+  }, [data, mode, volume, markers, height, showMA20, showMA50, upColor, downColor, lineColor, fullscreen, onVisibleRangeChange]);
 
   return (
     <div style={{ position: "relative" }}>

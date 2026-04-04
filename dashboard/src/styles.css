@@ -305,6 +305,18 @@ body {
   margin-bottom: 0;
 }
 
+.asset-range-chip.is-zoom-hint {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+  font-weight: 700;
+  animation: zoom-hint-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes zoom-hint-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
 .event-link {
   text-decoration: none;
 }

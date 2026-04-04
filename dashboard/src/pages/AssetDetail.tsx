@@ -111,11 +111,12 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
   const [peerCandidates, setPeerCandidates] = useState<UniverseItem[]>([]);
   const [zoomStart, setZoomStart] = useState(0);
   const [zoomEnd, setZoomEnd] = useState(100);
+  const [zoomLabel, setZoomLabel] = useState<RangeKey | null>(null);
   const [hoverPoint, setHoverPoint] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const canUseCandles = CANDLE_SUPPORTED_RANGES.has(range);
 
-  useEffect(() => { setZoomStart(0); setZoomEnd(100); }, [range, stockCode]);
+  useEffect(() => { setZoomStart(0); setZoomEnd(100); setZoomLabel(null); }, [range, stockCode]);
 
   useEffect(() => {
     if (!stockCode) return;
@@ -300,7 +301,7 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
           {(Object.keys(RANGE_CONFIG) as RangeKey[]).map((key) => (
             <button
               key={key}
-              className={`asset-range-chip ${range === key ? "is-active" : ""}`}
+              className={`asset-range-chip ${range === key ? "is-active" : ""} ${zoomLabel === key && range !== key ? "is-zoom-hint" : ""}`}
               onClick={() => setRange(key)}
             >
               {t(`asset.range.${key}`)}
@@ -429,6 +430,23 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
             onCrosshairMove={(pt) => {
               if (pt) setHoverPoint({ ...pt, label: "", interval: chartInterval, ma20: null, ma50: null, primaryNormalized: 0, compareNormalized: null, rsi14: null, macd: null, macdSignal: null, macdHist: null, candleBase: 0, candleBody: 0, isUpBar: true, priceLine: pt.close });
               else setHoverPoint(null);
+            }}
+            onVisibleRangeChange={(visibleBars) => {
+              // Update range label to reflect current zoom level (visual only, no data refetch)
+              let label: RangeKey | null = null;
+              if (chartInterval === "1d") {
+                if (visibleBars <= 7) label = "5D";
+                else if (visibleBars <= 35) label = "1M";
+                else if (visibleBars <= 100) label = "3M";
+                else if (visibleBars <= 200) label = "6M";
+                else label = "1Y";
+              } else {
+                if (visibleBars <= 30) label = "1m";
+                else if (visibleBars <= 70) label = "10m";
+                else if (visibleBars <= 130) label = "1H";
+                else label = "1D";
+              }
+              if (label) setZoomLabel(label);
             }}
           />
           {/* Volume now built into LightweightChart above */}
