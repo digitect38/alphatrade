@@ -8,6 +8,7 @@ import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends
 
 from app.deps import get_db, get_redis, get_dart_client, get_kis_client, get_naver_client
+from app.utils.intraday_normalizer import normalize_intraday_snapshot
 from app.models.disclosure import DisclosureCollectionRequest, DisclosureCollectionResult
 from app.models.news import NewsCollectionResult
 from app.models.ohlcv import OHLCVCollectionRequest, OHLCVCollectionResult
@@ -19,15 +20,6 @@ from app.services.redis_publisher import RedisPublisher
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-
-def _normalize_intraday_snapshot(record):
-    """Quote endpoint returns session OHLC, not true 1m OHLC. Store snapshot bars as last price."""
-    if record.interval != "1m":
-        return record
-    record.open = record.close
-    record.high = record.close
-    record.low = record.close
-    return record
 
 
 async def _insert_news_records(conn, records, errors: list, sample: list) -> tuple[int, int]:
@@ -93,7 +85,7 @@ async def _collect_ohlcv_for_codes(
                 errors.append(f"No data for {code}")
                 continue
             record.interval = interval
-            record = _normalize_intraday_snapshot(record)
+            record = normalize_intraday_snapshot(record)
             async with pool.acquire() as conn:
                 await conn.execute(
                     """INSERT INTO ohlcv (time, stock_code, open, high, low, close, volume, value, interval)

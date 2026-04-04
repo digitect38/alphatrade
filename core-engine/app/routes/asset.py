@@ -8,6 +8,7 @@ from app.analysis.technical import compute_technical
 from app.analysis.volume import analyze_volume
 from app.deps import get_db, get_redis
 from app.services.market_state import MarketStateCache
+from app.utils.intraday_normalizer import is_synthetic_intraday, normalize_intraday_rows
 from app.utils.market_calendar import KST, get_current_session
 
 router = APIRouter()
@@ -114,9 +115,11 @@ async def _load_chart(pool: asyncpg.Pool, stock_code: str, range_key: str):
                 limit,
             )
 
-        if interval == "1m" and _is_synthetic_intraday(rows):
-            rows = _normalize_intraday_rows(rows)
+        synthetic = interval == "1m" and is_synthetic_intraday(rows)
+        if synthetic:
+            rows = normalize_intraday_rows(rows)
 
+    data_quality = "snapshot" if synthetic else "true_ohlc"
     points = [
         {
             "time": row["time"].isoformat(),
@@ -128,52 +131,7 @@ async def _load_chart(pool: asyncpg.Pool, stock_code: str, range_key: str):
         }
         for row in reversed(rows)
     ]
-    return {"stock_code": stock_code, "range": range_key, "interval": interval, "points": points}
-
-
-def _is_synthetic_intraday(rows) -> bool:
-    if len(rows) < 10:
-        return False
-
-    opens = [float(row["open"] or 0) for row in rows]
-    highs = [float(row["high"] or 0) for row in rows]
-    lows = [float(row["low"] or 0) for row in rows]
-    closes = [float(row["close"] or 0) for row in rows]
-
-    unique_bars = {
-        (
-            float(row["open"] or 0),
-            float(row["high"] or 0),
-            float(row["low"] or 0),
-            float(row["close"] or 0),
-            int(row["volume"] or 0),
-        )
-        for row in rows
-    }
-    if len(unique_bars) <= 3:
-        return True
-
-    # Current-price snapshots from the quote endpoint leak session-wide open/high/low
-    # into every "1m" row. Detect that pattern and fall back to daily data.
-    return len(set(opens)) <= 3 and len(set(highs)) <= 3 and len(set(closes)) > 3
-
-
-def _normalize_intraday_rows(rows):
-    """Normalize leaked session OHLC rows into close-only snapshot bars for charting."""
-    normalized = []
-    for row in rows:
-        close = row["close"]
-        normalized.append(
-            {
-                "time": row["time"],
-                "open": close,
-                "high": close,
-                "low": close,
-                "close": close,
-                "volume": row["volume"],
-            }
-        )
-    return normalized
+    return {"stock_code": stock_code, "range": range_key, "interval": interval, "data_quality": data_quality, "points": points}
 
 
 async def _load_daily_bars(pool: asyncpg.Pool, stock_code: str) -> list[dict]:

@@ -39,6 +39,7 @@ interface AssetChartResponse {
   stock_code: string;
   range: RangeKey;
   interval: string;
+  data_quality?: "true_ohlc" | "snapshot";
   points: AssetChartPoint[];
 }
 
@@ -105,6 +106,7 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
   const [compareOverview, setCompareOverview] = useState<AssetOverview | null>(null);
   const [chartData, setChartData] = useState<AssetChartPoint[]>([]);
   const [chartInterval, setChartInterval] = useState<string>("1d");
+  const [dataQuality, setDataQuality] = useState<"true_ohlc" | "snapshot">("true_ohlc");
   const [compareChartData, setCompareChartData] = useState<AssetChartPoint[]>([]);
   const [periodReturns, setPeriodReturns] = useState<Array<{ key: RangeKey; value: number }>>([]);
   const [executionContext, setExecutionContext] = useState<AssetExecutionContext | null>(null);
@@ -114,7 +116,7 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
   const [zoomLabel, setZoomLabel] = useState<RangeKey | null>(null);
   const [hoverPoint, setHoverPoint] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
-  const canUseCandles = CANDLE_SUPPORTED_RANGES.has(range);
+  const canUseCandles = CANDLE_SUPPORTED_RANGES.has(range) && dataQuality !== "snapshot";
   const autoRangeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const skipAutoRange = useRef(true);  // true on mount — wait for first data load to settle
   const lastAutoTarget = useRef<RangeKey | null>(null);
@@ -192,6 +194,7 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
       .then(([overviewData, chartResponse, returnsResponse, executionResponse]) => {
         setOverview(overviewData);
         setChartInterval(chartResponse.interval || "1d");
+        setDataQuality(chartResponse.data_quality || "true_ohlc");
         // Deduplicate by time (keep last entry for each timestamp)
         const rawPoints = chartResponse.points || [];
         // Deduplicate by time + sort ascending
@@ -460,7 +463,7 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
               <h3 className="card-title">{overview?.stock_name || stockCode} ({stockCode}) — {t("asset.chart")}</h3>
               <div className="asset-chart-note">
                 {compareCode && chartMode === "line" ? t("asset.compareModeNote")
-                  : chartMode === "candles" && chartInterval === "1m" ? t("asset.intradayLineNote")
+                  : dataQuality === "snapshot" ? t("asset.intradayLineNote")
                   : t("asset.chartModeNote")}
               </div>
             </div>
