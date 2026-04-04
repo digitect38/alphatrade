@@ -118,9 +118,13 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
   const [periodReturns, setPeriodReturns] = useState<Array<{ key: RangeKey; value: number }>>([]);
   const [executionContext, setExecutionContext] = useState<AssetExecutionContext | null>(null);
   const [peerCandidates, setPeerCandidates] = useState<UniverseItem[]>([]);
+  const [zoomStart, setZoomStart] = useState(0);
+  const [zoomEnd, setZoomEnd] = useState(100);
   const [hoverPoint, setHoverPoint] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const canUseCandles = CANDLE_SUPPORTED_RANGES.has(range);
+
+  useEffect(() => { setZoomStart(0); setZoomEnd(100); }, [range, stockCode]);
 
   useEffect(() => {
     if (!stockCode) return;
@@ -201,6 +205,7 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
       label: formatChartLabel(bar.time, range, chartInterval),
       interval: chartInterval,
       time: bar.time,
+      priceLine: bar.close,
       close: bar.close,
       volume: bar.volume,
       open: bar.open,
@@ -225,9 +230,20 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
     return allPoints.length > displayCount ? allPoints.slice(allPoints.length - displayCount) : allPoints;
   }, [chartData, compareChartData, chartInterval, range]);
 
+  // Apply zoom to displayed points
+  const zoomedPoints = useMemo(() => {
+    if (zoomStart === 0 && zoomEnd === 100) return chartPoints;
+    const startIdx = Math.floor((zoomStart / 100) * chartPoints.length);
+    const endIdx = Math.max(startIdx + 2, Math.ceil((zoomEnd / 100) * chartPoints.length));
+    return chartPoints.slice(startIdx, endIdx);
+  }, [chartPoints, zoomStart, zoomEnd]);
+
+  const isZoomed = zoomStart > 0 || zoomEnd < 100;
+
   const latestOrder = executionContext?.latest_order || null;
   const activeRangeReturn = periodReturns.find((item) => item.key === range)?.value ?? 0;
   const isPositiveRange = activeRangeReturn >= 0;
+  const priceStroke = isPositiveRange ? "#16a34a" : "#dc2626";
   const chartHigh = useMemo(() => (chartData.length ? Math.max(...chartData.map((item) => item.high)) : 0), [chartData]);
   const chartLow = useMemo(() => (chartData.length ? Math.min(...chartData.map((item) => item.low)) : 0), [chartData]);
   const averageVolume = useMemo(() => {
@@ -235,10 +251,10 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
     return Math.round(chartData.reduce((sum, item) => sum + item.volume, 0) / chartData.length);
   }, [chartData]);
   const relativeVolume = averageVolume > 0 && overview ? overview.volume / averageVolume : 0;
-  const activePoint = hoverPoint ?? chartPoints[chartPoints.length - 1] ?? null;
+  const activePoint = hoverPoint ?? zoomedPoints[zoomedPoints.length - 1] ?? null;
   const priceDomain = useMemo(
-    () => calcOHLCDomain(chartPoints.flatMap((d) => [d.open, d.high, d.low, d.close])),
-    [chartPoints],
+    () => calcOHLCDomain(zoomedPoints.flatMap((d) => [d.open, d.high, d.low, d.close])),
+    [zoomedPoints],
   );
 
   if (!stockCode) return <div className="card">{t("asset.noCode")}</div>;
@@ -415,7 +431,7 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
           </div>
           <ResponsiveContainer width="100%" height={460}>
             <ComposedChart
-              data={chartPoints}
+              data={zoomedPoints}
               syncId="asset-detail"
               onMouseMove={(state) => {
                 const payload = state?.activePayload?.[0]?.payload;
@@ -425,8 +441,8 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
             >
               <defs>
                 <linearGradient id="assetChartFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={isPositiveRange ? "var(--color-profit)" : "var(--color-loss)"} stopOpacity={0.24} />
-                  <stop offset="100%" stopColor={isPositiveRange ? "var(--color-profit)" : "var(--color-loss)"} stopOpacity={0.02} />
+                  <stop offset="0%" stopColor={priceStroke} stopOpacity={0.24} />
+                  <stop offset="100%" stopColor={priceStroke} stopOpacity={0.02} />
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-light)" />
@@ -470,45 +486,64 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
                 <Customized component={(cProps: any) =>
                   renderCandlesticks({ data: chartPoints, yAxisMap: cProps.yAxisMap, xAxisMap: cProps.xAxisMap })
                 } />
-              ) : (
-                <>
-                  <Line
-                    yAxisId="price"
-                    type="monotone"
-                    dataKey={compareCode ? "primaryNormalized" : "close"}
-                    stroke={isPositiveRange ? "var(--color-profit)" : "var(--color-loss)"}
-                    strokeWidth={2.5}
-                    dot={false}
-                    connectNulls
-                    name={overview?.stock_name || stockCode}
-                  />
-                  {compareCode ? (
-                    <Line
-                      yAxisId="price"
-                      type="monotone"
-                      dataKey="compareNormalized"
-                      stroke="#7c3aed"
-                      strokeWidth={2.2}
-                      dot={false}
-                      connectNulls
-                      name={compareOverview?.stock_name || compareCode}
-                    />
-                  ) : null}
-                </>
-              )}
-              {showMa20 && chartPoints.some((p) => p.ma20 != null) ? <Line yAxisId="price" type="monotone" dataKey="ma20" stroke="#2563eb" strokeWidth={1.75} dot={false} connectNulls name={t("asset.overlay.ma20")} /> : null}
-              {showMa50 && chartPoints.some((p) => p.ma50 != null) ? <Line yAxisId="price" type="monotone" dataKey="ma50" stroke="#f59e0b" strokeWidth={1.75} dot={false} connectNulls name={t("asset.overlay.ma50")} /> : null}
+              ) : null}
+              {showMa20 && zoomedPoints.some((p) => p.ma20 != null) ? <Line yAxisId="price" type="monotone" dataKey="ma20" stroke="#2563eb" strokeWidth={1.75} dot={false} connectNulls name={t("asset.overlay.ma20")} /> : null}
+              {showMa50 && zoomedPoints.some((p) => p.ma50 != null) ? <Line yAxisId="price" type="monotone" dataKey="ma50" stroke="#f59e0b" strokeWidth={1.75} dot={false} connectNulls name={t("asset.overlay.ma50")} /> : null}
+              {chartMode !== "candles" ? (
+                <Line
+                  key="asset-price-line"
+                  yAxisId="price"
+                  type="monotone"
+                  dataKey={compareCode ? "primaryNormalized" : "priceLine"}
+                  stroke={priceStroke}
+                  strokeWidth={3}
+                  dot={false}
+                  connectNulls
+                  isAnimationActive={false}
+                  name={overview?.stock_name || stockCode}
+                />
+              ) : null}
+              {chartMode !== "candles" && compareCode ? (
+                <Line
+                  key="asset-compare-line"
+                  yAxisId="price"
+                  type="monotone"
+                  dataKey="compareNormalized"
+                  stroke="#7c3aed"
+                  strokeWidth={2.2}
+                  dot={false}
+                  connectNulls
+                  isAnimationActive={false}
+                  name={compareOverview?.stock_name || compareCode}
+                />
+              ) : null}
             </ComposedChart>
           </ResponsiveContainer>
+          {/* Zoom slider */}
+          <div className="flex gap-sm items-center" style={{ padding: "6px 0", fontSize: "11px" }}>
+            <span className="text-secondary">Zoom:</span>
+            <input type="range" min={0} max={Math.max(0, zoomEnd - 5)} value={zoomStart}
+              onChange={(e) => setZoomStart(Number(e.target.value))}
+              style={{ flex: 1, accentColor: "var(--color-accent)" }} />
+            <input type="range" min={Math.min(100, zoomStart + 5)} max={100} value={zoomEnd}
+              onChange={(e) => setZoomEnd(Number(e.target.value))}
+              style={{ flex: 1, accentColor: "var(--color-accent)" }} />
+            <span className="text-secondary">{zoomedPoints.length}pts</span>
+            {isZoomed && (
+              <button className="btn btn-sm" style={{ fontSize: "10px" }} onClick={() => { setZoomStart(0); setZoomEnd(100); }}>
+                Reset
+              </button>
+            )}
+          </div>
           <div className="asset-volume-panel">
-            <VolumePanel data={chartPoints} syncId="asset-detail" t={t} />
+            <VolumePanel data={zoomedPoints} syncId="asset-detail" t={t} />
           </div>
           <div className="asset-indicator-stack">
             <div className="asset-indicator-panel">
-              <RSIPanel data={chartPoints} syncId="asset-detail" t={t} />
+              <RSIPanel data={zoomedPoints} syncId="asset-detail" t={t} />
             </div>
             <div className="asset-indicator-panel">
-              <MACDPanel data={chartPoints} syncId="asset-detail" t={t} />
+              <MACDPanel data={zoomedPoints} syncId="asset-detail" t={t} />
             </div>
           </div>
         </div>
