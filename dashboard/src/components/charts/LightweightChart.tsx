@@ -137,9 +137,10 @@ export default function LightweightChart({
   const onCrosshairMoveRef = useRef(onCrosshairMove);
   onCrosshairMoveRef.current = onCrosshairMove;
 
-  // Dynamic height: base + RSI pane + MACD pane
-  const baseH = fullscreen ? window.innerHeight - 40 : height;
-  const totalHeight = baseH + (showRSI ? 160 : 0) + (showMACD ? 180 : 0);
+  // Dynamic height: in fullscreen all panes fit within viewport; in normal mode they extend below
+  const totalHeight = fullscreen
+    ? window.innerHeight - 40
+    : height + (showRSI ? 160 : 0) + (showMACD ? 180 : 0);
 
   useEffect(() => {
     if (!containerRef.current || !data.length) return;
