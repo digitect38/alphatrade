@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type MutableRefObject, type ReactNode } from "react";
 import DirectionValue from "../components/DirectionValue";
 import StockSearch from "../components/StockSearch";
 import { LightweightChart } from "../components/charts";
@@ -63,9 +63,17 @@ const tradeFilterKeys: Record<TradeFilter, string> = {
   losers: "bt.tradeFilter.losers",
 };
 
-export default function BacktestPage({ t: _t }: { t: (k: string) => string }) {
+export default function BacktestPage({ t: _t, onStockChangeRef }: { t: (k: string) => string; onStockChangeRef?: MutableRefObject<((code: string, name: string) => void) | null> }) {
   const [stockCode, setStockCode] = useState("005930");
   const [stockName, setStockName] = useState("");
+
+  // Register callback so sidebar can change stock on this page
+  useEffect(() => {
+    if (onStockChangeRef) {
+      onStockChangeRef.current = (code, name) => { setStockCode(code); setStockName(name); };
+      return () => { onStockChangeRef.current = null; };
+    }
+  }, [onStockChangeRef]);
 
   // Fetch stock name when code changes (covers default + direct code input)
   useEffect(() => {

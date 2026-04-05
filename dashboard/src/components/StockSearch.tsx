@@ -24,10 +24,9 @@ export default function StockSearch({ value, onChange, placeholder, t, stockName
   const [open, setOpen] = useState(false);
   const [selectedName, setSelectedName] = useState(stockName || "");
 
-  // Update display name when stockName prop changes (e.g. fetched from API)
-  useEffect(() => {
-    if (stockName && !selectedName) setSelectedName(stockName);
-  }, [stockName]);
+  // Sync with external value/name changes (e.g. sidebar recent stock click)
+  useEffect(() => { setQuery(value); }, [value]);
+  useEffect(() => { if (stockName) setSelectedName(stockName); }, [stockName]);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
 

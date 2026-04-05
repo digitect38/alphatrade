@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Sidebar from "./components/Sidebar";
 import { ToastProvider } from "./components/Toast";
 import { apiGet } from "./hooks/useApi";
@@ -37,6 +37,12 @@ export default function App() {
   const { locale, setLocale, t } = useLocale();
   const { recentStocks, recordStock } = useRecentStocks();
   const nameCache = useRef(new Map<string, string>());
+  // Stock change callback for pages without URL-based stock switching (backtest, orders)
+  const stockChangeRef = useRef<((code: string, name: string) => void) | null>(null);
+  const handleSidebarStockChange = useCallback((code: string, name: string) => {
+    stockChangeRef.current?.(code, name);
+    recordStock(code, name);
+  }, [recordStock]);
 
   useEffect(() => {
     apiGet<{ mode: string }>("/trading/mode").then((d) => setTradingMode(d.mode)).catch(() => {});
@@ -106,6 +112,7 @@ export default function App() {
           onClose={() => setMobileNavOpen(false)}
           tradingMode={tradingMode}
           recentStocks={recentStocks}
+          onStockChange={handleSidebarStockChange}
         />
         <main className={`app-main ${tradingMode === "live" ? "app-main-live" : "app-main-paper"}`}>
           <h1 className="page-title">{t(titleKeys[pageKey] || "title.command")}</h1>
@@ -115,10 +122,10 @@ export default function App() {
           {page === "market" && <MarketPage t={t} />}
           {page === "trend" && <TrendPage t={t} />}
           {page.startsWith("analysis") && <AnalysisPage t={t} initialCode={page.includes("/") ? page.split("/")[1] : undefined} />}
-          {page === "backtest" && <BacktestPage t={t} />}
+          {page === "backtest" && <BacktestPage t={t} onStockChangeRef={stockChangeRef} />}
           {page === "risk" && <RiskPage t={t} />}
           {page === "execution" && <ExecutionPage t={t} />}
-          {page === "orders" && <OrdersPage t={t} />}
+          {page === "orders" && <OrdersPage t={t} onStockChangeRef={stockChangeRef} />}
           {page.startsWith("asset") && <AssetDetailPage t={t} route={page} />}
         </main>
       </div>

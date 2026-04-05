@@ -23,9 +23,11 @@ interface Props {
   onClose?: () => void;
   tradingMode?: string;
   recentStocks?: RecentStock[];
+  /** Called when user selects a recent stock on pages that don't use URL-based stock switching */
+  onStockChange?: (code: string, name: string) => void;
 }
 
-export default function Sidebar({ current, onNavigate, locale, onLocaleChange, t, isOpen = false, onClose, tradingMode, recentStocks }: Props) {
+export default function Sidebar({ current, onNavigate, locale, onLocaleChange, t, isOpen = false, onClose, tradingMode, recentStocks, onStockChange }: Props) {
   const isLive = tradingMode === "live";
   return (
     <nav className={`sidebar ${isOpen ? "is-open" : ""} ${isLive ? "sidebar-live" : ""}`}>
@@ -62,11 +64,14 @@ export default function Sidebar({ current, onNavigate, locale, onLocaleChange, t
               className="sidebar-recent-item"
               onClick={() => {
                 // Stay on current page, just switch stock
-                const base = current.startsWith("analysis") ? "analysis"
-                  : current.startsWith("asset") ? "asset"
-                  : current === "backtest" ? "asset"
-                  : "asset";
-                onNavigate(`${base}/${stock.code}`);
+                if ((current === "backtest" || current === "orders") && onStockChange) {
+                  onStockChange(stock.code, stock.name);
+                } else {
+                  const base = current.startsWith("analysis") ? "analysis"
+                    : current.startsWith("asset") ? "asset"
+                    : "asset";
+                  onNavigate(`${base}/${stock.code}`);
+                }
                 onClose?.();
               }}
             >

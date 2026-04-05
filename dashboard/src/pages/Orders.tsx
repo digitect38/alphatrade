@@ -1,12 +1,20 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type MutableRefObject } from "react";
 import OrderHistoryComponent from "../components/OrderHistory";
 import StockSearch from "../components/StockSearch";
 import { apiGet, apiPost } from "../hooks/useApi";
 import type { OrderHistoryItem } from "../types";
 
-export default function OrdersPage({ t: _t }: { t: (k: string) => string }) {
+export default function OrdersPage({ t: _t, onStockChangeRef }: { t: (k: string) => string; onStockChangeRef?: MutableRefObject<((code: string, name: string) => void) | null> }) {
   const [orders, setOrders] = useState<OrderHistoryItem[]>([]);
   const [stockCode, setStockCode] = useState("005930");
+
+  // Register callback so sidebar can change stock on this page
+  useEffect(() => {
+    if (onStockChangeRef) {
+      onStockChangeRef.current = (code) => setStockCode(code);
+      return () => { onStockChangeRef.current = null; };
+    }
+  }, [onStockChangeRef]);
   const [side, setSide] = useState<"BUY" | "SELL">("BUY");
   const [quantity, setQuantity] = useState(10);
   const [message, setMessage] = useState("");
