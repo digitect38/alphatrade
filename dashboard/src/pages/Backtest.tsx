@@ -66,28 +66,10 @@ const tradeFilterKeys: Record<TradeFilter, string> = {
 export default function BacktestPage({ t: _t, onStockChangeRef }: { t: (k: string) => string; onStockChangeRef?: MutableRefObject<((code: string, name: string) => void) | null> }) {
   const [stockCode, setStockCode] = useState("005930");
   const [stockName, setStockName] = useState("");
-
-  // Register callback so sidebar can change stock on this page
-  useEffect(() => {
-    if (onStockChangeRef) {
-      onStockChangeRef.current = (code, name) => { setStockCode(code); setStockName(name); };
-      return () => { onStockChangeRef.current = null; };
-    }
-  }, [onStockChangeRef]);
-
-  // Fetch stock name when code changes (covers default + direct code input)
-  useEffect(() => {
-    if (!/^\d{6}$/.test(stockCode)) return;
-    apiGet<{ stock_name: string }>(`/asset/${stockCode}/overview`)
-      .then((d) => { if (d.stock_name) setStockName(d.stock_name); })
-      .catch(() => {});
-  }, [stockCode]);
   const [strategy, setStrategy] = useState("ensemble");
   const [capital, setCapital] = useState(10000000);
   const [result, setResult] = useState<BacktestResult | null>(null);
   const [loading, setLoading] = useState(false);
-
-  // New input states
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [interval, setInterval] = useState("1d");
@@ -98,10 +80,38 @@ export default function BacktestPage({ t: _t, onStockChangeRef }: { t: (k: strin
   const [slippageRate, setSlippageRate] = useState(0.001);
   const [capitalFraction, setCapitalFraction] = useState(1.0);
   const [maxDrawdownStop, setMaxDrawdownStop] = useState(8);
-
-  // Trade filter
   const [tradeFilter, setTradeFilter] = useState<TradeFilter>("all");
   const [errorMsg, setErrorMsg] = useState("");
+
+  // Fetch stock name when code changes
+  useEffect(() => {
+    if (!/^\d{6}$/.test(stockCode)) return;
+    apiGet<{ stock_name: string }>(`/asset/${stockCode}/overview`)
+      .then((d) => { if (d.stock_name) setStockName(d.stock_name); })
+      .catch(() => {});
+  }, [stockCode]);
+
+  // Run backtest for a given stock code
+  const runBacktestForCode = (code: string) => {
+    setLoading(true);
+    setResult(null);
+    apiPost<BacktestResult>("/strategy/backtest", {
+      stock_code: code, strategy, initial_capital: capital, interval,
+      start_date: startDate || undefined, end_date: endDate || undefined,
+      buy_fee_rate: buyFeeRate, sell_fee_rate: sellFeeRate, sell_tax_rate: sellTaxRate,
+      slippage_rate: slippageRate, capital_fraction: capitalFraction,
+      max_drawdown_stop: maxDrawdownStop / 100,
+    }).then(setResult).catch(() => {}).finally(() => setLoading(false));
+  };
+
+  // Register callback so sidebar can change stock on this page
+  if (onStockChangeRef) {
+    onStockChangeRef.current = (code, name) => {
+      setStockCode(code);
+      setStockName(name);
+      if (result) runBacktestForCode(code);
+    };
+  }
 
   const runBacktest = async () => {
     if (startDate && endDate && startDate > endDate) {
