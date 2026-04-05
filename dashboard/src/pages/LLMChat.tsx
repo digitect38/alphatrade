@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { marked } from "marked";
 import katex from "katex";
 import "katex/dist/katex.min.css";
+import DOMPurify from "dompurify";
 import { apiGet, apiPost, apiDelete } from "../hooks/useApi";
 
 // Configure marked for safe, compact output
@@ -176,6 +177,9 @@ export default function LLMChatPage({ t: _t }: { t: (k: string) => string }) {
 }
 
 function MarkdownContent({ content }: { content: string }) {
-  const html = useMemo(() => renderLatex(marked.parse(content) as string), [content]);
+  const html = useMemo(() => {
+    const raw = renderLatex(marked.parse(content) as string);
+    return DOMPurify.sanitize(raw, { ADD_TAGS: ["semantics", "annotation", "math", "mrow", "mi", "mo", "mn", "msup", "mfrac", "msqrt", "mover", "munder"], ADD_ATTR: ["xmlns", "mathvariant", "stretchy", "fence", "separator", "accent"] });
+  }, [content]);
   return <div className="llm-markdown" dangerouslySetInnerHTML={{ __html: html }} />;
 }

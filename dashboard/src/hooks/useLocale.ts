@@ -181,6 +181,7 @@ const translations: Record<string, Record<Locale, string>> = {
   "bt.monthlyReturns": { en: "Monthly Returns", ko: "월간 수익률" },
   "bt.periodLabel": { en: "Test Period", ko: "테스트 기간" },
   "bt.bars": { en: " bars", ko: "봉" },
+  "bt.requestedRange": { en: "Requested:", ko: "요청 범위:" },
   "bt.computedAt": { en: "Computed", ko: "실행" },
   "bt.run": { en: "Run Backtest", ko: "백테스트 실행" },
   "bt.running": { en: "Running...", ko: "실행 중..." },

@@ -76,6 +76,12 @@ async def run_backtest(
             max_drawdown=0.0,
             win_rate=0.0,
             total_trades=0,
+            statistical_warnings=[f"데이터 {len(rows)}건 — 최소 30건 필요합니다."],
+            trades=[],
+            equity_curve=[],
+            equity_series=[],
+            trade_markers=[],
+            monthly_returns=[],
             computed_at=now,
             start_date=start_date,
             end_date=end_date,
@@ -108,6 +114,7 @@ async def run_backtest(
 
     # Max drawdown
     peak = np.maximum.accumulate(equity_curve)
+    peak = np.where(peak == 0, 1, peak)  # avoid div-by-zero
     drawdown = (np.array(equity_curve) - peak) / peak
     max_dd = round(float(np.min(drawdown)) * 100, 2)
 
@@ -370,8 +377,10 @@ def _generate_backtest_signals(df: pd.DataFrame, strategy: str) -> tuple[pd.Seri
         vs5 = _s(vol_sma5, i)
         vs20 = _s(vol_sma20, i)
         is_surge = vs20 is not None and vs20 > 0 and float(volume.iloc[i]) / vs20 > 2.0
-        obv_inc = obv_sma5 is not None and obv_sma10 is not None and _s(obv_sma5, i) is not None and _s(obv_sma10, i) is not None and _s(obv_sma5, i) > _s(obv_sma10, i)
-        obv_dec = obv_sma5 is not None and obv_sma10 is not None and _s(obv_sma5, i) is not None and _s(obv_sma10, i) is not None and _s(obv_sma5, i) < _s(obv_sma10, i)
+        obv5 = _s(obv_sma5, i)
+        obv10 = _s(obv_sma10, i)
+        obv_inc = obv5 is not None and obv10 is not None and obv5 > obv10
+        obv_dec = obv5 is not None and obv10 is not None and obv5 < obv10
         if is_surge and obv_inc: vol_score += 0.7
         elif is_surge and obv_dec: vol_score -= 0.5
         # Price-volume divergence (5-bar lookback)
@@ -446,10 +455,11 @@ def _tick_size(price: float) -> float:
 
 def _snap_tick(price: float, up: bool = True) -> float:
     """Snap price to nearest valid tick. up=True rounds up (buy), up=False rounds down (sell)."""
+    import math
     tick = _tick_size(price)
     if up:
-        return float(int((price + tick - 1) // tick) * tick)
-    return float(int(price // tick) * tick)
+        return float(math.ceil(price / tick) * tick)
+    return float(math.floor(price / tick) * tick)
 
 
 def _s(series: pd.Series | None, idx: int):

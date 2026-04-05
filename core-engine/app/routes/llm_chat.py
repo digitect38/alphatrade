@@ -265,7 +265,7 @@ async def api_chat(
             reply = await call_openai(api_messages, system, api_key, model)
     except Exception as e:
         logger.error("LLM call failed: %s", e)
-        reply = f"AI 응답 실패: {e}"
+        reply = "AI 응답에 실패했습니다. 잠시 후 다시 시도해주세요."
 
     await append_history(redis, req.session_id, "assistant", reply)
 

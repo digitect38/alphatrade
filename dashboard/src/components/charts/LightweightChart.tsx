@@ -203,12 +203,13 @@ export default function LightweightChart({
         const lr = ts.getVisibleLogicalRange();
         if (!lr) return;
         const range = lr.to - lr.from;
-        const factor = delta > 0 ? 0.9 : 1.1; // zoom in / out
+        if (range <= 0) return;
+        const factor = delta > 0 ? 0.9 : 1.1;
         const center = (lr.from + lr.to) / 2;
-        const newRange = range * factor;
+        const newRange = Math.max(2, Math.min(valid.length, range * factor));
         ts.setVisibleLogicalRange({
-          from: center - newRange / 2,
-          to: center + newRange / 2,
+          from: Math.max(-0.5, center - newRange / 2),
+          to: Math.min(valid.length - 0.5, center + newRange / 2),
         });
       }
       // else: let default scroll happen (page scrolls)

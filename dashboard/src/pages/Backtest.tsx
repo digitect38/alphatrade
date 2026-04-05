@@ -422,6 +422,16 @@ export default function BacktestPage({ t: _t, onStockChangeRef }: { t: (k: strin
                   return `${first}  →  ${last}`;
                 })()}
               </span>
+              {(result.start_date || result.end_date) && (() => {
+                const es = result.equity_series;
+                const actualFirst = es?.[0]?.time?.slice(0, 10);
+                const actualLast = es?.[es.length - 1]?.time?.slice(0, 10);
+                const differs = (result.start_date && actualFirst && result.start_date !== actualFirst)
+                  || (result.end_date && actualLast && result.end_date !== actualLast);
+                return differs ? (
+                  <span className="bt-period-meta">{_t("bt.requestedRange")} {result.start_date || "—"} ~ {result.end_date || "—"}</span>
+                ) : null;
+              })()}
               <span className="bt-period-meta">
                 {result.period_bars}{_t("bt.bars")} · {result.interval} · {_t(strategyKeys[result.strategy] || "bt.ensemble")}
               </span>
