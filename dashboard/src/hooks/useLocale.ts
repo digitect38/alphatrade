@@ -209,6 +209,8 @@ const translations: Record<string, Record<Locale, string>> = {
   "bt.recentTrades": { en: "Recent Trades", ko: "거래 내역" },
   "bt.startDate": { en: "Start Date", ko: "시작일" },
   "bt.endDate": { en: "End Date", ko: "종료일" },
+  "bt.duration": { en: "Duration", ko: "기간" },
+  "bt.durationMax": { en: "MAX", ko: "최대" },
   "bt.interval": { en: "Interval", ko: "인터벌" },
   "bt.advanced": { en: "Advanced Settings", ko: "고급 설정" },
   "bt.buyFee": { en: "Buy Fee", ko: "매수 수수료" },

@@ -63,6 +63,24 @@ const tradeFilterKeys: Record<TradeFilter, string> = {
   losers: "bt.tradeFilter.losers",
 };
 
+const DURATION_OPTIONS: { value: string; months: number }[] = [
+  { value: "3M", months: 3 },
+  { value: "6M", months: 6 },
+  { value: "1Y", months: 12 },
+  { value: "2Y", months: 24 },
+  { value: "3Y", months: 36 },
+  { value: "5Y", months: 60 },
+  { value: "MAX", months: 0 },
+];
+
+function calcEndDate(start: string, durationValue: string): string | undefined {
+  if (durationValue === "MAX" || !start) return undefined;
+  const months = DURATION_OPTIONS.find(d => d.value === durationValue)?.months || 12;
+  const d = new Date(start);
+  d.setMonth(d.getMonth() + months);
+  return d.toISOString().slice(0, 10);
+}
+
 export default function BacktestPage({ t: _t, onStockChangeRef }: { t: (k: string) => string; onStockChangeRef?: MutableRefObject<((code: string, name: string) => void) | null> }) {
   const [stockCode, setStockCode] = useState("005930");
   const [stockName, setStockName] = useState("");
@@ -71,7 +89,7 @@ export default function BacktestPage({ t: _t, onStockChangeRef }: { t: (k: strin
   const [result, setResult] = useState<BacktestResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
+  const [duration, setDuration] = useState("1Y");
   const [interval, setInterval] = useState("1d");
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [buyFeeRate, setBuyFeeRate] = useState(0.00015);
@@ -97,7 +115,7 @@ export default function BacktestPage({ t: _t, onStockChangeRef }: { t: (k: strin
     setResult(null);
     apiPost<BacktestResult>("/strategy/backtest", {
       stock_code: code, strategy, initial_capital: capital, interval,
-      start_date: startDate || undefined, end_date: endDate || undefined,
+      start_date: startDate || undefined, end_date: calcEndDate(startDate, duration),
       buy_fee_rate: buyFeeRate, sell_fee_rate: sellFeeRate, sell_tax_rate: sellTaxRate,
       slippage_rate: slippageRate, capital_fraction: capitalFraction,
       max_drawdown_stop: maxDrawdownStop / 100,
@@ -114,8 +132,9 @@ export default function BacktestPage({ t: _t, onStockChangeRef }: { t: (k: strin
   }
 
   const runBacktest = async () => {
-    if (startDate && endDate && startDate > endDate) {
-      setErrorMsg("시작일은 종료일보다 이전이어야 합니다.");
+    const computedEnd = calcEndDate(startDate, duration);
+    if (startDate && computedEnd && startDate > computedEnd) {
+      setErrorMsg("시작일이 유효하지 않습니다.");
       return;
     }
     
@@ -129,7 +148,7 @@ export default function BacktestPage({ t: _t, onStockChangeRef }: { t: (k: strin
         initial_capital: capital,
         interval,
         start_date: startDate || undefined,
-        end_date: endDate || undefined,
+        end_date: calcEndDate(startDate, duration),
         buy_fee_rate: buyFeeRate,
         sell_fee_rate: sellFeeRate,
         sell_tax_rate: sellTaxRate,
@@ -231,7 +250,7 @@ export default function BacktestPage({ t: _t, onStockChangeRef }: { t: (k: strin
           <span className="text-secondary" style={{ fontSize: "13px" }}>{_t("common.won")}</span>
         </div>
 
-        {/* Date range */}
+        {/* Start date + Duration */}
         <div className="flex items-center gap-xs">
           <label className="text-secondary" style={{ fontSize: "13px" }}>{_t("bt.startDate")}</label>
           <input
@@ -243,14 +262,16 @@ export default function BacktestPage({ t: _t, onStockChangeRef }: { t: (k: strin
           />
         </div>
         <div className="flex items-center gap-xs">
-          <label className="text-secondary" style={{ fontSize: "13px" }}>{_t("bt.endDate")}</label>
-          <input
-            type="date"
-            value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
-            className="input"
-            style={{ width: "140px" }}
-          />
+          <label className="text-secondary" style={{ fontSize: "13px" }}>{_t("bt.duration")}</label>
+          <select
+            value={duration}
+            onChange={(e) => setDuration(e.target.value)}
+            className="select"
+          >
+            {DURATION_OPTIONS.map((d) => (
+              <option key={d.value} value={d.value}>{d.value === "MAX" ? _t("bt.durationMax") : d.value}</option>
+            ))}
+          </select>
         </div>
 
         {/* Interval */}
