@@ -14,13 +14,20 @@ interface Props {
   onChange: (code: string, name: string) => void;
   placeholder?: string;
   t?: (k: string) => string;
+  /** Stock name to display initially (e.g. fetched from API for default code) */
+  stockName?: string;
 }
 
-export default function StockSearch({ value, onChange, placeholder, t }: Props) {
+export default function StockSearch({ value, onChange, placeholder, t, stockName }: Props) {
   const [query, setQuery] = useState(value);
   const [results, setResults] = useState<StockItem[]>([]);
   const [open, setOpen] = useState(false);
-  const [selectedName, setSelectedName] = useState("");
+  const [selectedName, setSelectedName] = useState(stockName || "");
+
+  // Update display name when stockName prop changes (e.g. fetched from API)
+  useEffect(() => {
+    if (stockName && !selectedName) setSelectedName(stockName);
+  }, [stockName]);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
 

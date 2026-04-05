@@ -187,6 +187,7 @@ export default function BacktestPage({ t: _t }: { t: (k: string) => string }) {
         <StockSearch
           value={stockCode}
           onChange={(code, name) => { setStockCode(code); if (name) setStockName(name); }}
+          stockName={stockName}
           placeholder={_t("common.placeholder.stockCode")}
           t={_t}
         />
