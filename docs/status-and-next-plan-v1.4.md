@@ -476,4 +476,4 @@
 | **v1.4.1** | **2026-04-01** | **Phase 1-6 구현 완료: Walk-Forward, Fill Monitor, VaR/CVaR, Stress Test, Alert Escalation, Risk Dashboard, Pre-Launch Checklist (903 tests)** |
 | **v1.4.2** | **2026-04-01** | **실전/모의 전환 스위치 (테마색 구분), USD/KRW 환율, 차트 이벤트 마커 35건 (클릭→뉴스), 풀스크린, API 성능 최적화 (416ms→7ms)** |
 | **v1.4.3** | **2026-04-04** | **Lightweight Charts 줌 기반 자동 구간 전환, 인트라데이 캔들 차트 4건 버그 수정, 차트 성능 최적화 (useMemo/useRef)** |
-| **v1.4.4** | **2026-04-05** | **Multi-pane RSI/MACD (addPane API), 3Y/5Y/10Y/MAX 구간, 백테스트 Phase 1 (파라미터/시계열/마커), 최근 종목 사이드바, 줌 앵커 유지, data_quality API** |
+| **v1.4.4** | **2026-04-05** | **Multi-pane RSI/MACD (addPane API), 3Y/5Y/10Y/MAX 구간, 백테스트 Phase 1 (파라미터/시계열/마커/기간 드롭다운), 최근 종목 사이드바 (페이지 유지+자동 재실행), 줌 앵커 유지, data_quality API, 종목 전환 버그 수정, BB 지표 순서 수정, OHLCV limit 3000, 킬스위치 reason, /qa 커맨드, Playwright QA 스크립트 (28항목)** |
