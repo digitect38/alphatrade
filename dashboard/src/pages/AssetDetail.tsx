@@ -290,10 +290,7 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
     prevStockCodeRef.current = stockCode;
     if (stockChanged) {
       chartCacheRef.current.clear();
-      // Don't clear overview/chartData — keep showing previous stock until new data arrives
-      // This prevents the chart from going blank during transition
     }
-
     Promise.all([
       apiGet<AssetOverview>(`/asset/${stockCode}/overview`),
       apiGet<AssetReturnsResponse>(`/asset/${stockCode}/period-returns`),
@@ -450,7 +447,7 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
   // priceDomain no longer needed — LightweightChart auto-scales
 
   if (!stockCode) return <div className="card">{t("asset.noCode")}</div>;
-  if (initialLoading && !overview && chartData.length === 0) return <p className="text-secondary p-xl">{t("asset.loading")}</p>;
+  if (!overview && chartData.length === 0) return <p className="text-secondary p-xl">{t("asset.loading")}</p>;
 
   return (
     <div className="page-content asset-detail-page">
