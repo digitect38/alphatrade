@@ -31,6 +31,16 @@ When adding or changing user-facing features, you MUST update the relevant docum
 
 Do this in the same commit as the code change or immediately after.
 
+## QA Testing
+
+After UI-related changes are deployed, run the full QA test:
+
+```
+cd dashboard && node scripts/qa-full.mjs
+```
+
+This tests all 11 pages, stock switching, chart rendering, RSI/MACD panes, sidebar recent stocks, and backtest functionality. Fix any FAIL results before considering the task done.
+
 ## Language
 
 - Respond in the same language the user uses (Korean or English)
