@@ -290,12 +290,8 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
     prevStockCodeRef.current = stockCode;
     if (stockChanged) {
       chartCacheRef.current.clear();
-      setOverview(null);
-      setPeriodReturns([]);
-      setExecutionContext(null);
-      setChartData([]);
-      setInitialLoading(true);
-      setIsRangeSwitching(false);
+      // Don't clear overview/chartData — keep showing previous stock until new data arrives
+      // This prevents the chart from going blank during transition
     }
 
     Promise.all([
