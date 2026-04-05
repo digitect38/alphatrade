@@ -60,7 +60,15 @@ export default function Sidebar({ current, onNavigate, locale, onLocaleChange, t
             <div
               key={stock.code}
               className="sidebar-recent-item"
-              onClick={() => { onNavigate(`asset/${stock.code}`); onClose?.(); }}
+              onClick={() => {
+                // Stay on current page, just switch stock
+                const base = current.startsWith("analysis") ? "analysis"
+                  : current.startsWith("asset") ? "asset"
+                  : current === "backtest" ? "asset"
+                  : "asset";
+                onNavigate(`${base}/${stock.code}`);
+                onClose?.();
+              }}
             >
               <span className="sidebar-recent-name">{stock.name}</span>
               <span className="sidebar-recent-code">{stock.code}</span>
