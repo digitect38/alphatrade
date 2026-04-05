@@ -15,6 +15,7 @@ const translations: Record<string, Record<Locale, string>> = {
   "nav.execution": { en: "Execution", ko: "체결" },
   "nav.orders": { en: "Orders", ko: "주문" },
   "nav.asset": { en: "Asset Detail", ko: "종목 상세" },
+  "nav.recentStocks": { en: "Recent Stocks", ko: "최근 종목" },
   "nav.menu": { en: "Menu", ko: "메뉴" },
   "nav.closeMenu": { en: "Close menu", ko: "메뉴 닫기" },
 

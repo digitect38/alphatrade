@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Sidebar from "./components/Sidebar";
 import { ToastProvider } from "./components/Toast";
 import { apiGet } from "./hooks/useApi";
 import { useLocale } from "./hooks/useLocale";
+import { useRecentStocks } from "./hooks/useRecentStocks";
 import AnalysisPage from "./pages/Analysis";
 import AssetDetailPage from "./pages/AssetDetail";
 import BacktestPage from "./pages/Backtest";
@@ -34,6 +35,8 @@ export default function App() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [tradingMode, setTradingMode] = useState<string>("paper");
   const { locale, setLocale, t } = useLocale();
+  const { recentStocks, recordStock } = useRecentStocks();
+  const nameCache = useRef(new Map<string, string>());
 
   useEffect(() => {
     apiGet<{ mode: string }>("/trading/mode").then((d) => setTradingMode(d.mode)).catch(() => {});
@@ -45,12 +48,34 @@ export default function App() {
 
   useEffect(() => {
     const onHash = () => {
-      setPage(window.location.hash.slice(1) || "command");
+      const hash = window.location.hash.slice(1) || "command";
+      setPage(hash);
       setMobileNavOpen(false);
+
+      // Record recent stock when navigating to asset or analysis page
+      const match = hash.match(/^(?:asset|analysis)\/(\d{6})$/);
+      if (match) {
+        const code = match[1];
+        const cached = nameCache.current.get(code);
+        if (cached) {
+          recordStock(code, cached);
+        } else {
+          apiGet<{ stock_name: string }>(`/asset/${code}/overview`)
+            .then((d) => {
+              if (d.stock_name) {
+                nameCache.current.set(code, d.stock_name);
+                recordStock(code, d.stock_name);
+              }
+            })
+            .catch(() => {});
+        }
+      }
     };
     window.addEventListener("hashchange", onHash);
+    // Also record on initial load
+    onHash();
     return () => window.removeEventListener("hashchange", onHash);
-  }, []);
+  }, [recordStock]);
 
   const navigate = (p: string) => {
     window.location.hash = p;
@@ -80,6 +105,7 @@ export default function App() {
           isOpen={mobileNavOpen}
           onClose={() => setMobileNavOpen(false)}
           tradingMode={tradingMode}
+          recentStocks={recentStocks}
         />
         <main className={`app-main ${tradingMode === "live" ? "app-main-live" : "app-main-paper"}`}>
           <h1 className="page-title">{t(titleKeys[pageKey] || "title.command")}</h1>

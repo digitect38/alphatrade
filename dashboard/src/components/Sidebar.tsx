@@ -1,4 +1,5 @@
 import type { Locale } from "../hooks/useLocale";
+import type { RecentStock } from "../hooks/useRecentStocks";
 
 const menuItems = [
   { key: "command", labelKey: "nav.command", icon: "🎯" },
@@ -21,9 +22,10 @@ interface Props {
   isOpen?: boolean;
   onClose?: () => void;
   tradingMode?: string;
+  recentStocks?: RecentStock[];
 }
 
-export default function Sidebar({ current, onNavigate, locale, onLocaleChange, t, isOpen = false, onClose, tradingMode }: Props) {
+export default function Sidebar({ current, onNavigate, locale, onLocaleChange, t, isOpen = false, onClose, tradingMode, recentStocks }: Props) {
   const isLive = tradingMode === "live";
   return (
     <nav className={`sidebar ${isOpen ? "is-open" : ""} ${isLive ? "sidebar-live" : ""}`}>
@@ -51,6 +53,21 @@ export default function Sidebar({ current, onNavigate, locale, onLocaleChange, t
           <span>{t(m.labelKey)}</span>
         </div>
       ))}
+      {recentStocks && recentStocks.length > 0 && (
+        <div className="sidebar-recent">
+          <div className="sidebar-recent-title">{t("nav.recentStocks")}</div>
+          {recentStocks.map((stock) => (
+            <div
+              key={stock.code}
+              className="sidebar-recent-item"
+              onClick={() => { onNavigate(`asset/${stock.code}`); onClose?.(); }}
+            >
+              <span className="sidebar-recent-name">{stock.name}</span>
+              <span className="sidebar-recent-code">{stock.code}</span>
+            </div>
+          ))}
+        </div>
+      )}
       <div className="sidebar-lang">
         <button className={`lang-btn ${locale === "ko" ? "active" : ""}`} onClick={() => onLocaleChange("ko")}>
           한국어
