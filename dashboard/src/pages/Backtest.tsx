@@ -1,9 +1,9 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import DirectionValue from "../components/DirectionValue";
 import StockSearch from "../components/StockSearch";
 import { LightweightChart } from "../components/charts";
 import type { OHLCVPoint, ChartMarker } from "../components/charts";
-import { apiPost } from "../hooks/useApi";
+import { apiGet, apiPost } from "../hooks/useApi";
 
 interface BacktestTrade {
   date: string;
@@ -66,6 +66,14 @@ const tradeFilterKeys: Record<TradeFilter, string> = {
 export default function BacktestPage({ t: _t }: { t: (k: string) => string }) {
   const [stockCode, setStockCode] = useState("005930");
   const [stockName, setStockName] = useState("");
+
+  // Fetch stock name when code changes (covers default + direct code input)
+  useEffect(() => {
+    if (!/^\d{6}$/.test(stockCode)) return;
+    apiGet<{ stock_name: string }>(`/asset/${stockCode}/overview`)
+      .then((d) => { if (d.stock_name) setStockName(d.stock_name); })
+      .catch(() => {});
+  }, [stockCode]);
   const [strategy, setStrategy] = useState("ensemble");
   const [capital, setCapital] = useState(10000000);
   const [result, setResult] = useState<BacktestResult | null>(null);
