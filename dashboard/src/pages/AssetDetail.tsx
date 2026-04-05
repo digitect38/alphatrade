@@ -138,8 +138,11 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
   const autoRangeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const skipAutoRange = useRef(true);  // true on mount — wait for first data load to settle
   const lastAutoTarget = useRef<RangeKey | null>(null);
-  const lastAutoDirection = useRef<"in" | "out" | null>(null);  // track zoom direction
+  const lastAutoDirection = useRef<"in" | "out" | null>(null);
   const wasAutoRange = useRef(false);
+  const [anchorTime, setAnchorTime] = useState<string | undefined>(undefined);
+  const [anchorBars, setAnchorBars] = useState<number | undefined>(undefined);
+  const lastVisibleBarsRef = useRef(0);
   const chartCacheRef = useRef<Map<string, AssetChartResponse>>(new Map());
   const activeChartRequestRef = useRef(0);
   const prevStockCodeRef = useRef(stockCode);
@@ -155,6 +158,8 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
 
   // Auto-switch range based on zoom level (debounced) + sync indicator panels
   const handleAutoRange = useCallback((visibleBars: number, fromIdx: number, toIdx: number) => {
+    lastVisibleBarsRef.current = visibleBars;
+
     // Sync indicator panels with visible range
     const total = chartData.length;
     if (total > 0) {
@@ -244,6 +249,12 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
         lastAutoTarget.current = range;
         lastAutoDirection.current = direction;
         wasAutoRange.current = true;
+        // Save anchor: center of current visible range + bar count
+        const midIdx = Math.round((fromIdx + toIdx) / 2);
+        if (midIdx >= 0 && midIdx < chartData.length) {
+          setAnchorTime(chartData[midIdx].time);
+          setAnchorBars(lastVisibleBarsRef.current);
+        }
         setRange(target);
       }, 600);
     }
@@ -268,6 +279,8 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
     lastAutoTarget.current = null;
     lastAutoDirection.current = null;
     wasAutoRange.current = false;
+    setAnchorTime(undefined);
+    setAnchorBars(undefined);
     setRange(key);
   }, []);
 
@@ -634,6 +647,8 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
             showMACD={showMacd}
             height={460}
             displayBars={wasAutoRange.current ? undefined : RANGE_CONFIG[range].display}
+            anchorTime={anchorTime}
+            anchorBars={anchorBars}
             intraday={chartInterval === "1m"}
             upColor="#16a34a"
             downColor="#dc2626"

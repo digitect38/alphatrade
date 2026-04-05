@@ -57,6 +57,9 @@ interface Props {
   onVisibleRangeChange?: (visibleBars: number, fromIdx: number, toIdx: number) => void;
   displayBars?: number;
   intraday?: boolean;
+  /** Anchor point: center chart on this timestamp after data change, showing anchorBars bars */
+  anchorTime?: string;
+  anchorBars?: number;
 }
 
 // ─── Time helpers ────────────────────────────────────────────────
@@ -128,6 +131,7 @@ export default function LightweightChart({
   showMA20 = false, showMA50 = false, showRSI = false, showMACD = false,
   upColor = "#16a34a", downColor = "#dc2626", lineColor = "#1a1a2e",
   onCrosshairMove, onVisibleRangeChange, displayBars, intraday: intradayProp,
+  anchorTime, anchorBars,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -323,7 +327,20 @@ export default function LightweightChart({
     });
 
     // ── Initial visible range ──
-    if (displayBars && displayBars < valid.length) {
+    // If anchorTime is set (from auto-range), center on that time point
+    if (anchorTime && anchorBars) {
+      const anchorMs = new Date(anchorTime).getTime();
+      let anchorIdx = 0;
+      let minDist = Infinity;
+      for (let i = 0; i < valid.length; i++) {
+        const dist = Math.abs(new Date(valid[i].time).getTime() - anchorMs);
+        if (dist < minDist) { minDist = dist; anchorIdx = i; }
+      }
+      const half = Math.floor(anchorBars / 2);
+      const from = Math.max(0, anchorIdx - half);
+      const to = Math.min(valid.length - 1, from + anchorBars);
+      chart.timeScale().setVisibleLogicalRange({ from, to });
+    } else if (displayBars && displayBars < valid.length) {
       chart.timeScale().setVisibleLogicalRange({
         from: valid.length - displayBars,
         to: valid.length - 1,
