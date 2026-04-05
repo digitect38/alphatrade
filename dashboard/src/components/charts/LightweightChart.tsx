@@ -148,7 +148,19 @@ export default function LightweightChart({
 
     const intraday = intradayProp ?? isIntradayData(data);
     const tt = (t: string) => toTime(t, intraday);
-    const valid = data.filter(d => d.close > 0);
+    // Filter valid bars, normalize OHLC, deduplicate by time, sort ascending
+    const seen = new Map<string, OHLCVPoint>();
+    for (const d of data) {
+      if (d.close <= 0) continue;
+      const key = intraday ? String(Math.floor(new Date(d.time).getTime() / 1000)) : new Date(d.time).toISOString().slice(0, 10);
+      seen.set(key, {
+        ...d,
+        open: d.open > 0 ? d.open : d.close,
+        high: d.high > 0 ? d.high : d.close,
+        low: d.low > 0 ? d.low : d.close,
+      });
+    }
+    const valid = [...seen.values()].sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
     if (!valid.length) return;
 
     // Detect flat/synthetic intraday data → force line mode
@@ -207,7 +219,7 @@ export default function LightweightChart({
         upColor, downColor, borderUpColor: upColor, borderDownColor: downColor,
         wickUpColor: upColor, wickDownColor: downColor,
       });
-      s.setData(valid.filter(d => d.open > 0 && d.high > 0 && d.low > 0).map(d => ({
+      s.setData(valid.map(d => ({
         time: tt(d.time), open: d.open, high: d.high, low: d.low, close: d.close,
       })));
       if (markers?.length) {
