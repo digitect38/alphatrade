@@ -134,6 +134,7 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
   const autoRangeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const skipAutoRange = useRef(true);  // true on mount — wait for first data load to settle
   const lastAutoTarget = useRef<RangeKey | null>(null);
+  const lastAutoDirection = useRef<"in" | "out" | null>(null);  // track zoom direction
   const wasAutoRange = useRef(false);
   const chartCacheRef = useRef<Map<string, AssetChartResponse>>(new Map());
   const activeChartRequestRef = useRef(0);
@@ -208,13 +209,25 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
 
     if (target) setZoomLabel(target);
 
+    // Determine zoom direction: is target a larger or smaller range than current?
+    const rangeOrder: RangeKey[] = ["1m", "10m", "1H", "1D", "5D", "1M", "3M", "6M", "YTD", "1Y"];
+    const curIdx = rangeOrder.indexOf(range);
+    const tgtIdx = target ? rangeOrder.indexOf(target) : -1;
+    const direction = tgtIdx > curIdx ? "out" : tgtIdx < curIdx ? "in" : null;
+
+    // Clear oscillation guard when zoom direction reverses (user changed intent)
+    if (direction && lastAutoDirection.current && direction !== lastAutoDirection.current) {
+      lastAutoTarget.current = null;
+    }
+
     // Auto-switch: skip if target equals current range or if we just came FROM this target (prevents A→B→A oscillation)
     if (target && target !== range && target !== lastAutoTarget.current) {
       if (autoRangeTimer.current) clearTimeout(autoRangeTimer.current);
       autoRangeTimer.current = setTimeout(() => {
         skipAutoRange.current = true;
         lastAutoTarget.current = range;
-        wasAutoRange.current = true;  // skip displayBars on next load → fitContent instead
+        lastAutoDirection.current = direction;
+        wasAutoRange.current = true;
         setRange(target);
       }, 600);
     }
@@ -237,7 +250,8 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
   // Clear oscillation guard when user manually clicks a range button
   const handleManualRange = useCallback((key: RangeKey) => {
     lastAutoTarget.current = null;
-    wasAutoRange.current = false;  // manual click → use displayBars normally
+    lastAutoDirection.current = null;
+    wasAutoRange.current = false;
     setRange(key);
   }, []);
 
