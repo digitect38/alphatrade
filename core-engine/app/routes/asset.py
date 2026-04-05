@@ -13,6 +13,10 @@ from app.utils.market_calendar import KST, get_current_session
 
 router = APIRouter()
 
+# Backward-compatible aliases kept for existing tests/importers.
+_is_synthetic_intraday = is_synthetic_intraday
+_normalize_intraday_rows = normalize_intraday_rows
+
 RANGE_CONFIG: dict[str, tuple[str, int]] = {
     "1m": ("1m", 30),
     "10m": ("1m", 60),
@@ -24,6 +28,10 @@ RANGE_CONFIG: dict[str, tuple[str, int]] = {
     "6M": ("1d", 180),
     "YTD": ("1d", 260),
     "1Y": ("1d", 260),
+    "3Y": ("1d", 756),
+    "5Y": ("1d", 1260),
+    "10Y": ("1d", 2520),
+    "MAX": ("1d", 5000),
 }
 
 

@@ -7,7 +7,7 @@ import { orderStatusLabel } from "../lib/labels";
 import { apiGet } from "../hooks/useApi";
 import type { OrderHistoryItem, NewsItem } from "../types";
 
-type RangeKey = "1m" | "10m" | "1H" | "1D" | "5D" | "1M" | "3M" | "6M" | "YTD" | "1Y";
+type RangeKey = "1m" | "10m" | "1H" | "1D" | "5D" | "1M" | "3M" | "6M" | "YTD" | "1Y" | "3Y" | "5Y" | "10Y" | "MAX";
 type ChartMode = "line" | "candles";
 
 // NewsItem imported from types.ts
@@ -89,6 +89,10 @@ const RANGE_CONFIG: Record<RangeKey, { interval: string; limit: number; display:
   "6M": { interval: "1d", limit: 230, display: 180 },
   "YTD": { interval: "1d", limit: 310, display: 260 },
   "1Y": { interval: "1d", limit: 310, display: 260 },
+  "3Y": { interval: "1d", limit: 806, display: 756 },
+  "5Y": { interval: "1d", limit: 1310, display: 1260 },
+  "10Y": { interval: "1d", limit: 2570, display: 2520 },
+  "MAX": { interval: "1d", limit: 5000, display: 5000 },
 };
 
 const PREFETCH_NEIGHBORS: Partial<Record<RangeKey, RangeKey[]>> = {
@@ -104,7 +108,7 @@ const PREFETCH_NEIGHBORS: Partial<Record<RangeKey, RangeKey[]>> = {
 };
 
 // All ranges now support candles (Lightweight Charts handles any data count)
-const CANDLE_SUPPORTED_RANGES = new Set<RangeKey>(["1m", "10m", "1H", "1D", "5D", "1M", "3M", "6M", "YTD", "1Y"]);
+const CANDLE_SUPPORTED_RANGES = new Set<RangeKey>(["1m", "10m", "1H", "1D", "5D", "1M", "3M", "6M", "YTD", "1Y", "3Y", "5Y", "10Y", "MAX"]);
 
 export default function AssetDetailPage({ t, route }: { t: (k: string) => string; route: string }) {
   const stockCode = useMemo(() => route.split("/")[1] || "", [route]);
@@ -163,8 +167,20 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
 
     let target: RangeKey | null = null;
     if (chartInterval === "1d") {
-      if (range === "1Y") {
+      if (range === "MAX") {
+        if (visibleBars <= 2000) target = "10Y";
+      } else if (range === "10Y") {
+        if (visibleBars <= 1000) target = "5Y";
+        else if (visibleBars >= 3000) target = "MAX";
+      } else if (range === "5Y") {
+        if (visibleBars <= 500) target = "3Y";
+        else if (visibleBars >= 1500) target = "10Y";
+      } else if (range === "3Y") {
+        if (visibleBars <= 300) target = "1Y";
+        else if (visibleBars >= 900) target = "5Y";
+      } else if (range === "1Y") {
         if (visibleBars <= 170) target = "6M";
+        else if (visibleBars >= 400) target = "3Y";
       } else if (range === "6M") {
         if (visibleBars <= 90) target = "3M";
         else if (visibleBars >= 230) target = "1Y";
@@ -210,7 +226,7 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
     if (target) setZoomLabel(target);
 
     // Determine zoom direction: is target a larger or smaller range than current?
-    const rangeOrder: RangeKey[] = ["1m", "10m", "1H", "1D", "5D", "1M", "3M", "6M", "YTD", "1Y"];
+    const rangeOrder: RangeKey[] = ["1m", "10m", "1H", "1D", "5D", "1M", "3M", "6M", "YTD", "1Y", "3Y", "5Y", "10Y", "MAX"];
     const curIdx = rangeOrder.indexOf(range);
     const tgtIdx = target ? rangeOrder.indexOf(target) : -1;
     const direction = tgtIdx > curIdx ? "out" : tgtIdx < curIdx ? "in" : null;
