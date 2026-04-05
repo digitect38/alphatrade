@@ -11,6 +11,8 @@ const menuItems = [
   { key: "risk", labelKey: "nav.risk", icon: "🛡️" },
   { key: "execution", labelKey: "nav.execution", icon: "⚡" },
   { key: "orders", labelKey: "nav.orders", icon: "📋" },
+  { key: "llmchat", labelKey: "nav.llmchat", icon: "💬" },
+  { key: "settings", labelKey: "nav.settings", icon: "⚙️" },
 ];
 
 interface Props {

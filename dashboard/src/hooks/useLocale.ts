@@ -36,6 +36,35 @@ const translations: Record<string, Record<Locale, string>> = {
   "monitor.detail": { en: "Detail", ko: "상세" },
   "monitor.status": { en: "Status", ko: "상태" },
   "nav.risk": { en: "Risk", ko: "리스크" },
+  "nav.llmchat": { en: "AI Chat", ko: "AI 채팅" },
+  "nav.settings": { en: "Settings", ko: "설정" },
+  "title.llmchat": { en: "AI Trading Assistant", ko: "AI 트레이딩 어시스턴트" },
+  "title.settings": { en: "Settings", ko: "설정" },
+
+  // LLM Chat page
+  "llm.title": { en: "AI Trading Assistant", ko: "AI 트레이딩 어시스턴트" },
+  "llm.clear": { en: "Clear", ko: "초기화" },
+  "llm.send": { en: "Send", ko: "전송" },
+  "llm.placeholder": { en: "Ask about stocks, portfolio, signals...", ko: "종목, 포트폴리오, 시그널 등 질문하세요..." },
+  "llm.you": { en: "You", ko: "나" },
+  "llm.assistant": { en: "Trading Assistant", ko: "트레이딩 어시스턴트" },
+  "llm.emptyTitle": { en: "Ask the AI assistant anything about your trading system", ko: "트레이딩 시스템에 대해 무엇이든 물어보세요" },
+  "llm.suggestion1": { en: "What's the current portfolio status?", ko: "현재 포트폴리오 상태는?" },
+  "llm.suggestion2": { en: "Analyze Samsung Electronics 005930", ko: "삼성전자 005930 분석해줘" },
+  "llm.suggestion3": { en: "What signals are strongest today?", ko: "오늘 가장 강한 시그널은?" },
+
+  // Settings page
+  "settings.loading": { en: "Loading settings...", ko: "설정 로딩 중..." },
+  "settings.loadError": { en: "Failed to load settings", ko: "설정 로딩 실패" },
+  "settings.save": { en: "Save", ko: "저장" },
+  "settings.saving": { en: "Saving...", ko: "저장 중..." },
+  "settings.saved": { en: "Settings saved", ko: "설정 저장됨" },
+  "settings.saveError": { en: "Save failed", ko: "저장 실패" },
+  "settings.noChanges": { en: "No changes to save", ko: "변경 사항 없음" },
+  "settings.configured": { en: "Set", ko: "설정됨" },
+  "settings.groupLlm": { en: "LLM / AI", ko: "LLM / AI" },
+  "settings.groupTelegram": { en: "Telegram", ko: "텔레그램" },
+  "settings.groupGeneral": { en: "General", ko: "일반" },
 
   // Risk page
   "risk.pnl": { en: "Real-time P&L", ko: "실시간 손익" },
@@ -148,6 +177,11 @@ const translations: Record<string, Record<Locale, string>> = {
   "analysis.keyIndicators": { en: "Key Indicators", ko: "주요 지표" },
 
   // Backtest page
+  "bt.benchmark": { en: "Benchmark", ko: "벤치마크" },
+  "bt.monthlyReturns": { en: "Monthly Returns", ko: "월간 수익률" },
+  "bt.periodLabel": { en: "Test Period", ko: "테스트 기간" },
+  "bt.bars": { en: " bars", ko: "봉" },
+  "bt.computedAt": { en: "Computed", ko: "실행" },
   "bt.run": { en: "Run Backtest", ko: "백테스트 실행" },
   "bt.running": { en: "Running...", ko: "실행 중..." },
   "bt.totalReturn": { en: "Total Return", ko: "총 수익률" },
@@ -229,7 +263,6 @@ const translations: Record<string, Record<Locale, string>> = {
   "bt.tradeFilter.winners": { en: "Winners", ko: "수익" },
   "bt.tradeFilter.losers": { en: "Losers", ko: "손실" },
   "bt.reason": { en: "Signal", ko: "시그널" },
-  "bt.monthlyReturns": { en: "Monthly Returns", ko: "월별 수익률" },
   "th.holdingBars": { en: "Holding", ko: "보유기간" },
   "th.reason": { en: "Signal", ko: "시그널" },
 

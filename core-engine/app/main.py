@@ -29,6 +29,8 @@ from app.routes.ws import router as ws_router, redis_to_websocket_bridge
 from app.routes.risk import router as risk_router
 from app.routes.telegram import router as telegram_router
 from app.routes.events import router as events_router
+from app.routes.llm_chat import router as llm_router
+from app.routes.settings_api import router as settings_router
 from app.services.dart_api import DARTClient
 from app.services.kis_api import KISClient
 from app.services.naver_news import NaverNewsClient
@@ -171,6 +173,8 @@ app.include_router(trading_router, prefix="/trading", tags=["trading"])
 app.include_router(risk_router, prefix="/risk", tags=["risk"])
 app.include_router(telegram_router, prefix="/telegram", tags=["telegram"])
 app.include_router(events_router, prefix="/events", tags=["events"])
+app.include_router(llm_router, prefix="/llm", tags=["llm"])
+app.include_router(settings_router, prefix="/settings", tags=["settings"])
 
 
 # --- Health & Metrics ---

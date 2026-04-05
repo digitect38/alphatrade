@@ -15,6 +15,8 @@ import OrdersPage from "./pages/Orders";
 import MonitorPage from "./pages/Monitor";
 import RiskPage from "./pages/Risk";
 import TrendPage from "./pages/Trend";
+import LLMChatPage from "./pages/LLMChat";
+import SettingsPage from "./pages/Settings";
 
 const titleKeys: Record<string, string> = {
   command: "title.command",
@@ -28,6 +30,8 @@ const titleKeys: Record<string, string> = {
   execution: "title.execution",
   orders: "title.orders",
   asset: "title.asset",
+  llmchat: "title.llmchat",
+  settings: "title.settings",
 };
 
 export default function App() {
@@ -127,6 +131,8 @@ export default function App() {
           {page === "execution" && <ExecutionPage t={t} />}
           {page === "orders" && <OrdersPage t={t} onStockChangeRef={stockChangeRef} />}
           {page.startsWith("asset") && <AssetDetailPage t={t} route={page} />}
+          {page === "llmchat" && <LLMChatPage t={t} />}
+          {page === "settings" && <SettingsPage t={t} />}
         </main>
       </div>
     </ToastProvider>

@@ -36,6 +36,7 @@ interface BacktestResult {
   total_trades: number;
   expectancy: number | null;
   exposure_pct: number | null;
+  statistical_warnings: string[];
   trades: BacktestTrade[];
   equity_curve: number[];
   equity_series: Array<{ time: string; equity: number; benchmark?: number; drawdown?: number }> | null;
@@ -99,6 +100,7 @@ export default function BacktestPage({ t: _t, onStockChangeRef }: { t: (k: strin
   const [capitalFraction, setCapitalFraction] = useState(1.0);
   const [maxDrawdownStop, setMaxDrawdownStop] = useState(8);
   const [tradeFilter, setTradeFilter] = useState<TradeFilter>("all");
+  const [benchmark, setBenchmark] = useState("buy_and_hold");
   const [errorMsg, setErrorMsg] = useState("");
 
   // Fetch stock name when code changes
@@ -119,6 +121,7 @@ export default function BacktestPage({ t: _t, onStockChangeRef }: { t: (k: strin
       buy_fee_rate: buyFeeRate, sell_fee_rate: sellFeeRate, sell_tax_rate: sellTaxRate,
       slippage_rate: slippageRate, capital_fraction: capitalFraction,
       max_drawdown_stop: maxDrawdownStop / 100,
+      benchmark,
     }).then(setResult).catch(() => {}).finally(() => setLoading(false));
   };
 
@@ -154,7 +157,8 @@ export default function BacktestPage({ t: _t, onStockChangeRef }: { t: (k: strin
         sell_tax_rate: sellTaxRate,
         slippage_rate: slippageRate,
         capital_fraction: capitalFraction,
-        max_drawdown_stop: maxDrawdownStop,
+        max_drawdown_stop: maxDrawdownStop / 100,
+        benchmark,
       });
       setResult(res);
     } catch (e: any) {
@@ -304,6 +308,16 @@ export default function BacktestPage({ t: _t, onStockChangeRef }: { t: (k: strin
           <span className="text-secondary" style={{ fontSize: "13px" }}>%</span>
         </div>
 
+        {/* Benchmark */}
+        <div className="flex items-center gap-xs">
+          <label className="text-secondary" style={{ fontSize: "13px" }}>{_t("bt.benchmark")}</label>
+          <select value={benchmark} onChange={(e) => setBenchmark(e.target.value)} className="select" style={{ width: "120px" }}>
+            <option value="buy_and_hold">Buy & Hold</option>
+            <option value="kospi">KOSPI</option>
+            <option value="none">None</option>
+          </select>
+        </div>
+
         <button onClick={runBacktest} disabled={loading} className="btn btn-primary">
           {loading ? _t("bt.running") : _t("bt.run")}
         </button>
@@ -396,6 +410,34 @@ export default function BacktestPage({ t: _t, onStockChangeRef }: { t: (k: strin
 
       {result && (
         <>
+          {/* Period summary banner */}
+          <div className="card bt-period-banner">
+            <div className="bt-period-row">
+              <span className="bt-period-label">{_t("bt.periodLabel")}</span>
+              <span className="bt-period-value">
+                {(() => {
+                  const es = result.equity_series;
+                  const first = es?.[0]?.time?.slice(0, 10) || result.start_date || "—";
+                  const last = es?.[es.length - 1]?.time?.slice(0, 10) || result.end_date || "—";
+                  return `${first}  →  ${last}`;
+                })()}
+              </span>
+              <span className="bt-period-meta">
+                {result.period_bars}{_t("bt.bars")} · {result.interval} · {_t(strategyKeys[result.strategy] || "bt.ensemble")}
+              </span>
+              <span className="bt-period-meta">
+                {_t("bt.computedAt")} {result.computed_at?.slice(0, 19).replace("T", " ")}
+              </span>
+            </div>
+          </div>
+
+          {result.statistical_warnings?.length > 0 && (
+            <div className="card bt-warnings">
+              {result.statistical_warnings.map((w, i) => (
+                <div key={i} className="bt-warning-item">{w}</div>
+              ))}
+            </div>
+          )}
           <div className="metrics-grid metrics-grid-5">
             <MetricCard
               label={_t("bt.totalReturn")}
@@ -502,6 +544,14 @@ export default function BacktestPage({ t: _t, onStockChangeRef }: { t: (k: strin
             </div>
           )}
 
+          {/* Monthly Returns Heatmap */}
+          {result.monthly_returns && result.monthly_returns.length > 0 && (
+            <div className="card">
+              <h3 className="card-title">{_t("bt.monthlyReturns")}</h3>
+              <MonthlyHeatmap data={result.monthly_returns} />
+            </div>
+          )}
+
           {/* Trade History */}
           {result.trades.length > 0 && (
             <div className="card">
@@ -584,4 +634,68 @@ function MetricCard({
 
 function formatWon(value: number, t: (k: string) => string) {
   return `${Math.round(value).toLocaleString()}${t("common.won")}`;
+}
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function MonthlyHeatmap({ data }: { data: Array<{ month: string; return_pct: number }> }) {
+  // Group by year
+  const years: Record<string, (number | null)[]> = {};
+  for (const d of data) {
+    const [y, m] = d.month.split("-");
+    if (!years[y]) years[y] = Array(12).fill(null);
+    years[y][parseInt(m, 10) - 1] = d.return_pct;
+  }
+  const sortedYears = Object.keys(years).sort();
+
+  const cellColor = (v: number) => {
+    if (v > 5) return "#16a34a";
+    if (v > 2) return "#4ade80";
+    if (v > 0) return "#bbf7d0";
+    if (v > -2) return "#fecaca";
+    if (v > -5) return "#f87171";
+    return "#dc2626";
+  };
+
+  return (
+    <div style={{ overflowX: "auto" }}>
+      <table className="data-table bt-heatmap">
+        <thead>
+          <tr>
+            <th></th>
+            {MONTHS.map(m => <th key={m}>{m}</th>)}
+            <th>Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {sortedYears.map(y => {
+            const vals = years[y];
+            // Compound return: (1+r1)(1+r2)...(1+rn) - 1
+            const yearTotal = (vals.reduce<number>((acc, v) => v != null ? acc * (1 + v / 100) : acc, 1) - 1) * 100;
+            return (
+              <tr key={y}>
+                <td style={{ fontWeight: 600 }}>{y}</td>
+                {vals.map((v, mi) => (
+                  <td key={mi} style={{
+                    background: v != null ? cellColor(v) : "transparent",
+                    color: v != null ? (Math.abs(v) > 2 ? "#fff" : "#333") : "#ccc",
+                    textAlign: "center", fontSize: "12px", fontWeight: 600,
+                  }}>
+                    {v != null ? `${v > 0 ? "+" : ""}${v.toFixed(1)}` : ""}
+                  </td>
+                ))}
+                <td style={{
+                  background: cellColor(yearTotal),
+                  color: Math.abs(yearTotal) > 2 ? "#fff" : "#333",
+                  textAlign: "center", fontSize: "12px", fontWeight: 700,
+                }}>
+                  {yearTotal > 0 ? "+" : ""}{yearTotal.toFixed(1)}%
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
 }

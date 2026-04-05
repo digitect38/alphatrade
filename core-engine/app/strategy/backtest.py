@@ -34,6 +34,7 @@ async def run_backtest(
     slippage_rate: float = SLIPPAGE_RATE,
     capital_fraction: float = CAPITAL_FRACTION,
     max_drawdown_stop: float = BACKTEST_MAX_DRAWDOWN_STOP,
+    benchmark: str = "buy_and_hold",
     pool: asyncpg.Pool,
 ) -> BacktestResult:
     """Run backtest on historical OHLCV data using a simple strategy."""
@@ -50,11 +51,13 @@ async def run_backtest(
 
     if start_date:
         query += f" AND time >= ${param_idx}::timestamptz"
-        params.append(start_date)
+        params.append(datetime.fromisoformat(start_date).replace(tzinfo=timezone.utc) if isinstance(start_date, str) else start_date)
         param_idx += 1
     if end_date:
         query += f" AND time <= ${param_idx}::timestamptz"
-        params.append(end_date)
+        # End date should include the full day
+        ed = datetime.fromisoformat(end_date).replace(hour=23, minute=59, second=59, tzinfo=timezone.utc) if isinstance(end_date, str) else end_date
+        params.append(ed)
         param_idx += 1
 
     query += " ORDER BY time ASC"
@@ -157,10 +160,21 @@ async def run_backtest(
     if annual_return is not None and max_dd < 0:
         calmar = round(annual_return / abs(max_dd), 4)
 
-    # Benchmark return (buy and hold)
+    # Benchmark return
     benchmark_return = None
-    if len(df) > 1 and float(df["close"].iloc[0]) > 0:
-        benchmark_return = round((float(df["close"].iloc[-1]) / float(df["close"].iloc[0]) - 1) * 100, 2)
+    kospi_series: list[float] | None = None
+    if benchmark == "none":
+        pass  # No benchmark
+    elif benchmark == "kospi":
+        kospi_series = await _fetch_kospi_benchmark(pool, df)
+        if kospi_series and len(kospi_series) > 1 and kospi_series[0] > 0:
+            benchmark_return = round((kospi_series[-1] / kospi_series[0] - 1) * 100, 2)
+        if benchmark_return is None and len(df) > 1 and float(df["close"].iloc[0]) > 0:
+            benchmark_return = round((float(df["close"].iloc[-1]) / float(df["close"].iloc[0]) - 1) * 100, 2)
+    else:
+        # Default: buy-and-hold of the stock itself
+        if len(df) > 1 and float(df["close"].iloc[0]) > 0:
+            benchmark_return = round((float(df["close"].iloc[-1]) / float(df["close"].iloc[0]) - 1) * 100, 2)
 
     # Expectancy: (avg_win * win_rate) - (avg_loss * loss_rate)
     expectancy = None
@@ -180,7 +194,8 @@ async def run_backtest(
         exposure_pct = round(bars_in_position / total_bars * 100, 2)
 
     # Build equity_series with actual timestamps
-    equity_series = _build_equity_series(df, equity_curve, benchmark_return)
+    skip_bench = benchmark == "none"
+    equity_series = _build_equity_series(df, equity_curve, benchmark_return, None if skip_bench else kospi_series, skip_bench)
 
     # Build trade_markers
     trade_markers = [
@@ -190,6 +205,17 @@ async def run_backtest(
 
     # Build monthly_returns
     monthly_returns = _build_monthly_returns(df, equity_curve)
+
+    # Statistical warnings
+    statistical_warnings = []
+    if len(sell_trades) < 5:
+        statistical_warnings.append("거래 수 5건 미만 — 모든 지표가 통계적으로 무의미합니다.")
+    elif len(sell_trades) < 30:
+        statistical_warnings.append(f"거래 수 {len(sell_trades)}건 — Sharpe/Sortino/승률 등의 신뢰도가 낮습니다 (최소 30건 권장).")
+    if days < 60:
+        statistical_warnings.append(f"분석 기간 {days}일 — 시장 사이클을 반영하기에 너무 짧습니다 (최소 1년 권장).")
+    if exposure_pct is not None and exposure_pct < 5:
+        statistical_warnings.append(f"투자 노출도 {exposure_pct:.1f}% — 거의 현금 보유 상태이므로 수익률 해석에 주의하세요.")
 
     return BacktestResult(
         stock_code=stock_code,
@@ -212,6 +238,7 @@ async def run_backtest(
         total_trades=len(trades),
         expectancy=expectancy,
         exposure_pct=exposure_pct,
+        statistical_warnings=statistical_warnings,
         trades=trades,                     # ALL trades
         equity_curve=equity_curve,         # ALL points
         equity_series=equity_series,
@@ -225,64 +252,212 @@ async def run_backtest(
 
 
 def _generate_backtest_signals(df: pd.DataFrame, strategy: str) -> tuple[pd.Series, pd.Series]:
-    """Generate buy/sell signals for backtesting.
+    """Generate buy/sell signals using the PRODUCTION ensemble engine.
+
+    Replicates the 4-factor weighted scoring from signals.py + presets.py:
+      momentum_signal()  — SMA, MACD, RSI-momentum, ROC
+      mean_reversion_signal() — RSI-reversal, BB position, Stochastic, Williams%R
+      volume_signal()    — surge detection, OBV, price-volume divergence
+      sentiment = 0      — no historical sentiment in backtest context
 
     Returns:
-        signals: Series with values: 1 (buy), -1 (sell), 0 (hold).
-        reasons: Series with string reason for each signal.
+        signals: Series with 1 (buy), -1 (sell), 0 (hold).
+        reasons: Series with top contributing factor name.
     """
+    from app.strategy.presets import STRATEGY_PRESETS
+
+    preset = STRATEGY_PRESETS.get(strategy, STRATEGY_PRESETS["ensemble"])
+    weights = preset["weights"]
+    buy_threshold = preset["buy_threshold"]
+    sell_threshold = preset["sell_threshold"]
+
     close = df["close"]
     high = df["high"]
     low = df["low"]
     volume = df["volume"]
+    n = len(df)
+
+    # ── Pre-compute all technical indicators vectorised ──
+    sma_20 = ta.sma(close, length=20)
+    sma_60 = ta.sma(close, length=60) if n >= 60 else pd.Series(np.nan, index=df.index)
+    rsi = ta.rsi(close, length=14)
+    macd_df = ta.macd(close, fast=12, slow=26, signal=9)
+    macd_hist = macd_df.iloc[:, 1] if macd_df is not None and len(macd_df.columns) >= 2 else pd.Series(np.nan, index=df.index)
+    roc_12 = ta.roc(close, length=12) if n >= 13 else pd.Series(np.nan, index=df.index)
+
+    bb = ta.bbands(close, length=20, std=2)
+    bb_lower = bb.iloc[:, 2] if bb is not None else pd.Series(np.nan, index=df.index)
+    bb_upper = bb.iloc[:, 0] if bb is not None else pd.Series(np.nan, index=df.index)
+
+    stoch = ta.stoch(high, low, close, k=14, d=3, smooth_k=3)
+    stoch_k = stoch.iloc[:, 0] if stoch is not None else pd.Series(np.nan, index=df.index)
+
+    willr = ta.willr(high, low, close, length=14)
+    if willr is None:
+        willr = pd.Series(np.nan, index=df.index)
+
+    # Volume indicators
+    vol_sma5 = ta.sma(volume.astype(float), length=5)
+    vol_sma20 = ta.sma(volume.astype(float), length=20)
+    obv = ta.obv(close, volume)
+    obv_sma5 = ta.sma(obv, length=5) if obv is not None else None
+    obv_sma10 = ta.sma(obv, length=10) if obv is not None else None
 
     signals = pd.Series(0, index=df.index)
     reasons = pd.Series("", index=df.index)
 
-    if strategy in ("ensemble", "momentum"):
-        # SMA crossover
-        sma_20 = ta.sma(close, length=20)
-        sma_60 = ta.sma(close, length=60) if len(close) >= 60 else ta.sma(close, length=20)
+    for i in range(n):
+        p = float(close.iloc[i])
+        if p <= 0:
+            continue
 
-        rsi = ta.rsi(close, length=14)
-        macd_df = ta.macd(close, fast=12, slow=26, signal=9)
+        # ── Momentum score (averaged) ──
+        mom_score, mom_cnt = 0.0, 0
+        s20 = _s(sma_20, i)
+        s60 = _s(sma_60, i)
+        if s20 is not None:
+            mom_cnt += 1; mom_score += 0.5 if p > s20 else -0.5
+        if s60 is not None:
+            mom_cnt += 1; mom_score += 0.5 if p > s60 else -0.5
+        mh = _s(macd_hist, i)
+        if mh is not None:
+            mom_cnt += 1; mom_score += 0.6 if mh > 0 else -0.6
+        r = _s(rsi, i)
+        if r is not None:
+            mom_cnt += 1
+            if 50 < r < 70: mom_score += 0.4
+            elif 30 < r <= 50: mom_score -= 0.3
+            elif r >= 70: mom_score += 0.2
+            else: mom_score -= 0.5
+        rc = _s(roc_12, i)
+        if rc is not None:
+            mom_cnt += 1
+            if rc > 5: mom_score += 0.5
+            elif rc > 0: mom_score += 0.2
+            elif rc > -5: mom_score -= 0.2
+            else: mom_score -= 0.5
+        mom_final = mom_score / max(mom_cnt, 1)
 
-        if sma_20 is not None and sma_60 is not None:
-            # Golden cross = buy, death cross = sell
-            prev_above = (sma_20.shift(1) > sma_60.shift(1))
-            curr_above = (sma_20 > sma_60)
-            golden_cross = curr_above & ~prev_above
-            death_cross = ~curr_above & prev_above
-            signals = signals.where(~golden_cross, 1)
-            reasons = reasons.where(~golden_cross, "sma_golden_cross")
-            signals = signals.where(~death_cross, -1)
-            reasons = reasons.where(~death_cross, "sma_death_cross")
+        # ── Mean reversion score (averaged) ──
+        mr_score, mr_cnt = 0.0, 0
+        if r is not None:
+            mr_cnt += 1
+            if r < 30: mr_score += 0.8
+            elif r > 70: mr_score -= 0.8
+            elif r < 40: mr_score += 0.3
+            elif r > 60: mr_score -= 0.3
+        bbu, bbl = _s(bb_upper, i), _s(bb_lower, i)
+        if bbu is not None and bbl is not None and bbu > bbl:
+            mr_cnt += 1
+            pos = (p - bbl) / (bbu - bbl)
+            if pos < 0.2: mr_score += 0.7
+            elif pos > 0.8: mr_score -= 0.7
+            else: mr_score += (0.5 - pos) * 0.4
+        sk = _s(stoch_k, i)
+        if sk is not None:
+            mr_cnt += 1
+            if sk < 20: mr_score += 0.6
+            elif sk > 80: mr_score -= 0.6
+        wr = _s(willr, i)
+        if wr is not None:
+            mr_cnt += 1
+            if wr < -80: mr_score += 0.5
+            elif wr > -20: mr_score -= 0.5
+        mr_final = mr_score / max(mr_cnt, 1)
 
-        # RSI filter
-        if rsi is not None:
-            rsi_oversold = rsi < 30
-            rsi_overbought = rsi > 75
-            signals = signals.where(~rsi_oversold, 1)
-            reasons = reasons.where(~rsi_oversold, "rsi_oversold")
-            signals = signals.where(~rsi_overbought, -1)
-            reasons = reasons.where(~rsi_overbought, "rsi_overbought")
+        # ── Volume score (cumulative, clamped) ──
+        vol_score = 0.0
+        vs5 = _s(vol_sma5, i)
+        vs20 = _s(vol_sma20, i)
+        is_surge = vs20 is not None and vs20 > 0 and float(volume.iloc[i]) / vs20 > 2.0
+        obv_inc = obv_sma5 is not None and obv_sma10 is not None and _s(obv_sma5, i) is not None and _s(obv_sma10, i) is not None and _s(obv_sma5, i) > _s(obv_sma10, i)
+        obv_dec = obv_sma5 is not None and obv_sma10 is not None and _s(obv_sma5, i) is not None and _s(obv_sma10, i) is not None and _s(obv_sma5, i) < _s(obv_sma10, i)
+        if is_surge and obv_inc: vol_score += 0.7
+        elif is_surge and obv_dec: vol_score -= 0.5
+        # Price-volume divergence (5-bar lookback)
+        if i >= 5:
+            price_chg = float(close.iloc[i]) - float(close.iloc[i - 5])
+            vol_chg = float(volume.iloc[i]) - float(volume.iloc[i - 5])
+            if price_chg < 0 and vol_chg > 0: vol_score += 0.4   # bullish div
+            elif price_chg > 0 and vol_chg < 0: vol_score -= 0.4  # bearish div
+        if vs5 is not None and vs20 is not None and vs20 > 0:
+            ratio = vs5 / vs20
+            if ratio > 1.2: vol_score += 0.2
+            elif ratio < 0.8: vol_score -= 0.1
+        vol_final = max(-1.0, min(1.0, vol_score))
 
-    elif strategy == "mean_reversion":
-        bb = ta.bbands(close, length=20, std=2)
-        rsi = ta.rsi(close, length=14)
+        # ── Ensemble ──
+        ensemble = (
+            mom_final * weights["momentum"]
+            + mr_final * weights["mean_reversion"]
+            + vol_final * weights["volume"]
+            # sentiment = 0 (no historical sentiment data)
+        )
+        ensemble = max(-1.0, min(1.0, ensemble))
 
-        if bb is not None and rsi is not None:
-            bb_lower = bb.iloc[:, 2]  # Lower band
-            bb_upper = bb.iloc[:, 0]  # Upper band
-
-            buy_cond = (close < bb_lower) & (rsi < 30)
-            sell_cond = (close > bb_upper) & (rsi > 70)
-            signals = signals.where(~buy_cond, 1)
-            reasons = reasons.where(~buy_cond, "bb_lower_rsi")
-            signals = signals.where(~sell_cond, -1)
-            reasons = reasons.where(~sell_cond, "bb_upper_rsi")
+        if ensemble > buy_threshold:
+            signals.iloc[i] = 1
+            # Pick dominant factor
+            factors = {"momentum": mom_final, "mean_reversion": mr_final, "volume": vol_final}
+            top = max(factors, key=lambda k: factors[k])
+            reasons.iloc[i] = f"{top}({ensemble:+.2f})"
+        elif ensemble < sell_threshold:
+            signals.iloc[i] = -1
+            factors = {"momentum": mom_final, "mean_reversion": mr_final, "volume": vol_final}
+            top = min(factors, key=lambda k: factors[k])
+            reasons.iloc[i] = f"{top}({ensemble:+.2f})"
 
     return signals, reasons
+
+
+def _effective_slippage(price: float, bar_volume: float, base_rate: float) -> float:
+    """Volume-aware slippage: illiquid bars get higher slippage.
+
+    - If bar volume < 10,000 shares → 3× base rate (illiquid)
+    - If bar volume < 50,000 shares → 1.5× base rate
+    - Otherwise → base rate
+    Also floors at 1 tick to avoid zero-slippage illusion.
+    """
+    if bar_volume <= 0:
+        return base_rate * 3
+    if bar_volume < 10_000:
+        return base_rate * 3
+    if bar_volume < 50_000:
+        return base_rate * 1.5
+    return base_rate
+
+
+def _tick_size(price: float) -> float:
+    """Korean stock market tick size rules (KRX 호가 단위)."""
+    if price < 2_000:
+        return 1
+    if price < 5_000:
+        return 5
+    if price < 20_000:
+        return 10
+    if price < 50_000:
+        return 50
+    if price < 200_000:
+        return 100
+    if price < 500_000:
+        return 500
+    return 1_000
+
+
+def _snap_tick(price: float, up: bool = True) -> float:
+    """Snap price to nearest valid tick. up=True rounds up (buy), up=False rounds down (sell)."""
+    tick = _tick_size(price)
+    if up:
+        return float(int((price + tick - 1) // tick) * tick)
+    return float(int(price // tick) * tick)
+
+
+def _s(series: pd.Series | None, idx: int):
+    """Safe scalar access — returns None for NaN."""
+    if series is None:
+        return None
+    v = series.iloc[idx]
+    return None if pd.isna(v) else float(v)
 
 
 def _simulate_trades(
@@ -332,9 +507,12 @@ def _simulate_trades(
 
         open_price = float(df["open"].iloc[i])
         close_price = float(df["close"].iloc[i])
+        bar_volume = float(df["volume"].iloc[i]) if df["volume"].iloc[i] else 0
         date = str(df["time"].iloc[i])[:19]
-        exec_price_buy = open_price * (1 + slippage_rate)
-        exec_price_sell = open_price * (1 - slippage_rate)
+        # Volume-aware slippage: base rate + impact for illiquid bars
+        eff_slip = _effective_slippage(open_price, bar_volume, slippage_rate)
+        exec_price_buy = _snap_tick(open_price * (1 + eff_slip), up=True)
+        exec_price_sell = _snap_tick(open_price * (1 - eff_slip), up=False)
         current_equity = capital + position * close_price
         peak_equity = max(peak_equity, current_equity)
 
@@ -436,10 +614,46 @@ def _simulate_trades(
     return trades, equity_curve, bars_in_position
 
 
+async def _fetch_kospi_benchmark(pool: asyncpg.Pool, df: pd.DataFrame) -> list[float] | None:
+    """Fetch KOSPI closing prices aligned to the stock's date range."""
+    if len(df) == 0:
+        return None
+    first_date = pd.Timestamp(df["time"].iloc[0]).to_pydatetime()
+    last_date = pd.Timestamp(df["time"].iloc[-1]).to_pydatetime()
+    try:
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT time::date as dt, close FROM ohlcv "
+                "WHERE stock_code = 'KOSPI' AND interval = '1d' "
+                "AND time >= $1 AND time <= $2 ORDER BY time ASC",
+                first_date, last_date,
+            )
+        if len(rows) < 2:
+            return None
+        # Build date→close map
+        kospi_map = {str(r["dt"]): float(r["close"]) for r in rows if r["close"]}
+        # Align to stock dates (forward fill missing)
+        result = []
+        last_val = None
+        for i in range(len(df)):
+            dt_str = str(pd.Timestamp(df["time"].iloc[i]).date())
+            if dt_str in kospi_map:
+                last_val = kospi_map[dt_str]
+            if last_val is not None:
+                result.append(last_val)
+            else:
+                result.append(0.0)
+        return result if any(v > 0 for v in result) else None
+    except Exception:
+        return None
+
+
 def _build_equity_series(
     df: pd.DataFrame,
     equity_curve: list[float],
     benchmark_return: float | None,
+    kospi_series: list[float] | None = None,
+    skip_benchmark: bool = False,
 ) -> list[dict]:
     """Build equity series with actual timestamps, benchmark, and drawdown."""
     if not equity_curve or len(df) == 0:
@@ -447,7 +661,12 @@ def _build_equity_series(
 
     series = []
     first_close = float(df["close"].iloc[0])
-    peak = equity_curve[0]
+    initial_equity = equity_curve[0]
+    peak = initial_equity
+
+    # Determine benchmark source
+    use_kospi = kospi_series is not None and len(kospi_series) == len(equity_curve)
+    kospi_base = kospi_series[0] if use_kospi and kospi_series[0] > 0 else 0.0
 
     for i in range(len(equity_curve)):
         ts = pd.Timestamp(df["time"].iloc[i]).to_pydatetime()
@@ -461,10 +680,13 @@ def _build_equity_series(
         peak = max(peak, equity_val)
         dd = round((equity_val - peak) / peak * 100, 4) if peak > 0 else 0.0
 
-        # Benchmark: buy-and-hold normalized to same initial equity
+        # Benchmark: KOSPI or buy-and-hold, normalized to initial equity
         bench_val = None
-        if first_close > 0:
-            bench_val = round(equity_curve[0] * float(df["close"].iloc[i]) / first_close, 0)
+        if not skip_benchmark:
+            if use_kospi and kospi_base > 0:
+                bench_val = round(initial_equity * kospi_series[i] / kospi_base, 0)
+            elif first_close > 0:
+                bench_val = round(initial_equity * float(df["close"].iloc[i]) / first_close, 0)
 
         series.append({
             "time": time_str,

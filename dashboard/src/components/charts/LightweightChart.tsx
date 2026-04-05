@@ -188,24 +188,46 @@ export default function LightweightChart({
       rightPriceScale: { borderVisible: false, autoScale: true },
       timeScale: { borderVisible: false, timeVisible: intraday, secondsVisible: false, minBarSpacing: 0.5 },
       handleScroll: { vertTouchDrag: false },
-      handleScale: { mouseWheel: true, pinch: true, axisPressedMouseMove: true },
+      handleScale: { mouseWheel: false, pinch: true, axisPressedMouseMove: true },
     });
     chartRef.current = chart;
 
-    // Prevent page scroll when wheeling on chart (enables zoom-out)
+    // Cmd+Scroll = zoom, plain scroll = page scroll
     const el = containerRef.current;
-    const preventScroll = (e: WheelEvent) => { e.preventDefault(); };
-    el.addEventListener("wheel", preventScroll, { passive: false });
+    const handleWheel = (e: WheelEvent) => {
+      if (e.metaKey || e.ctrlKey) {
+        e.preventDefault();
+        // Forward zoom to chart via keyboard-simulated scale
+        const delta = -e.deltaY;
+        const ts = chart.timeScale();
+        const lr = ts.getVisibleLogicalRange();
+        if (!lr) return;
+        const range = lr.to - lr.from;
+        const factor = delta > 0 ? 0.9 : 1.1; // zoom in / out
+        const center = (lr.from + lr.to) / 2;
+        const newRange = range * factor;
+        ts.setVisibleLogicalRange({
+          from: center - newRange / 2,
+          to: center + newRange / 2,
+        });
+      }
+      // else: let default scroll happen (page scrolls)
+    };
+    el.addEventListener("wheel", handleWheel, { passive: false });
 
-    // ── Create panes ──
+    // ── Create panes (only when data supports the indicator) ──
+    const closes = valid.map(d => d.close);
     const pricePane = chart.panes()[0];
     let rsiPaneIdx: number | undefined;
     let macdPaneIdx: number | undefined;
 
-    if (showRSI) {
+    const hasRsiData = showRSI && valid.length >= 15;
+    const hasMacdData = showMACD && valid.length >= 27;
+
+    if (hasRsiData) {
       rsiPaneIdx = chart.addPane().paneIndex();
     }
-    if (showMACD) {
+    if (hasMacdData) {
       macdPaneIdx = chart.addPane().paneIndex();
     }
 
@@ -243,7 +265,6 @@ export default function LightweightChart({
     }
 
     // MA overlays
-    const closes = valid.map(d => d.close);
     if (showMA20 && valid.length >= 20) {
       const ma = chart.addSeries(LineSeries, { color: "#2563eb", lineWidth: 1, priceLineVisible: false });
       const vals = computeMA(closes, 20);
@@ -272,7 +293,7 @@ export default function LightweightChart({
     // PANE 1 — RSI(14)
     // ══════════════════════════════════════════════════════════════
 
-    if (showRSI && rsiPaneIdx != null && valid.length >= 15) {
+    if (hasRsiData && rsiPaneIdx != null) {
       const rsiVals = computeRSI(closes, 14);
       const rsiLine = chart.addSeries(LineSeries, {
         color: "#7c3aed", lineWidth: 2, priceLineVisible: false, lastValueVisible: true,
@@ -296,7 +317,7 @@ export default function LightweightChart({
     // PANE 2 — MACD(12, 26, 9)
     // ══════════════════════════════════════════════════════════════
 
-    if (showMACD && macdPaneIdx != null && valid.length >= 27) {
+    if (hasMacdData && macdPaneIdx != null) {
       const { macd, signal, hist } = computeMACD(closes);
 
       const histS = chart.addSeries(HistogramSeries, {
@@ -367,8 +388,8 @@ export default function LightweightChart({
     });
     ro.observe(containerRef.current);
 
-    return () => { ro.disconnect(); el.removeEventListener("wheel", preventScroll); chart.remove(); chartRef.current = null; };
-  }, [data, mode, volume, markers, totalHeight, showMA20, showMA50, showRSI, showMACD, upColor, downColor, lineColor, fullscreen, displayBars, intradayProp]);
+    return () => { ro.disconnect(); el.removeEventListener("wheel", handleWheel); chart.remove(); chartRef.current = null; };
+  }, [data, mode, volume, markers, totalHeight, showMA20, showMA50, showRSI, showMACD, upColor, downColor, lineColor, fullscreen, displayBars, intradayProp, anchorTime, anchorBars]);
 
   return (
     <div style={{ position: "relative" }}>

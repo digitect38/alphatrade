@@ -92,6 +92,7 @@ class BacktestResult(BaseModel):
     total_trades: int
     expectancy: float | None = None       # avg_win * win_rate - avg_loss * loss_rate
     exposure_pct: float | None = None     # % of bars with position
+    statistical_warnings: list[str] = []   # warnings about result reliability
     trades: list[BacktestTrade] = []
     equity_curve: list[float] = []        # kept for backward compat
     equity_series: list[dict] | None = None   # [{time, equity, benchmark, drawdown}]

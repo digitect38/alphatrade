@@ -95,7 +95,20 @@ async def _load_market_state(redis: aioredis.Redis, pool: asyncpg.Pool, stock_co
 async def _load_chart(pool: asyncpg.Pool, stock_code: str, range_key: str):
     interval, limit = RANGE_CONFIG.get(range_key, RANGE_CONFIG["1M"])
     async with pool.acquire() as conn:
-        if interval == "1d":
+        if range_key == "YTD":
+            # YTD: fetch from Jan 1 of current year (date-based, not count-based)
+            jan1 = datetime(datetime.now(KST).year, 1, 1, tzinfo=KST)
+            rows = await conn.fetch(
+                """
+                SELECT DISTINCT ON (time::date) time, open, high, low, close, volume
+                FROM ohlcv
+                WHERE stock_code = $1 AND interval = '1d' AND time >= $2
+                ORDER BY time::date DESC, time DESC
+                """,
+                stock_code,
+                jan1,
+            )
+        elif interval == "1d":
             # For daily: deduplicate by date, keep last entry per day
             rows = await conn.fetch(
                 """

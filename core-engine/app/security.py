@@ -118,11 +118,20 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         for ip in stale:
             del self._requests[ip]
 
+    _INTERNAL_PREFIXES = ("127.", "10.", "172.16.", "172.17.", "172.18.", "172.19.",
+                          "172.20.", "172.21.", "172.22.", "172.23.", "172.24.",
+                          "172.25.", "172.26.", "172.27.", "172.28.", "172.29.",
+                          "172.30.", "172.31.", "192.168.", "::1")
+
     async def dispatch(self, request: Request, call_next):
         if request.url.path in PUBLIC_PATHS:
             return await call_next(request)
 
         client_ip = request.client.host if request.client else "unknown"
+
+        # Skip rate limiting for Docker-internal / localhost traffic
+        if any(client_ip.startswith(p) for p in self._INTERNAL_PREFIXES) or client_ip == "localhost":
+            return await call_next(request)
         now = time.time()
         path = request.url.path
 

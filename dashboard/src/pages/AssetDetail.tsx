@@ -290,19 +290,26 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
     prevStockCodeRef.current = stockCode;
     if (stockChanged) {
       chartCacheRef.current.clear();
+      setOverview(null);
+      setExecutionContext(null);
+      setPeriodReturns([]);
     }
+    let cancelled = false;
+    const code = stockCode;
     Promise.all([
-      apiGet<AssetOverview>(`/asset/${stockCode}/overview`),
-      apiGet<AssetReturnsResponse>(`/asset/${stockCode}/period-returns`),
-      apiGet<AssetExecutionContext>(`/asset/${stockCode}/execution-context`),
+      apiGet<AssetOverview>(`/asset/${code}/overview`),
+      apiGet<AssetReturnsResponse>(`/asset/${code}/period-returns`),
+      apiGet<AssetExecutionContext>(`/asset/${code}/execution-context`),
     ])
       .then(([overviewData, returnsResponse, executionResponse]) => {
+        if (cancelled) return;
         setOverview(overviewData);
         setPeriodReturns((Object.entries(returnsResponse.returns) as Array<[RangeKey, number]>).map(([key, value]) => ({ key, value })));
         setExecutionContext(executionResponse);
       })
-      .catch(console.error)
-      .finally(() => setInitialLoading(false));
+      .catch((err) => { if (!cancelled) console.error(err); })
+      .finally(() => { if (!cancelled) setInitialLoading(false); });
+    return () => { cancelled = true; };
   }, [stockCode]);
 
   useEffect(() => {
@@ -441,36 +448,38 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
     if (!chartData.length) return 0;
     return Math.round(chartData.reduce((sum, item) => sum + item.volume, 0) / chartData.length);
   }, [chartData]);
-  const relativeVolume = averageVolume > 0 && overview ? overview.volume / averageVolume : 0;
+  // Use overview only when it matches the current stock (prevents stale data display)
+  const currentOverview = overview?.stock_code === stockCode ? overview : null;
+  const relativeVolume = averageVolume > 0 && currentOverview ? currentOverview.volume / averageVolume : 0;
   const lwChartData = useMemo(() => chartData.map(d => ({ time: d.time, open: d.open, high: d.high, low: d.low, close: d.close, volume: d.volume })), [chartData]);
   const activePoint = hoverPoint ?? zoomedPoints[zoomedPoints.length - 1] ?? null;
   // priceDomain no longer needed — LightweightChart auto-scales
 
   if (!stockCode) return <div className="card">{t("asset.noCode")}</div>;
-  if (!overview && chartData.length === 0) return <p className="text-secondary p-xl">{t("asset.loading")}</p>;
+  if (!currentOverview && chartData.length === 0) return <p className="text-secondary p-xl">{t("asset.loading")}</p>;
 
   return (
     <div className="page-content asset-detail-page">
       <section className="card asset-header">
         <div className="asset-header-main">
             <div className="asset-code-block">
-            <div className="asset-name">{overview?.stock_name || stockCode}</div>
+            <div className="asset-name">{currentOverview?.stock_name || stockCode}</div>
             <div className="asset-meta">
               <span>{stockCode}</span>
-              <span>{t("asset.market")}: {overview?.market || "-"}</span>
-              <span>{t("asset.sector")}: {overview?.sector || "-"}</span>
+              <span>{t("asset.market")}: {currentOverview?.market || "-"}</span>
+              <span>{t("asset.sector")}: {currentOverview?.sector || "-"}</span>
             </div>
           </div>
           <div className="asset-price-block">
-            <div className="asset-price">{overview?.current_price?.toLocaleString() || "-"}</div>
-            <DirectionValue value={overview?.change_pct ?? 0} suffix="%" />
+            <div className="asset-price">{currentOverview?.current_price?.toLocaleString() || "-"}</div>
+            <DirectionValue value={currentOverview?.change_pct ?? 0} suffix="%" />
             <div className="text-secondary">
-              {overview ? <DirectionValue value={overview.change} precision={0} /> : "-"}
+              {currentOverview ? <DirectionValue value={currentOverview.change} precision={0} /> : "-"}
             </div>
           </div>
         </div>
         <div className="asset-header-side">
-          <div className="asset-session-badge">{t("asset.marketSession")}: {overview?.session.description || "-"}</div>
+          <div className="asset-session-badge">{t("asset.marketSession")}: {currentOverview?.session.description || "-"}</div>
           <div className="asset-header-actions">
             <button className="btn btn-sm" onClick={() => { window.location.hash = "command"; }}>{t("asset.backCommand")}</button>
             <button className="btn btn-sm" onClick={() => { window.location.hash = "trend"; }}>{t("asset.backIntel")}</button>
@@ -565,7 +574,7 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
         </div>
         <div className="asset-compare-summary">
           <span className="asset-compare-pill asset-compare-pill-primary">
-            {overview?.stock_name || stockCode} ({stockCode})
+            {currentOverview?.stock_name || stockCode} ({stockCode})
           </span>
           {compareOverview ? (
             <span className="asset-compare-pill asset-compare-pill-compare">
@@ -602,7 +611,7 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
         <div className="card asset-chart-card">
           <div className="asset-section-header">
             <div>
-              <h3 className="card-title">{overview?.stock_name || stockCode} ({stockCode}) — {t("asset.chart")}</h3>
+              <h3 className="card-title">{currentOverview?.stock_name || stockCode} ({stockCode}) — {t("asset.chart")}</h3>
               <div className="asset-chart-note">
                 {compareCode && chartMode === "line" ? t("asset.compareModeNote")
                   : dataQuality === "snapshot" ? t("asset.intradayLineNote")
@@ -663,7 +672,7 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
             <AssetStat label={t("asset.signalStrength")} value={executionContext ? `${(executionContext.signal_summary.confidence * 100).toFixed(0)}%` : "-"} />
             <AssetStat label={t("asset.trendScore")} value={executionContext?.signal_summary.trend_score?.toFixed(3) || "-"} />
             <AssetStat label={t("asset.momentumScore")} value={executionContext?.signal_summary.momentum_score?.toFixed(3) || "-"} />
-            <AssetStat label={t("asset.volume")} value={overview?.volume?.toLocaleString() || "-"} />
+            <AssetStat label={t("asset.volume")} value={currentOverview?.volume?.toLocaleString() || "-"} />
             <AssetStat label={t("asset.latestOrder")} value={latestOrder ? orderStatusLabel(latestOrder.status, t) : "-"} />
           </div>
         </div>

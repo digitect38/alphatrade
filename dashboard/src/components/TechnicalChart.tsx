@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { OHLCVRecord } from "../types";
 import { useChartEvents } from "../hooks/useChartEvents";
 import { EventPanel, LightweightChart } from "./charts";
@@ -35,17 +35,27 @@ export default function TechnicalChart({
   const [showEvents, setShowEvents] = useState(true);
   const [showRsi, setShowRsi] = useState(false);
   const [showMacd, setShowMacd] = useState(false);
+  const [visibleRange, setVisibleRange] = useState<{ start: string; end: string } | null>(null);
   const isIntraday = interval === "1m";
   const dateRange = useMemo(() => {
     if (chartData.length < 2) return { start: "", end: "" };
     return { start: chartData[0].time.slice(0, 10), end: chartData[chartData.length - 1].time.slice(0, 10) };
   }, [chartData]);
 
+  const handleVisibleRangeChange = useCallback((_bars: number, fromIdx: number, toIdx: number) => {
+    if (chartData.length === 0) return;
+    const from = chartData[Math.max(0, Math.min(fromIdx, chartData.length - 1))];
+    const to = chartData[Math.max(0, Math.min(toIdx, chartData.length - 1))];
+    if (from && to) {
+      setVisibleRange({ start: from.time.slice(0, 10), end: to.time.slice(0, 10) });
+    }
+  }, [chartData]);
+
   const { visibleEvents, chartLineEvents } = useChartEvents({
     startDate: dateRange.start,
     endDate: dateRange.end,
-    visibleStart: dateRange.start,
-    visibleEnd: dateRange.end,
+    visibleStart: visibleRange?.start || dateRange.start,
+    visibleEnd: visibleRange?.end || dateRange.end,
     enabled: showEvents,
   });
 
@@ -97,6 +107,7 @@ export default function TechnicalChart({
         showRSI={showRsi}
         showMACD={showMacd}
         intraday={isIntraday}
+        onVisibleRangeChange={handleVisibleRangeChange}
       />
 
       {(sma20 || sma60) && (

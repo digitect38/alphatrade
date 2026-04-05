@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 import asyncpg
 import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel
 
 from app.deps import get_db, get_redis
 from app.models.strategy import (
@@ -97,6 +98,7 @@ async def api_backtest(
         slippage_rate=request.slippage_rate,
         capital_fraction=request.capital_fraction,
         max_drawdown_stop=request.max_drawdown_stop,
+        benchmark=request.benchmark,
         pool=pool,
     )
 
@@ -127,6 +129,86 @@ async def api_walk_forward(
         test_days=test_days,
         pool=pool,
     )
+
+
+class PortfolioBacktestRequest(BaseModel):
+    stock_codes: list[str]
+    initial_capital: float = 10_000_000
+    strategy: str = "ensemble"
+    interval: str = "1d"
+    start_date: str | None = None
+    end_date: str | None = None
+    allocation: str = "equal"  # "equal" = 균등 배분
+
+
+@router.post("/backtest/portfolio")
+async def api_portfolio_backtest(
+    request: PortfolioBacktestRequest,
+    pool: asyncpg.Pool = Depends(get_db),
+):
+    """Run backtest on multiple stocks with capital allocation.
+
+    Returns individual results + portfolio-level aggregated metrics.
+    """
+    import asyncio
+    n = len(request.stock_codes)
+    if n == 0:
+        return {"error": "No stock codes provided"}
+    if n > 10:
+        return {"error": "Maximum 10 stocks allowed"}
+
+    per_stock_capital = request.initial_capital / n
+
+    tasks = [
+        run_backtest(
+            stock_code=code,
+            initial_capital=per_stock_capital,
+            strategy=request.strategy,
+            interval=request.interval,
+            start_date=request.start_date,
+            end_date=request.end_date,
+            benchmark="kospi",
+            pool=pool,
+        )
+        for code in request.stock_codes
+    ]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    individual = []
+    total_final = 0.0
+    total_initial = 0.0
+    all_trades = []
+    for code, res in zip(request.stock_codes, results):
+        if isinstance(res, Exception):
+            individual.append({"stock_code": code, "error": str(res)})
+            total_final += per_stock_capital
+            total_initial += per_stock_capital
+        else:
+            individual.append({
+                "stock_code": res.stock_code,
+                "total_return": res.total_return,
+                "max_drawdown": res.max_drawdown,
+                "sharpe_ratio": res.sharpe_ratio,
+                "win_rate": res.win_rate,
+                "total_trades": res.total_trades,
+                "final_capital": res.final_capital,
+            })
+            total_final += res.final_capital
+            total_initial += res.initial_capital
+            all_trades.extend(res.trades)
+
+    portfolio_return = round((total_final / total_initial - 1) * 100, 2) if total_initial > 0 else 0.0
+
+    return {
+        "portfolio": {
+            "initial_capital": request.initial_capital,
+            "final_capital": round(total_final, 0),
+            "total_return": portfolio_return,
+            "stock_count": n,
+            "total_trades": len(all_trades),
+        },
+        "individual": individual,
+    }
 
 
 @router.get("/benchmark")

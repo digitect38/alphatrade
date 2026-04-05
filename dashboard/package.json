@@ -10,7 +10,9 @@
     "check:analysis-ui": "node scripts/check-analysis-ui.mjs"
   },
   "dependencies": {
+    "katex": "^0.16.45",
     "lightweight-charts": "^5.1.0",
+    "marked": "^17.0.6",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "recharts": "2.15.3"
