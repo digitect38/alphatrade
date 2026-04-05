@@ -65,6 +65,7 @@ const tradeFilterKeys: Record<TradeFilter, string> = {
 
 export default function BacktestPage({ t: _t }: { t: (k: string) => string }) {
   const [stockCode, setStockCode] = useState("005930");
+  const [stockName, setStockName] = useState("");
   const [strategy, setStrategy] = useState("ensemble");
   const [capital, setCapital] = useState(10000000);
   const [result, setResult] = useState<BacktestResult | null>(null);
@@ -84,8 +85,15 @@ export default function BacktestPage({ t: _t }: { t: (k: string) => string }) {
 
   // Trade filter
   const [tradeFilter, setTradeFilter] = useState<TradeFilter>("all");
+  const [errorMsg, setErrorMsg] = useState("");
 
   const runBacktest = async () => {
+    if (startDate && endDate && startDate > endDate) {
+      setErrorMsg("시작일은 종료일보다 이전이어야 합니다.");
+      return;
+    }
+    
+    setErrorMsg("");
     setLoading(true);
     setResult(null);
     try {
@@ -104,7 +112,8 @@ export default function BacktestPage({ t: _t }: { t: (k: string) => string }) {
         max_drawdown_stop: maxDrawdownStop,
       });
       setResult(res);
-    } catch (e) {
+    } catch (e: any) {
+      setErrorMsg(e.message || String(e));
       console.error(e);
     }
     setLoading(false);
@@ -169,7 +178,7 @@ export default function BacktestPage({ t: _t }: { t: (k: string) => string }) {
       <div className="card flex gap-md items-center flex-wrap">
         <StockSearch
           value={stockCode}
-          onChange={(code) => setStockCode(code)}
+          onChange={(code, name) => { setStockCode(code); if (name) setStockName(name); }}
           placeholder={_t("common.placeholder.stockCode")}
           t={_t}
         />
@@ -251,6 +260,12 @@ export default function BacktestPage({ t: _t }: { t: (k: string) => string }) {
           {loading ? _t("bt.running") : _t("bt.run")}
         </button>
       </div>
+
+      {errorMsg && (
+        <div className="card text-loss font-bold" style={{ background: "#fef2f2", padding: "12px", borderRadius: "6px" }}>
+          ⚠️ {errorMsg}
+        </div>
+      )}
 
       {/* Advanced Settings (collapsible) */}
       <div className="card">
@@ -419,7 +434,7 @@ export default function BacktestPage({ t: _t }: { t: (k: string) => string }) {
           </div>
 
           <div className="metrics-grid metrics-grid-4">
-            <MetricCard label={_t("bt.stockCode")} value={result.stock_code} />
+            <MetricCard label={_t("bt.stockCode")} value={stockName ? `${stockName} (${result.stock_code})` : result.stock_code} />
             <MetricCard label={_t("bt.strategy")} value={_t(strategyKeys[result.strategy] || "bt.ensemble")} />
             <MetricCard label={_t("bt.capital")} value={formatWon(result.initial_capital, _t)} />
             <MetricCard label={_t("bt.totalTrades")} value={`${sells.length} sells / ${result.total_trades} events`} />
