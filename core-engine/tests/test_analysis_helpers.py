@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 from datetime import datetime, timezone
 
-from app.analysis.technical import _safe_float, _generate_signals, _compute_scores
+from app.analysis.technical import _safe_float, _generate_signals, _compute_scores, _compute_indicators
 from app.models.analysis import TechnicalIndicators, TechnicalSignal
 
 
@@ -94,6 +94,26 @@ class TestGenerateSignals:
             assert bb_signals[0].signal == expected_signal
         else:
             assert len(bb_signals) == 0
+
+
+class TestComputeIndicators:
+    def test_bollinger_band_order(self):
+        close = pd.Series([100 + i for i in range(40)], dtype=float)
+        df = pd.DataFrame({
+            "time": pd.date_range("2026-01-01", periods=40, freq="D"),
+            "open": close,
+            "high": close + 2,
+            "low": close - 2,
+            "close": close,
+            "volume": pd.Series([1000] * 40, dtype=int),
+        })
+
+        indicators = _compute_indicators(df)
+
+        assert indicators.bb_upper is not None
+        assert indicators.bb_middle is not None
+        assert indicators.bb_lower is not None
+        assert indicators.bb_upper > indicators.bb_middle > indicators.bb_lower
 
     @pytest.mark.parametrize("price,sma20,expected", [
         (60000, 55000, "bullish"),

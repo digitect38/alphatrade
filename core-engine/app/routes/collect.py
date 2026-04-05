@@ -20,6 +20,9 @@ from app.services.redis_publisher import RedisPublisher
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+# Backward-compatible alias kept for existing tests/importers.
+_normalize_intraday_snapshot = normalize_intraday_snapshot
+
 
 
 async def _insert_news_records(conn, records, errors: list, sample: list) -> tuple[int, int]:

@@ -23,6 +23,9 @@ from app.utils.intraday_normalizer import normalize_intraday_snapshot
 
 logger = logging.getLogger(__name__)
 
+# Backward-compatible alias kept for existing tests/importers.
+_normalize_intraday_snapshot = normalize_intraday_snapshot
+
 
 async def run_trading_cycle(
     *,

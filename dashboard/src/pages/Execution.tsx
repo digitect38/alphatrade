@@ -42,6 +42,7 @@ export default function ExecutionPage({ t: _t }: { t: (k: string) => string }) {
   const [filter, setFilter] = useState<string>("all");
   const [reconciling, setReconciling] = useState(false);
   const [reconcileResult, setReconcileResult] = useState<Record<string, unknown> | null>(null);
+  const reconcileMismatches = Array.isArray(reconcileResult?.mismatches) ? reconcileResult.mismatches : [];
   const [quality, setQuality] = useState<ExecQuality | null>(null);
   const [summary, setSummary] = useState<DailySummary | null>(null);
 
@@ -180,9 +181,56 @@ export default function ExecutionPage({ t: _t }: { t: (k: string) => string }) {
       {reconcileResult && (
         <div className="card">
           <h3 className="card-title">{_t("exec.reconciliationResult")}</h3>
-          <pre style={{ fontSize: "12px", overflow: "auto", maxHeight: "200px", background: "#f5f5f5", padding: "12px", borderRadius: "6px" }}>
-            {JSON.stringify(reconcileResult, null, 2)}
-          </pre>
+          {reconcileResult.error ? (
+            <div className="text-loss font-bold" style={{ padding: "12px", background: "#fef2f2", borderRadius: "6px" }}>
+              {String(reconcileResult.error)}
+            </div>
+          ) : reconcileResult.status === "blocked" ? (
+            <div className="text-warning font-bold" style={{ padding: "12px", background: "#fffbeb", borderRadius: "6px" }}>
+              {String(reconcileResult.reason)}
+            </div>
+          ) : (
+            <div>
+              <div className="flex gap-md" style={{ marginBottom: "16px" }}>
+                <div className="metric-label">{_t("exec.status")}: <span className="font-bold text-profit">{String(reconcileResult.status || "success")}</span></div>
+                {reconcileMismatches.length >= 0 && (
+                  <div className="metric-label">{_t("exec.mismatches")}: <span className={`font-bold ${reconcileMismatches.length > 0 ? "text-loss" : "text-profit"}`}>{reconcileMismatches.length}</span></div>
+                )}
+              </div>
+              
+              {reconcileMismatches.length > 0 ? (
+                <table className="data-table" style={{ fontSize: "12px" }}>
+                  <thead>
+                    <tr>
+                      <th>Type</th>
+                      <th>Stock Code</th>
+                      <th>Order ID / Detail</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {reconcileMismatches.map((m: any, i: number) => (
+                      <tr key={i}>
+                        <td className="text-loss font-bold">{m.type || "-"}</td>
+                        <td>{m.stock_code || "-"}</td>
+                        <td>{m.order_id || m.status || JSON.stringify(m)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div className="text-profit font-bold" style={{ padding: "12px", background: "#f0fdf4", borderRadius: "6px" }}>
+                  {_t("exec.reconcileSuccess")}
+                </div>
+              )}
+              
+              <details style={{ marginTop: "12px", fontSize: "12px", color: "var(--text-secondary)" }}>
+                <summary style={{ cursor: "pointer" }}>{_t("exec.rawJson")}</summary>
+                <pre style={{ marginTop: "8px", overflow: "auto", maxHeight: "200px", background: "#f5f5f5", padding: "12px", borderRadius: "6px", color: "var(--text-primary)" }}>
+                  {JSON.stringify(reconcileResult, null, 2)}
+                </pre>
+              </details>
+            </div>
+          )}
         </div>
       )}
     </div>

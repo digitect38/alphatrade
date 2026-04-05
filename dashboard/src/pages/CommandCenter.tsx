@@ -41,6 +41,8 @@ export default function CommandCenterPage({ t: _t }: { t: (k: string) => string 
   const [newsItems, setNewsItems] = useState<NewsItem[]>([]);
   const [newsLoading, setNewsLoading] = useState(false);
   const [scanning, setScanning] = useState(false);
+  const [killModalOpen, setKillModalOpen] = useState(false);
+  const [killReason, setKillReason] = useState("");
 
   const openAsset = (code: string) => {
     window.location.hash = `asset/${code}`;
@@ -377,11 +379,7 @@ export default function CommandCenterPage({ t: _t }: { t: (k: string) => string 
           {!killActive ? (
             <button
               className="btn btn-sm command-strip-kill"
-              onClick={() => {
-                if (confirm(_t("command.confirmKill"))) {
-                  apiPost("/trading/kill-switch/activate").then(() => void loadData());
-                }
-              }}
+              onClick={() => setKillModalOpen(true)}
             >
               {_t("command.killSwitch")}
             </button>
@@ -621,6 +619,53 @@ export default function CommandCenterPage({ t: _t }: { t: (k: string) => string 
           </div>
         )}
       </section>
+
+      {killModalOpen && (
+        <div className="modal-overlay" onClick={() => setKillModalOpen(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: "400px" }}>
+            <div className="modal-header">
+              <h2 style={{ fontSize: "18px", color: "var(--color-danger)" }}>
+                {_t("command.killSwitch")}
+              </h2>
+              <button onClick={() => setKillModalOpen(false)} className="modal-close">
+                ✕
+              </button>
+            </div>
+            <div style={{ marginBottom: "16px", fontSize: "14px" }}>
+              <p style={{ marginBottom: "12px", lineHeight: 1.5 }}>
+                진행 중인 미체결 주문이 모두 취소되며, 신규 주문이 전면 차단됩니다.<br/>
+                현재 보유 중인 포지션은 그대로 유지됩니다.
+              </p>
+              <label style={{ display: "block", marginBottom: "6px", fontSize: "12px", color: "var(--text-secondary)", fontWeight: "bold" }}>중단 사유 (필수)</label>
+              <input 
+                type="text" 
+                className="input" 
+                style={{ width: "100%" }} 
+                value={killReason}
+                onChange={(e) => setKillReason(e.target.value)}
+                placeholder="예: API 연동 장애, 시장 급락, 수동 점검 등"
+                autoFocus
+              />
+            </div>
+            <div className="flex gap-sm justify-end">
+              <button className="btn" onClick={() => setKillModalOpen(false)}>취소</button>
+              <button 
+                className="btn btn-danger" 
+                disabled={!killReason.trim()}
+                onClick={() => {
+                  apiPost(`/trading/kill-switch/activate?reason=${encodeURIComponent(killReason)}`).then(() => {
+                    setKillModalOpen(false);
+                    setKillReason("");
+                    void loadData();
+                  });
+                }}
+              >
+                차단 실행
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

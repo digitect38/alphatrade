@@ -110,9 +110,10 @@ def _compute_indicators(df: pd.DataFrame) -> TechnicalIndicators:
         macd=_safe_float(macd_df.iloc[last, 0]) if macd_df is not None and len(macd_df) > last else None,
         macd_signal=_safe_float(macd_df.iloc[last, 1]) if macd_df is not None and len(macd_df) > last else None,
         macd_hist=_safe_float(macd_df.iloc[last, 2]) if macd_df is not None and len(macd_df) > last else None,
-        bb_upper=_safe_float(bb_df.iloc[last, 0]) if bb_df is not None and len(bb_df) > last else None,
+        # pandas-ta returns Bollinger columns in BBL, BBM, BBU order.
+        bb_upper=_safe_float(bb_df.iloc[last, 2]) if bb_df is not None and len(bb_df) > last else None,
         bb_middle=_safe_float(bb_df.iloc[last, 1]) if bb_df is not None and len(bb_df) > last else None,
-        bb_lower=_safe_float(bb_df.iloc[last, 2]) if bb_df is not None and len(bb_df) > last else None,
+        bb_lower=_safe_float(bb_df.iloc[last, 0]) if bb_df is not None and len(bb_df) > last else None,
         ichimoku_tenkan=_safe_float(ich.iloc[last, 0]) if ich is not None and len(ich) > last else None,
         ichimoku_kijun=_safe_float(ich.iloc[last, 1]) if ich is not None and len(ich) > last else None,
         # Momentum

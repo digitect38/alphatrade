@@ -100,7 +100,7 @@ async def get_latest_ohlcv(
     pool: asyncpg.Pool = Depends(get_db),
     stock_code: str = Query(...),
     interval: str = Query(default="1d"),
-    limit: int = Query(default=30, le=500),
+    limit: int = Query(default=30, le=3000),
 ):
     """Get latest OHLCV records for a stock."""
     async with pool.acquire() as conn:

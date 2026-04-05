@@ -2,7 +2,7 @@ import logging
 
 import asyncpg
 import redis.asyncio as aioredis
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 
 from app.config import settings
 from app.deps import get_db, get_redis, get_kis_client, get_naver_client, get_broker, get_risk_manager, get_notifier, get_trading_guard
@@ -86,12 +86,14 @@ async def api_trading_status(pool: asyncpg.Pool = Depends(get_db)):
 
 @router.post("/kill-switch/activate")
 async def api_kill_switch_activate(
+    reason: str | None = Query(default=None),
     guard: TradingGuard = Depends(get_trading_guard),
     notifier: NotificationService = Depends(get_notifier),
 ):
     """Activate kill switch — blocks ALL new orders immediately."""
-    await guard.activate_kill_switch("수동 활성화 (operator)")
-    await notifier.alert("🚨 [킬 스위치 활성화] 수동 조작으로 모든 신규 주문이 차단되었습니다.")
+    activate_reason = f"수동 활성화: {reason}" if reason else "수동 활성화 (operator)"
+    await guard.activate_kill_switch(activate_reason)
+    await notifier.alert(f"🚨 [킬 스위치 활성화] {activate_reason} — 모든 신규 주문 차단")
     return {"status": "activated", "message": "킬 스위치 활성화 — 모든 신규 주문 차단"}
 
 
