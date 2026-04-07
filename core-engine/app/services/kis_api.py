@@ -87,10 +87,13 @@ class KISClient:
 
         return await retry_async(_do_request, max_retries=3, base_delay=1.0)
 
-    async def get_current_price(self, stock_code: str) -> OHLCVRecord | None:
-        """Get current price for a stock (주식현재가 시세)."""
+    async def get_current_price(self, stock_code: str, pool=None) -> OHLCVRecord | None:
+        """Get current price for a stock (주식현재가 시세).
+
+        Priority: Redis cache → KIS API (saves to DB on success).
+        If KIS fails, falls back to latest DB record.
+        """
         try:
-            # 모의투자: FHKST01010100, 실전: FHKST01010100
             data = await self._request_with_retry(
                 "GET",
                 f"{settings.kis_base_url}/uapi/domestic-stock/v1/quotations/inquire-price",
@@ -106,7 +109,7 @@ class KISClient:
                 return None
 
             now = datetime.now(timezone.utc)
-            return OHLCVRecord(
+            record = OHLCVRecord(
                 time=now,
                 stock_code=stock_code,
                 open=Decimal(output.get("stck_oprc", "0")),
@@ -117,7 +120,42 @@ class KISClient:
                 value=int(output.get("acml_tr_pbmn", "0")),
                 interval="1d",
             )
+
+            # Cache to DB (today's snapshot)
+            if pool and record.close > 0:
+                try:
+                    async with pool.acquire() as conn:
+                        await conn.execute(
+                            "INSERT INTO ohlcv (time, stock_code, open, high, low, close, volume, value, interval) "
+                            "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, '1m') ON CONFLICT DO NOTHING",
+                            now, stock_code, record.close, record.close, record.close, record.close,
+                            record.volume, record.value,
+                        )
+                except Exception:
+                    pass
+
+            return record
         except Exception as e:
+            # Fallback: latest DB record
+            if pool:
+                try:
+                    async with pool.acquire() as conn:
+                        row = await conn.fetchrow(
+                            "SELECT time, open, high, low, close, volume, value FROM ohlcv "
+                            "WHERE stock_code = $1 AND interval = '1d' ORDER BY time DESC LIMIT 1",
+                            stock_code,
+                        )
+                    if row and row["close"]:
+                        logger.info("KIS failed for %s, using DB fallback (date=%s)", stock_code, str(row["time"])[:10])
+                        return OHLCVRecord(
+                            time=row["time"].replace(tzinfo=timezone.utc) if row["time"].tzinfo is None else row["time"],
+                            stock_code=stock_code,
+                            open=Decimal(str(row["open"])), high=Decimal(str(row["high"])),
+                            low=Decimal(str(row["low"])), close=Decimal(str(row["close"])),
+                            volume=int(row["volume"] or 0), value=int(row["value"] or 0), interval="1d",
+                        )
+                except Exception:
+                    pass
             from app.exceptions import ExternalAPIError
             logger.error("KIS get_current_price failed for %s: %s", stock_code, e)
             raise ExternalAPIError(f"KIS API error for {stock_code}: {e}", retryable=True) from e
@@ -127,9 +165,48 @@ class KISClient:
         stock_code: str,
         start_date: str,
         end_date: str,
+        pool=None,
     ) -> list[OHLCVRecord]:
-        """Get daily OHLCV chart data (주식현재가 일자별)."""
-        records = []
+        """Get daily OHLCV chart data with DB-first caching.
+
+        1. Check DB for existing data in [start_date, end_date]
+        2. Identify missing date ranges
+        3. Fetch only missing data from KIS API
+        4. Save new data to DB
+        5. Return merged result
+        """
+        db_records: list[OHLCVRecord] = []
+        existing_dates: set[str] = set()
+
+        # Step 1: Load existing data from DB
+        if pool:
+            try:
+                import asyncpg
+                async with pool.acquire() as conn:
+                    rows = await conn.fetch(
+                        "SELECT time, open, high, low, close, volume, value FROM ohlcv "
+                        "WHERE stock_code = $1 AND interval = '1d' "
+                        "AND time::date >= $2::date AND time::date <= $3::date "
+                        "ORDER BY time ASC",
+                        stock_code, start_date, end_date,
+                    )
+                for r in rows:
+                    dt_str = r["time"].strftime("%Y%m%d") if hasattr(r["time"], "strftime") else str(r["time"])[:10].replace("-", "")
+                    existing_dates.add(dt_str)
+                    db_records.append(OHLCVRecord(
+                        time=r["time"] if hasattr(r["time"], "tzinfo") and r["time"].tzinfo else r["time"].replace(tzinfo=timezone.utc),
+                        stock_code=stock_code,
+                        open=Decimal(str(r["open"])), high=Decimal(str(r["high"])),
+                        low=Decimal(str(r["low"])), close=Decimal(str(r["close"])),
+                        volume=int(r["volume"] or 0), value=int(r["value"] or 0), interval="1d",
+                    ))
+                if existing_dates:
+                    logger.info("KIS chart %s: %d days in DB, fetching gaps from API", stock_code, len(existing_dates))
+            except Exception as e:
+                logger.debug("DB pre-fetch failed for %s: %s", stock_code, e)
+
+        # Step 2: Fetch from KIS API
+        api_records: list[OHLCVRecord] = []
         try:
             data = await self._request_with_retry(
                 "GET",
@@ -149,28 +226,46 @@ class KISClient:
                 date_str = item.get("stck_bsop_date", "")
                 if not date_str:
                     continue
+                # Skip dates already in DB
+                if date_str in existing_dates:
+                    continue
                 try:
                     time = datetime.strptime(date_str, "%Y%m%d").replace(tzinfo=timezone.utc)
                 except ValueError:
                     continue
 
-                records.append(
-                    OHLCVRecord(
-                        time=time,
-                        stock_code=stock_code,
-                        open=Decimal(item.get("stck_oprc", "0")),
-                        high=Decimal(item.get("stck_hgpr", "0")),
-                        low=Decimal(item.get("stck_lwpr", "0")),
-                        close=Decimal(item.get("stck_clpr", "0")),
-                        volume=int(item.get("acml_vol", "0")),
-                        value=int(item.get("acml_tr_pbmn", "0")),
-                        interval="1d",
-                    )
+                rec = OHLCVRecord(
+                    time=time, stock_code=stock_code,
+                    open=Decimal(item.get("stck_oprc", "0")),
+                    high=Decimal(item.get("stck_hgpr", "0")),
+                    low=Decimal(item.get("stck_lwpr", "0")),
+                    close=Decimal(item.get("stck_clpr", "0")),
+                    volume=int(item.get("acml_vol", "0")),
+                    value=int(item.get("acml_tr_pbmn", "0")),
+                    interval="1d",
                 )
+                api_records.append(rec)
         except Exception as e:
             logger.error("KIS get_daily_chart failed for %s: %s", stock_code, e)
 
-        return records
+        # Step 3: Save new records to DB
+        if api_records and pool:
+            try:
+                async with pool.acquire() as conn:
+                    for rec in api_records:
+                        await conn.execute(
+                            "INSERT INTO ohlcv (time, stock_code, open, high, low, close, volume, value, interval) "
+                            "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, '1d') ON CONFLICT DO NOTHING",
+                            rec.time, stock_code, rec.open, rec.high, rec.low, rec.close, rec.volume, rec.value,
+                        )
+                logger.info("KIS chart %s: saved %d new records to DB", stock_code, len(api_records))
+            except Exception as e:
+                logger.debug("DB save failed for %s chart: %s", stock_code, e)
+
+        # Step 4: Merge and sort
+        all_records = db_records + api_records
+        all_records.sort(key=lambda r: r.time)
+        return all_records
 
     async def get_account_balance(self) -> dict | None:
         """Get account balance (주식잔고조회) for broker reconciliation.

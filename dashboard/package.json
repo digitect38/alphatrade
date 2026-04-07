@@ -12,6 +12,7 @@
   "dependencies": {
     "@types/dompurify": "^3.0.5",
     "dompurify": "^3.3.3",
+    "highlight.js": "^11.11.1",
     "katex": "^0.16.45",
     "lightweight-charts": "^5.1.0",
     "marked": "^17.0.6",

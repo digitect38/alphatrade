@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 
 import asyncpg
 import httpx
+from bs4 import BeautifulSoup
 from fastapi import APIRouter, Depends, Query
 
 from app.deps import get_db
@@ -17,7 +18,14 @@ _NAVER_INDEX_URLS = {
     "KOSDAQ": "https://polling.finance.naver.com/api/realtime?query=SERVICE_INDEX:KOSDAQ",
 }
 
+_YAHOO_SYMBOLS = {
+    "NASDAQ": "%5EIXIC",
+    "DOW": "%5EDJI",
+    "BTC/USD": "BTC-USD",
+}
+
 _NAVER_FX_URL = "https://m.stock.naver.com/front-api/marketIndex/prices?category=exchange&reutersCode=FX_USDKRW"
+_NAVER_FX_DAILY_URL = "https://finance.naver.com/marketindex/exchangeDailyQuote.naver?marketindexCd=FX_USDKRW&page={page}"
 
 
 def _to_number(text: str) -> float:
@@ -291,7 +299,29 @@ async def api_realtime_indexes(
                 "updated_at": None, "error": str(exc),
             }
 
+    async def _safe_fetch_yahoo(name: str, symbol: str) -> dict:
+        try:
+            url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=1d&range=1d"
+            headers = {"User-Agent": "Mozilla/5.0 (compatible; AlphaTrade/1.0)"}
+            async with httpx.AsyncClient(timeout=10, headers=headers) as client:
+                resp = await client.get(url)
+                resp.raise_for_status()
+            meta = resp.json()["chart"]["result"][0]["meta"]
+            price = float(meta.get("regularMarketPrice", 0))
+            prev = float(meta.get("chartPreviousClose", 0))
+            change = round(price - prev, 2) if prev else 0.0
+            change_pct = round((price / prev - 1) * 100, 2) if prev else 0.0
+            return {
+                "name": name, "price": price, "change": change, "change_pct": change_pct,
+                "open": 0.0, "high": 0.0, "low": 0.0,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }
+        except Exception as exc:
+            logger.error("Yahoo fetch failed for %s: %s", name, exc)
+            return {"name": name, "price": 0.0, "change": 0.0, "change_pct": 0.0, "updated_at": None, "error": str(exc)}
+
     tasks = [_safe_fetch_index(name, url) for name, url in _NAVER_INDEX_URLS.items()]
+    tasks.extend([_safe_fetch_yahoo(name, sym) for name, sym in _YAHOO_SYMBOLS.items()])
     tasks.append(_safe_fetch_fx())
 
     indexes = await _asyncio.gather(*tasks)
@@ -306,6 +336,108 @@ async def api_realtime_indexes(
             pass
 
     return result
+
+
+_INDEX_RANGE_LIMITS = {
+    "1M": 22,
+    "3M": 66,
+    "1Y": 260,
+    "MAX": 1500,
+}
+
+
+@router.get("/chart")
+async def api_index_chart(
+    name: str = Query(...),
+    range: str = Query(default="3M"),
+    pool: asyncpg.Pool = Depends(get_db),
+):
+    """Return historical daily chart points for a market index."""
+    limit = _INDEX_RANGE_LIMITS.get(range.upper(), _INDEX_RANGE_LIMITS["3M"])
+    if name == "USD/KRW":
+        points = await _fetch_fx_history(limit)
+        return {
+            "name": name,
+            "range": range.upper(),
+            "points": points,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT DISTINCT ON (time::date) time, open, high, low, close, volume
+            FROM ohlcv
+            WHERE stock_code = $1 AND interval = '1d'
+            ORDER BY time::date DESC, time DESC
+            LIMIT $2
+            """,
+            name,
+            limit,
+        )
+
+    points = [
+        {
+            "time": row["time"].isoformat(),
+            "open": float(row["open"]) if row["open"] else 0.0,
+            "high": float(row["high"]) if row["high"] else 0.0,
+            "low": float(row["low"]) if row["low"] else 0.0,
+            "close": float(row["close"]) if row["close"] else 0.0,
+            "volume": int(row["volume"]) if row["volume"] else 0,
+        }
+        for row in reversed(list(rows))
+    ]
+    return {
+        "name": name,
+        "range": range.upper(),
+        "points": points,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+async def _fetch_fx_history(limit: int) -> list[dict]:
+    """Fetch recent USD/KRW daily history from Naver Finance daily quote pages."""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
+        "Referer": "https://finance.naver.com/",
+    }
+    points: list[dict] = []
+    pages = max(1, min(10, (limit + 9) // 10))
+    async with httpx.AsyncClient(timeout=10, headers=headers, follow_redirects=True) as client:
+        for page in range(1, pages + 1):
+            response = await client.get(_NAVER_FX_DAILY_URL.format(page=page))
+            response.raise_for_status()
+            soup = BeautifulSoup(response.text, "lxml")
+            rows = soup.select("table tbody tr")
+            for row in rows:
+                cols = [col.get_text(" ", strip=True) for col in row.select("td")]
+                if len(cols) < 2:
+                    continue
+                date_text = cols[0].replace(".", "-").replace(" ", "")
+                close_text = cols[1]
+                if not date_text or not close_text:
+                    continue
+                try:
+                    close = _to_number(close_text)
+                    if close <= 0:
+                        continue
+                    iso_time = f"{date_text}T00:00:00+09:00"
+                except Exception:
+                    continue
+                points.append({
+                    "time": iso_time,
+                    "open": close,
+                    "high": close,
+                    "low": close,
+                    "close": close,
+                    "volume": 0,
+                })
+                if len(points) >= limit:
+                    break
+            if len(points) >= limit:
+                break
+    points.reverse()
+    return points
 
 
 async def _fetch_fx_rate() -> dict:

@@ -22,9 +22,14 @@ SECRET_KEYS = {"anthropic_api_key", "openai_api_key", "telegram_bot_token"}
 SETTINGS_SCHEMA: dict[str, dict] = {
     "llm_provider": {"label": "LLM Provider", "type": "select", "options": ["anthropic", "openai"], "default": "anthropic", "group": "llm"},
     "anthropic_api_key": {"label": "Anthropic API Key", "type": "secret", "default": "", "group": "llm"},
-    "anthropic_model": {"label": "Anthropic Model", "type": "select", "options": ["claude-haiku-4-5-20251001", "claude-sonnet-4-5-20241022", "claude-sonnet-4-6"], "default": "claude-haiku-4-5-20251001", "group": "llm"},
+    "anthropic_model": {"label": "Anthropic Model", "type": "select", "options": [
+        "claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5-20251001",
+        "claude-sonnet-4-5-20241022", "claude-opus-4-0-20250514",
+    ], "default": "claude-opus-4-6", "group": "llm"},
     "openai_api_key": {"label": "OpenAI API Key", "type": "secret", "default": "", "group": "llm"},
-    "openai_model": {"label": "OpenAI Model", "type": "select", "options": ["gpt-4o-mini", "gpt-4o", "gpt-4.1-mini", "gpt-4.1"], "default": "gpt-4o-mini", "group": "llm"},
+    "openai_model": {"label": "OpenAI Model", "type": "select", "options": [
+        "gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano", "gpt-4.1", "gpt-4.1-mini", "gpt-4o", "gpt-4o-mini",
+    ], "default": "gpt-5.4", "group": "llm"},
     "telegram_bot_token": {"label": "Telegram Bot Token", "type": "secret", "default": "", "group": "telegram"},
     "telegram_chat_id": {"label": "Telegram Chat ID", "type": "text", "default": "", "group": "telegram"},
 }
@@ -102,3 +107,30 @@ async def api_put_settings(
 async def api_settings_schema():
     """Get the settings schema (for building the UI form)."""
     return {"schema": SETTINGS_SCHEMA}
+
+
+@router.get("/llm-models")
+async def api_llm_models():
+    """Get available LLM models for each provider.
+
+    This endpoint can be extended to fetch models dynamically from provider APIs.
+    For now returns a curated list of latest models.
+    """
+    return {
+        "anthropic": [
+            {"id": "claude-opus-4-6", "name": "Claude Opus 4.6", "tier": "flagship", "context": "1M"},
+            {"id": "claude-sonnet-4-6", "name": "Claude Sonnet 4.6", "tier": "balanced", "context": "200K"},
+            {"id": "claude-haiku-4-5-20251001", "name": "Claude Haiku 4.5", "tier": "fast", "context": "200K"},
+            {"id": "claude-sonnet-4-5-20241022", "name": "Claude Sonnet 4.5", "tier": "legacy", "context": "200K"},
+            {"id": "claude-opus-4-0-20250514", "name": "Claude Opus 4.0", "tier": "legacy", "context": "200K"},
+        ],
+        "openai": [
+            {"id": "gpt-5.4", "name": "GPT-5.4", "tier": "flagship", "context": "1.05M", "api": "responses"},
+            {"id": "gpt-5.4-mini", "name": "GPT-5.4 Mini", "tier": "balanced", "context": "1.05M", "api": "responses"},
+            {"id": "gpt-5.4-nano", "name": "GPT-5.4 Nano", "tier": "fast", "context": "1.05M", "api": "responses"},
+            {"id": "gpt-4.1", "name": "GPT-4.1", "tier": "balanced", "context": "1M", "api": "chat"},
+            {"id": "gpt-4.1-mini", "name": "GPT-4.1 Mini", "tier": "fast", "context": "1M", "api": "chat"},
+            {"id": "gpt-4o", "name": "GPT-4o", "tier": "legacy", "context": "128K", "api": "chat"},
+            {"id": "gpt-4o-mini", "name": "GPT-4o Mini", "tier": "legacy", "context": "128K", "api": "chat"},
+        ],
+    }

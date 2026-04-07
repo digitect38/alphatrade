@@ -114,6 +114,37 @@ async def lifespan(app: FastAPI):
         import logging
         logging.getLogger(__name__).error("Telegram bot startup failed: %s", e)
 
+    # Start periodic alert scan (every 10 minutes during market hours)
+    alert_scan_task = None
+    try:
+        async def _alert_scan_loop():
+            import logging as _log
+            _logger = _log.getLogger("app.alert_scanner")
+            from app.utils.market_calendar import KST, MarketSession, get_current_session
+            from app.services.notification import NotificationService
+            from app.routes.alert import _detect_news_surge, _detect_price_moves, _detect_recent_disclosures, _format_alert_message
+            notifier = NotificationService()
+            while True:
+                await asyncio.sleep(600)  # 10 minutes
+                try:
+                    session, _ = get_current_session()
+                    if session != MarketSession.REGULAR:
+                        continue
+                    alerts = []
+                    alerts.extend(await _detect_news_surge(db_pool))
+                    alerts.extend(await _detect_recent_disclosures(db_pool))
+                    if alerts:
+                        msg = _format_alert_message(alerts)
+                        if msg:
+                            await notifier.send_telegram(msg)
+                            _logger.info("Alert scan sent: %d items", len(alerts))
+                except Exception as e:
+                    _logger.error("Alert scan failed: %s", e)
+        alert_scan_task = asyncio.create_task(_alert_scan_loop())
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error("Alert scanner startup failed: %s", e)
+
     yield
 
     # Shutdown background tasks
@@ -125,6 +156,8 @@ async def lifespan(app: FastAPI):
         market_poll_task.cancel()
     if telegram_poll_task:
         telegram_poll_task.cancel()
+    if alert_scan_task:
+        alert_scan_task.cancel()
 
     # Shutdown
     await app.state.notifier.close()

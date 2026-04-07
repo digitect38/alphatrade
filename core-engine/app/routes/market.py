@@ -28,7 +28,7 @@ async def _fetch_stock_price(kis_client: KISClient, pool: asyncpg.Pool, row: dic
     base = {"stock_code": code, "stock_name": row["stock_name"], "sector": row["sector"]}
 
     try:
-        current = await kis_client.get_current_price(code)
+        current = await kis_client.get_current_price(code, pool=pool)
 
         async with pool.acquire() as conn:
             prev = await conn.fetchrow(
@@ -72,10 +72,16 @@ async def _attach_news_counts(pool: asyncpg.Pool, results: list[dict]):
 @router.get("/prices")
 async def api_market_prices(
     pool: asyncpg.Pool = Depends(get_db),
+    redis: aioredis.Redis = Depends(get_redis),
     kis_client: KISClient = Depends(get_kis_client),
 ):
-    """Get real-time prices for all universe stocks."""
+    """Get real-time prices for all universe stocks.
+
+    Uses Redis-cached market state (updated by poller every 60s) for instant response.
+    Falls back to KIS API only for stocks missing from cache.
+    """
     now = datetime.now(timezone.utc)
+    cache = MarketStateCache(redis)
 
     async with pool.acquire() as conn:
         stocks = await conn.fetch(
@@ -87,7 +93,33 @@ async def api_market_prices(
             """
         )
 
-    results = [await _fetch_stock_price(kis_client, pool, row) for row in stocks]
+    results = []
+    uncached = []
+    for row in stocks:
+        code = row["stock_code"]
+        state = await cache.get_stock_state(code)
+        if state and float(state.get("price", 0)) > 0:
+            results.append({
+                "stock_code": code,
+                "stock_name": row["stock_name"],
+                "sector": row["sector"],
+                "price": float(state["price"]),
+                "open": float(state.get("open", 0)),
+                "high": float(state.get("high", 0)),
+                "low": float(state.get("low", 0)),
+                "prev_close": float(state.get("prev_close", 0)),
+                "change": float(state.get("change", 0)),
+                "change_pct": float(state.get("change_pct", 0)),
+                "volume": int(float(state.get("volume", 0))),
+                "news_count": 0,
+            })
+        else:
+            uncached.append(row)
+
+    # Fetch uncached stocks from KIS API (limited to avoid timeout)
+    for row in uncached[:10]:
+        results.append(await _fetch_stock_price(kis_client, pool, row))
+
     results.sort(key=lambda x: x.get("change_pct", 0), reverse=True)
     await _attach_news_counts(pool, results)
 

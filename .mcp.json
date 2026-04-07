@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "alphatrade": {
+      "command": "node",
+      "args": ["/Users/woosj/DevelopMac/alpha_trade/mcp-server/index.mjs"],
+      "env": {
+        "ALPHATRADE_API": "http://localhost:8000"
+      }
+    }
+  }
+}

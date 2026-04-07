@@ -611,7 +611,10 @@ export default function AssetDetailPage({ t, route }: { t: (k: string) => string
         <div className="card asset-chart-card">
           <div className="asset-section-header">
             <div>
-              <h3 className="card-title">{currentOverview?.stock_name || stockCode} ({stockCode}) — {t("asset.chart")}</h3>
+              <h3 className="card-title">
+                {currentOverview?.stock_name || stockCode} ({stockCode}) — {t("asset.chart")}
+                <span className="live-dot" title="Live" />
+              </h3>
               <div className="asset-chart-note">
                 {compareCode && chartMode === "line" ? t("asset.compareModeNote")
                   : dataQuality === "snapshot" ? t("asset.intradayLineNote")

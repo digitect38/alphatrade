@@ -138,7 +138,7 @@ class PortfolioBacktestRequest(BaseModel):
     interval: str = "1d"
     start_date: str | None = None
     end_date: str | None = None
-    allocation: str = "equal"  # "equal" = 균등 배분
+    allocation: str = "equal"  # currently only "equal" is supported
 
 
 @router.post("/backtest/portfolio")

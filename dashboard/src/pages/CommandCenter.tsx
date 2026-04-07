@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import DirectionValue from "../components/DirectionValue";
+import { LightweightChart } from "../components/charts";
 import { apiGet, apiPost } from "../hooks/useApi";
 import { useWebSocket } from "../hooks/useWebSocket";
 import { toNum, formatSigned, formatNumber, formatCompact, formatDateTime, summarizeDetails } from "../lib/formatting";
@@ -25,6 +26,20 @@ interface IncidentItem {
   action: string;
 }
 
+interface IndexChartResponse {
+  name: string;
+  range: string;
+  points: Array<{
+    time: string;
+    open: number;
+    high: number;
+    low: number;
+    close: number;
+    volume: number;
+  }>;
+  updated_at: string;
+}
+
 // MarketIndex imported from types.ts
 
 // Status constants imported from lib/statusMapping.ts
@@ -37,12 +52,18 @@ export default function CommandCenterPage({ t: _t }: { t: (k: string) => string 
   const [marketIndexes, setMarketIndexes] = useState<MarketIndex[]>([]);
   const [orders, setOrders] = useState<OrderHistoryItem[]>([]);
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
+  const [selectedIndex, setSelectedIndex] = useState<string | null>(null);
+  const [indexRange, setIndexRange] = useState<"1M" | "3M" | "1Y" | "MAX">("3M");
+  const [indexChart, setIndexChart] = useState<IndexChartResponse | null>(null);
+  const [indexChartLoading, setIndexChartLoading] = useState(false);
   const [selectedLane, setSelectedLane] = useState<CandidateLane>("eligible");
+  const [latestNews, setLatestNews] = useState<NewsItem[]>([]);
   const [newsItems, setNewsItems] = useState<NewsItem[]>([]);
   const [newsLoading, setNewsLoading] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [killModalOpen, setKillModalOpen] = useState(false);
   const [killReason, setKillReason] = useState("");
+  const activeIndex = selectedIndex ?? marketIndexes[0]?.name ?? null;
 
   const openAsset = (code: string) => {
     window.location.hash = `asset/${code}`;
@@ -79,22 +100,43 @@ export default function CommandCenterPage({ t: _t }: { t: (k: string) => string 
 
   const loadData = async () => {
     try {
-      const [moversData, ksData, healthData, orderData, indexData] = await Promise.all([
+      const [moversData, ksData, healthData, orderData, indexData, newsData] = await Promise.all([
         apiGet<{ movers: Mover[] }>("/market/movers?limit=20"),
         apiGet<KillSwitchStatus>("/trading/kill-switch/status"),
         apiGet<HealthStatus>("/health"),
         apiGet<OrderHistoryItem[]>("/order/history?limit=50"),
         apiGet<{ indexes: MarketIndex[] }>("/index/realtime"),
+        apiGet<NewsItem[]>("/market/news/all?limit=15"),
       ]);
       setMovers(moversData.movers || []);
       setKillStatus(ksData);
       setHealth(healthData);
       setOrders(orderData || []);
       setMarketIndexes(indexData.indexes || []);
+      setLatestNews(newsData || []);
     } catch {
       // keep previous state on transient failures
     }
   };
+
+  useEffect(() => {
+    if (!activeIndex) return;
+    let cancelled = false;
+    setIndexChartLoading(true);
+    apiGet<IndexChartResponse>(`/index/chart?name=${encodeURIComponent(activeIndex)}&range=${indexRange}`)
+      .then((data) => {
+        if (!cancelled) setIndexChart(data);
+      })
+      .catch(() => {
+        if (!cancelled) setIndexChart(null);
+      })
+      .finally(() => {
+        if (!cancelled) setIndexChartLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeIndex, indexRange]);
 
   const runEventScan = async () => {
     setScanning(true);
@@ -398,9 +440,29 @@ export default function CommandCenterPage({ t: _t }: { t: (k: string) => string 
         </div>
       </section>
 
-      <section className="command-index-grid">
+      <nav className="command-jump-bar">
+        {[
+          { id: "cmd-indexes", label: _t("command.jumpIndexes") },
+          { id: "cmd-news", label: _t("command.jumpNews") },
+          { id: "cmd-pulse", label: _t("command.jumpPulse") },
+          { id: "cmd-movers", label: _t("command.jumpMovers") },
+          { id: "cmd-candidates", label: _t("command.jumpCandidates") },
+          { id: "cmd-detail", label: _t("command.jumpDetail") },
+        ].map((tab) => (
+          <button key={tab.id} className="command-jump-btn" onClick={() => document.getElementById(tab.id)?.scrollIntoView({ behavior: "smooth", block: "start" })}>
+            {tab.label}
+          </button>
+        ))}
+      </nav>
+
+      <section id="cmd-indexes" className="command-index-grid">
         {marketIndexes.map((item) => (
-          <div key={item.name} className="card command-index-card">
+          <button
+            key={item.name}
+            type="button"
+            className={`card command-index-card ${activeIndex === item.name ? "is-selected" : ""}`}
+            onClick={() => setSelectedIndex(item.name)}
+          >
             <div className="command-index-top">
               <span className="command-index-name">{item.name}</span>
               <span className="text-secondary">{item.updated_at ? formatDateTime(item.updated_at) : "-"}</span>
@@ -415,11 +477,68 @@ export default function CommandCenterPage({ t: _t }: { t: (k: string) => string 
               <span>{_t("command.indexHigh")} {formatNumber(item.high)}</span>
               <span>{_t("command.indexLow")} {formatNumber(item.low)}</span>
             </div>
-          </div>
+          </button>
         ))}
       </section>
 
-      <section className="command-pulse-grid">
+      {activeIndex && (
+        <section className="card command-panel command-index-chart-card">
+          <div className="command-panel-header">
+            <div>
+              <h3 className="card-title">{activeIndex} 차트</h3>
+              <p className="command-panel-subtitle">
+                커맨드 센터에서 선택한 지수의 최근 흐름입니다.
+                {" "}
+                <strong>{indexRange}</strong>
+                {indexChart?.points?.length ? ` · ${indexChart.points.length}개 포인트` : ""}
+              </p>
+            </div>
+            <div className="flex gap-sm items-center" style={{ flexWrap: "wrap" }}>
+              {(["1M", "3M", "1Y", "MAX"] as const).map((rangeKey) => (
+                <button
+                  key={rangeKey}
+                  type="button"
+                  className={`btn btn-sm ${indexRange === rangeKey ? "btn-primary" : ""}`}
+                  onClick={() => setIndexRange(rangeKey)}
+                >
+                  {rangeKey}
+                </button>
+              ))}
+            </div>
+          </div>
+          {indexChartLoading ? (
+            <div className="command-empty">지수 차트를 불러오는 중...</div>
+          ) : indexChart?.points?.length ? (
+            <LightweightChart
+              data={indexChart.points}
+              mode="line"
+              volume={false}
+              height={280}
+              showMA20={false}
+              showMA50={false}
+            />
+          ) : (
+            <div className="command-empty">표시할 지수 히스토리 데이터가 없습니다.</div>
+          )}
+        </section>
+      )}
+
+      {latestNews.length > 0 && (
+        <section id="cmd-news" className="card command-panel">
+          <h3 className="card-title">{_t("command.latestNews")}</h3>
+          <div className="command-news-list">
+            {latestNews.map((n, i) => (
+              <a key={i} className="command-news-item" href={n.url || "#"} target="_blank" rel="noopener noreferrer">
+                <span className="command-news-time">{n.time?.slice(5, 16).replace("T", " ")}</span>
+                <span className="command-news-title">{n.title}</span>
+                <span className="command-news-source">{n.source}</span>
+              </a>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <section id="cmd-pulse" className="command-pulse-grid">
         {pulse.map((item) => (
           <button key={item.title} className={`command-pulse-card tone-${item.tone}`} onClick={item.onClick}>
             <span className="command-pulse-title">{item.title}</span>
@@ -429,7 +548,7 @@ export default function CommandCenterPage({ t: _t }: { t: (k: string) => string 
         ))}
       </section>
 
-      <section className="command-main-grid">
+      <section id="cmd-movers" className="command-main-grid">
         <div className="card command-panel">
           <div className="command-panel-header">
             <div>
@@ -501,7 +620,7 @@ export default function CommandCenterPage({ t: _t }: { t: (k: string) => string 
         </div>
       </section>
 
-      <section className="card command-panel">
+      <section id="cmd-candidates" className="card command-panel">
         <div className="command-panel-header">
           <div>
             <h3 className="card-title">{_t("command.candidateLanes")}</h3>
@@ -547,7 +666,7 @@ export default function CommandCenterPage({ t: _t }: { t: (k: string) => string 
         </div>
       </section>
 
-      <section className="card command-panel">
+      <section id="cmd-detail" className="card command-panel">
         <div className="command-panel-header">
           <div>
             <h3 className="card-title">{_t("command.selectedDetail")}</h3>

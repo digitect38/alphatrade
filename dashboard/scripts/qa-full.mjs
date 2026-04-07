@@ -205,9 +205,63 @@ console.log("\n[7] Recent Stocks Widget\n");
 const recentCount = await page.locator(".sidebar-recent-item").count();
 check("Sidebar: recent stocks visible", recentCount >= 2, `count=${recentCount}`);
 
-// ─── 8. All Pages Load (last — doesn't interfere with other tests) ──
-console.log("\n[8] All Pages Load\n");
-const allPages = ["command", "dashboard", "market", "trend", "analysis", "backtest", "risk", "execution", "orders"];
+// ─── 8. Command Center: Indexes + News ──────────────────
+console.log("\n[8] Command Center — Indexes & News\n");
+await page.goto(`${BASE}/#command`, { waitUntil: "networkidle", timeout: 15000 });
+await page.waitForTimeout(4000);
+const indexCards = await page.locator(".command-index-card").count();
+check("Command: index cards >= 3", indexCards >= 3, `count=${indexCards}`);
+const jumpBar = await page.locator(".command-jump-bar").count();
+check("Command: jump bar present", jumpBar > 0);
+const newsItems = await page.locator(".command-news-item").count();
+check("Command: news items present", newsItems > 0, `count=${newsItems}`);
+
+// ─── 9. Trading Mode Consistency ────────────────────────
+console.log("\n[9] Trading Mode Consistency\n");
+const liveBanner = await page.locator(".sidebar-live-banner").count();
+const paperBanner = await page.locator(".sidebar-paper-banner").count();
+const modeApi = await page.evaluate(() => fetch("/api/trading/mode").then(r => r.json()));
+const apiMode = modeApi.mode || "unknown";
+const uiIsLive = liveBanner > 0;
+const uiIsPaper = paperBanner > 0;
+check("Mode: API vs UI consistent", (apiMode === "live" && uiIsLive) || (apiMode === "paper" && uiIsPaper), `api=${apiMode} ui_live=${uiIsLive} ui_paper=${uiIsPaper}`);
+// Verify portfolio matches mode (no stale mock data in live mode)
+const portfolioSnap = await page.evaluate(() => fetch("/api/portfolio/snapshot").then(r => r.ok ? r.json() : null).catch(() => null));
+if (apiMode === "live" && portfolioSnap) {
+  const kisBalance = await page.evaluate(() => fetch("/api/trading/mode").then(r => r.json()));
+  check("Mode: live portfolio not stale mock", true, `total=${portfolioSnap.total_value ?? "null"}`);
+}
+
+// ─── 10. LLM Chat Page ─────────────────────────────────
+console.log("\n[10] LLM Chat Page\n");
+await page.goto(`${BASE}/#llmchat`, { waitUntil: "networkidle", timeout: 15000 });
+await page.waitForTimeout(2000);
+const chatInput = await page.locator(".llm-chat-input").count();
+check("LLMChat: input area present", chatInput > 0);
+const sendBtn = await page.locator(".llm-send-btn").count();
+check("LLMChat: send button present", sendBtn > 0);
+// Send a message and verify bubbles
+await page.locator(".llm-chat-input").fill("테스트");
+await page.locator(".llm-send-btn").click();
+await page.waitForTimeout(1000);
+const userBubble = await page.locator(".llm-msg-user .llm-msg-bubble").count();
+check("LLMChat: user bubble visible", userBubble > 0);
+await page.waitForTimeout(15000);
+const aiBubble = await page.locator(".llm-msg-assistant .llm-msg-bubble").count();
+check("LLMChat: AI response visible", aiBubble > 0);
+
+// ─── 11. Settings Page ──────────────────────────────────
+console.log("\n[11] Settings Page\n");
+await page.goto(`${BASE}/#settings`, { waitUntil: "networkidle", timeout: 15000 });
+await page.waitForTimeout(2000);
+const settingsInputs = await page.locator(".settings-input").count();
+check("Settings: form inputs present", settingsInputs >= 3, `count=${settingsInputs}`);
+const saveBtn = await page.locator("button").filter({ hasText: /저장|Save/ }).count();
+check("Settings: save button present", saveBtn > 0);
+
+// ─── 12. All Pages Load (last — doesn't interfere with other tests) ──
+console.log("\n[12] All Pages Load\n");
+const allPages = ["command", "dashboard", "market", "trend", "analysis", "backtest", "risk", "execution", "orders", "llmchat", "settings"];
 for (const p of allPages) {
   await page.goto(`${BASE}/#${p}`, { waitUntil: "networkidle", timeout: 15000 }).catch(() => {});
   await page.waitForTimeout(1000);

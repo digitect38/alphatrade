@@ -197,7 +197,6 @@ export default function LightweightChart({
     const handleWheel = (e: WheelEvent) => {
       if (e.metaKey || e.ctrlKey) {
         e.preventDefault();
-        // Forward zoom to chart via keyboard-simulated scale
         const delta = -e.deltaY;
         const ts = chart.timeScale();
         const lr = ts.getVisibleLogicalRange();
@@ -205,14 +204,21 @@ export default function LightweightChart({
         const range = lr.to - lr.from;
         if (range <= 0) return;
         const factor = delta > 0 ? 0.9 : 1.1;
+        const newRange = Math.max(2, range * factor);
+        // If zooming out beyond data, just fit content
+        if (newRange >= valid.length) {
+          ts.fitContent();
+          return;
+        }
         const center = (lr.from + lr.to) / 2;
-        const newRange = Math.max(2, Math.min(valid.length, range * factor));
-        ts.setVisibleLogicalRange({
-          from: Math.max(-0.5, center - newRange / 2),
-          to: Math.min(valid.length - 0.5, center + newRange / 2),
-        });
+        const half = newRange / 2;
+        // Clamp then adjust to maintain exact range width
+        let from = center - half;
+        let to = center + half;
+        if (from < -0.5) { from = -0.5; to = from + newRange; }
+        if (to > valid.length - 0.5) { to = valid.length - 0.5; from = to - newRange; }
+        ts.setVisibleLogicalRange({ from, to });
       }
-      // else: let default scroll happen (page scrolls)
     };
     el.addEventListener("wheel", handleWheel, { passive: false });
 

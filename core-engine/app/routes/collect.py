@@ -136,6 +136,24 @@ async def collect_news(
         from app.services.n8n_callback import on_news_collected
         await on_news_collected(inserted, [s.stock_codes[0] for s in sample if s.stock_codes])
 
+    # Send breaking news to Telegram
+    if inserted > 0 and sample:
+        try:
+            from app.services.notification import NotificationService
+            notifier = NotificationService()
+            headlines = sample[:5]
+            lines = [f"<b>📰 속보 {inserted}건 수집</b>"]
+            for s in headlines:
+                title = (s.title or "")[:60]
+                codes = ", ".join(s.stock_codes[:2]) if s.stock_codes else ""
+                lines.append(f"• {title}" + (f" [{codes}]" if codes else ""))
+            if inserted > 5:
+                lines.append(f"  ... 외 {inserted - 5}건")
+            await notifier.send_telegram("\n".join(lines))
+            await notifier.close()
+        except Exception as e:
+            logger.warning("Telegram news alert failed: %s", e)
+
     return NewsCollectionResult(
         status=_collection_status(errors, inserted),
         inserted=inserted, duplicates=duplicates, errors=errors,

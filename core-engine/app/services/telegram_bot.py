@@ -587,7 +587,7 @@ class TelegramAssistant:
         resp = await self.client.post("https://api.openai.com/v1/chat/completions", headers={
             "Authorization": f"Bearer {settings.openai_api_key}", "Content-Type": "application/json",
         }, json={
-            "model": "gpt-4o-mini", "max_tokens": 1000,
+            "model": "gpt-4.1", "max_tokens": 1000,
             "messages": [{"role": "system", "content": SYSTEM_PROMPT.format(context=context)}, {"role": "user", "content": question}],
         }, timeout=30)
         resp.raise_for_status()
@@ -597,7 +597,7 @@ class TelegramAssistant:
         resp = await self.client.post("https://api.anthropic.com/v1/messages", headers={
             "x-api-key": settings.anthropic_api_key, "anthropic-version": "2023-06-01", "content-type": "application/json",
         }, json={
-            "model": "claude-haiku-4-5-20251001", "max_tokens": 1000,
+            "model": "claude-opus-4-6", "max_tokens": 1000,
             "system": SYSTEM_PROMPT.format(context=context),
             "messages": [{"role": "user", "content": question}],
         }, timeout=30)
