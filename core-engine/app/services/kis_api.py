@@ -294,6 +294,11 @@ class KISClient:
                 },
             )
 
+            # Debug: log full response
+            logger.info("KIS balance response keys: %s, rt_cd=%s, msg1=%s",
+                list(data.keys()), data.get("rt_cd"), data.get("msg1", ""))
+            logger.info("KIS balance output2: %s", data.get("output2", "EMPTY"))
+
             positions = []
             for item in data.get("output1", []):
                 qty = int(item.get("hldg_qty", "0"))
@@ -312,9 +317,16 @@ class KISClient:
             summary = data.get("output2", [{}])
             if isinstance(summary, list) and summary:
                 summary = summary[0]
+            # Log all balance fields for debugging
+            if summary:
+                logger.info("KIS balance output2: dnca=%s, tot_evlu=%s, nass=%s, pchs=%s",
+                    summary.get("dnca_tot_amt"), summary.get("tot_evlu_amt"),
+                    summary.get("nass_amt"), summary.get("pchs_amt_smtl_amt"))
             cash = float(summary.get("dnca_tot_amt", "0")) if summary else 0
+            tot_evlu = float(summary.get("tot_evlu_amt", "0")) if summary else 0
+            pchs_amt = float(summary.get("pchs_amt_smtl_amt", "0")) if summary else 0
 
-            return {"cash": cash, "positions": positions}
+            return {"cash": cash, "positions": positions, "total_eval": tot_evlu, "purchase_total": pchs_amt}
 
         except Exception as e:
             logger.error("KIS get_account_balance failed: %s", e)

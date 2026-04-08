@@ -38,12 +38,12 @@ export default function DashboardPage({ t }: { t: (k: string) => string }) {
 
   if (loading) return <p className="text-secondary p-xl">{t("common.loading")}</p>;
 
-  const initialCapital = 10_000_000;
-  const totalValue = portfolio?.total_value || initialCapital;
-  const totalReturn = ((totalValue / initialCapital) - 1) * 100;
+  const initialCapital = portfolio?.total_value && portfolio.total_value > 0 ? portfolio.total_value : 0;
+  const totalValue = portfolio?.total_value ?? 0;
+  const totalReturn = initialCapital > 0 ? ((totalValue / initialCapital) - 1) * 100 : 0;
   const dailyPnl = status?.daily_pnl || 0;
-  const cash = portfolio?.cash || initialCapital;
-  const cashRatio = totalValue > 0 ? (cash / totalValue) * 100 : 100;
+  const cash = portfolio?.cash ?? 0;
+  const cashRatio = totalValue > 0 ? (cash / totalValue) * 100 : 0;
   const mdd = status?.mdd_pct || 0;
   const posCount = portfolio?.positions_count || 0;
 

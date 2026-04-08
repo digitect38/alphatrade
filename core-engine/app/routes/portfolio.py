@@ -5,8 +5,9 @@ import asyncpg
 from fastapi import APIRouter, Depends
 
 from app.config import settings
-from app.deps import get_db
+from app.deps import get_db, get_kis_client
 from app.models.execution import PortfolioStatus, PositionInfo
+from app.services.kis_api import KISClient
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -78,3 +79,35 @@ async def api_portfolio_positions(pool: asyncpg.Pool = Depends(get_db)):
     """Get current positions detail."""
     status = await api_portfolio_status(pool)
     return status.positions
+
+
+@router.get("/balance")
+async def api_account_balance(
+    kis_client: KISClient = Depends(get_kis_client),
+):
+    """Get real-time account balance from KIS API (not DB snapshot)."""
+    try:
+        balance = await kis_client.get_account_balance()
+        logger.info("KIS balance raw: cash=%s positions=%d", balance.get("cash") if balance else "None", len(balance.get("positions", [])) if balance else 0)
+        if not balance:
+            return {"error": "KIS 잔고 조회 실패", "cash": 0, "positions": [], "total_value": 0}
+
+        cash = balance.get("cash", 0)
+        # Use KIS-provided totals if available, otherwise sum positions
+        total_eval = balance.get("total_eval", 0)
+        pchs_total = balance.get("purchase_total", 0)
+        pos_eval = sum(p.get("eval_amount", 0) for p in balance.get("positions", []))
+        invested = total_eval if total_eval > 0 else pos_eval
+
+        return {
+            "cash": cash,
+            "total_value": round(cash + invested, 0),
+            "invested": round(invested, 0),
+            "purchase_total": round(pchs_total, 0),
+            "positions_count": len(balance.get("positions", [])),
+            "positions": balance.get("positions", []),
+            "source": "KIS API (실시간)",
+        }
+    except Exception as e:
+        logger.error("KIS balance fetch failed: %s", e)
+        return {"error": str(e), "cash": 0, "positions": [], "total_value": 0}
