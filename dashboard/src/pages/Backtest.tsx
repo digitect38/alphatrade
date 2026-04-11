@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type MutableRefObject, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type MutableRefObject, type ReactNode } from "react";
 import DirectionValue from "../components/DirectionValue";
 import StockSearch from "../components/StockSearch";
 import { LightweightChart } from "../components/charts";
@@ -134,7 +134,7 @@ export default function BacktestPage({ t: _t, onStockChangeRef }: { t: (k: strin
     };
   }
 
-  const runBacktest = async () => {
+  const runBacktest = useCallback(async () => {
     const computedEnd = calcEndDate(startDate, duration);
     if (startDate && computedEnd && startDate > computedEnd) {
       setErrorMsg("시작일이 유효하지 않습니다.");
@@ -166,7 +166,7 @@ export default function BacktestPage({ t: _t, onStockChangeRef }: { t: (k: strin
       console.error(e);
     }
     setLoading(false);
-  };
+  }, [stockCode, strategy, capital, interval, startDate, duration, buyFeeRate, sellFeeRate, sellTaxRate, slippageRate, capitalFraction, maxDrawdownStop, benchmark]);
 
   const equityData = useMemo<OHLCVPoint[]>(() => {
     // Prefer real equity_series from API

@@ -124,6 +124,6 @@ async def _get_price_from_redis(redis: aioredis.Redis, stock_code: str) -> float
             price = data.get("price") or data.get("close")
             if price:
                 return float(price)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Failed to get cached price for %s: %s", stock_code, e)
     return None

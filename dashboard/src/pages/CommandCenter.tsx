@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import DirectionValue from "../components/DirectionValue";
 import { LightweightChart } from "../components/charts";
 import { apiGet, apiPost } from "../hooks/useApi";
@@ -58,6 +58,7 @@ export default function CommandCenterPage({ t: _t }: { t: (k: string) => string 
   const [indexChartLoading, setIndexChartLoading] = useState(false);
   const [selectedLane, setSelectedLane] = useState<CandidateLane>("eligible");
   const [latestNews, setLatestNews] = useState<NewsItem[]>([]);
+  const [accountBalance, setAccountBalance] = useState<{cash: number; total_value: number; invested: number; positions_count: number; positions: any[]; source?: string} | null>(null);
   const [newsItems, setNewsItems] = useState<NewsItem[]>([]);
   const [newsLoading, setNewsLoading] = useState(false);
   const [scanning, setScanning] = useState(false);
@@ -65,9 +66,9 @@ export default function CommandCenterPage({ t: _t }: { t: (k: string) => string 
   const [killReason, setKillReason] = useState("");
   const activeIndex = selectedIndex ?? marketIndexes[0]?.name ?? null;
 
-  const openAsset = (code: string) => {
+  const openAsset = useCallback((code: string) => {
     window.location.hash = `asset/${code}`;
-  };
+  }, []);
 
   const { connected, lastTick } = useWebSocket({
     onTick: (tick) => {
@@ -100,13 +101,14 @@ export default function CommandCenterPage({ t: _t }: { t: (k: string) => string 
 
   const loadData = async () => {
     try {
-      const [moversData, ksData, healthData, orderData, indexData, newsData] = await Promise.all([
+      const [moversData, ksData, healthData, orderData, indexData, newsData, balanceData] = await Promise.all([
         apiGet<{ movers: Mover[] }>("/market/movers?limit=20"),
         apiGet<KillSwitchStatus>("/trading/kill-switch/status"),
         apiGet<HealthStatus>("/health"),
         apiGet<OrderHistoryItem[]>("/order/history?limit=50"),
         apiGet<{ indexes: MarketIndex[] }>("/index/realtime"),
         apiGet<NewsItem[]>("/market/news/all?limit=15"),
+        apiGet<any>("/portfolio/balance").catch(() => null),
       ]);
       setMovers(moversData.movers || []);
       setKillStatus(ksData);
@@ -114,6 +116,7 @@ export default function CommandCenterPage({ t: _t }: { t: (k: string) => string 
       setOrders(orderData || []);
       setMarketIndexes(indexData.indexes || []);
       setLatestNews(newsData || []);
+      if (balanceData) setAccountBalance(balanceData);
     } catch {
       // keep previous state on transient failures
     }
@@ -439,6 +442,28 @@ export default function CommandCenterPage({ t: _t }: { t: (k: string) => string 
           </button>
         </div>
       </section>
+
+      {accountBalance && (
+        <section className="command-balance-strip">
+          <div className="command-balance-card">
+            <div className="command-balance-label">{_t("command.totalValue")}</div>
+            <div className="command-balance-value">{formatNumber(accountBalance.total_value)}<span className="command-balance-unit">{_t("common.won")}</span></div>
+          </div>
+          <div className="command-balance-card">
+            <div className="command-balance-label">{_t("command.cash")}</div>
+            <div className="command-balance-value">{formatNumber(accountBalance.cash)}<span className="command-balance-unit">{_t("common.won")}</span></div>
+          </div>
+          <div className="command-balance-card">
+            <div className="command-balance-label">{_t("command.invested")}</div>
+            <div className="command-balance-value">{formatNumber(accountBalance.invested)}<span className="command-balance-unit">{_t("common.won")}</span></div>
+          </div>
+          <div className="command-balance-card">
+            <div className="command-balance-label">{_t("command.positions")}</div>
+            <div className="command-balance-value">{accountBalance.positions_count}<span className="command-balance-unit">{_t("command.stocks")}</span></div>
+          </div>
+          {accountBalance.source && <span className="command-balance-source">{accountBalance.source}</span>}
+        </section>
+      )}
 
       <nav className="command-jump-bar">
         {[

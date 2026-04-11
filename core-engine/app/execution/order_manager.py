@@ -42,8 +42,8 @@ async def _publish_order_event(redis: aioredis.Redis, order_id: str, request: Or
             "order_id": order_id, "stock_code": request.stock_code,
             "side": request.side, "quantity": filled_qty, "price": filled_price,
         })
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Failed to publish order event %s: %s", order_id, e)
 
 
 async def execute_order(

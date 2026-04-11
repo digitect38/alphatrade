@@ -237,8 +237,8 @@ async def compute_technical(
         cached = await redis.get(cache_key)
         if cached:
             return TechnicalResult.model_validate_json(cached)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Redis cache read failed for %s: %s", cache_key, e)
 
     # Fetch data
     df = await _fetch_ohlcv_df(stock_code, interval, period, pool=pool)
@@ -273,7 +273,7 @@ async def compute_technical(
     # Cache result
     try:
         await redis.setex(cache_key, settings.cache_technical_ttl, result.model_dump_json())
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Redis cache write failed for %s: %s", cache_key, e)
 
     return result

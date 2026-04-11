@@ -611,12 +611,14 @@ class TelegramAssistant:
                 snap = await conn.fetchrow("SELECT total_value, cash, daily_pnl, positions_count FROM portfolio_snapshots ORDER BY time DESC LIMIT 1")
             if snap:
                 parts.append(f"포트폴리오: 총 {float(snap['total_value']):,.0f}원, 현금 {float(snap['cash']):,.0f}원, 일간 {float(snap['daily_pnl'] or 0):+,.0f}원, {snap['positions_count']}종목")
-        except Exception: pass
+        except Exception as e:
+            logger.debug("Failed to fetch portfolio snapshot for context: %s", e)
 
         try:
             ks = await self.redis.get("trading:kill_switch")
             parts.append(f"킬스위치: {'활성' if ks in ('active', b'active') else '비활성'}")
-        except Exception: pass
+        except Exception as e:
+            logger.debug("Failed to fetch kill switch status: %s", e)
 
         import re
         code_match = re.search(r'\b(\d{6})\b', question)
@@ -628,7 +630,8 @@ class TelegramAssistant:
                     price = await conn.fetchrow("SELECT close FROM ohlcv WHERE stock_code = $1 AND interval = '1d' ORDER BY time DESC LIMIT 1", code)
                 if sig: parts.append(f"{code} 시그널: {sig['signal']} (강도 {float(sig['strength']):.2f})")
                 if price: parts.append(f"{code} 현재가: {float(price['close']):,.0f}원")
-            except Exception: pass
+            except Exception as e:
+                logger.debug("Failed to fetch signal/price for %s: %s", code, e)
 
         from app.utils.market_calendar import KST
         parts.append(f"현재시각: {datetime.now(KST).strftime('%Y-%m-%d %H:%M KST')}")

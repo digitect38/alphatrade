@@ -198,8 +198,8 @@ async def _publish_scan_event(movers, gap_up, gap_down, orders, *, redis: aiored
             "top_movers": min(len(movers), settings.scanner_top_n),
             "gap_up": len(gap_up), "gap_down": len(gap_down), "orders": len(orders),
         })
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Failed to publish morning scan event: %s", e)
 
 
 def _calc_momentum_score(change_pct: float, volume_ratio: float) -> float:

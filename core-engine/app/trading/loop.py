@@ -216,8 +216,8 @@ async def _publish_cycle_complete(result, *, redis: aioredis.Redis):
         await publisher.publish_event("cycle_complete", {
             "orders": len(result["orders_placed"]), "errors": len(result["errors"]),
         })
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Failed to publish cycle_complete event: %s", e)
 
 
 # --- Portfolio Snapshot ---
