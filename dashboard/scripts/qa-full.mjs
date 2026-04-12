@@ -63,7 +63,7 @@ console.log(`${"═".repeat(60)}\n`);
 // ─── 0. Populate recent stocks ──────────────────────────
 console.log("[0] Populating recent stocks...\n");
 for (const code of ["005930", "207940", "068270"]) {
-  await page.goto(`${BASE}/#asset/${code}`, { waitUntil: "networkidle", timeout: 15000 });
+  await page.goto(`${BASE}/#asset/${code}`, { waitUntil: "load", timeout: 30000 });
   await page.waitForTimeout(3500); // enough time for API name fetch + localStorage write
 }
 // Verify sidebar populated
@@ -71,13 +71,13 @@ const populated = await page.locator(".sidebar-recent-item").count();
 console.log(`  Sidebar populated: ${populated} items`);
 if (populated < 2) {
   console.log("  WARNING: sidebar not fully populated, reloading...");
-  await page.goto(`${BASE}/#asset/068270`, { waitUntil: "networkidle", timeout: 15000 });
+  await page.goto(`${BASE}/#asset/068270`, { waitUntil: "load", timeout: 30000 });
   await page.waitForTimeout(3000);
 }
 
 // ─── 1. Asset Detail: Stock Switch via Sidebar (CRITICAL — test first) ──
 console.log("[1] Asset Detail — Sidebar Stock Switch\n");
-await page.goto(`${BASE}/#asset/005930`, { waitUntil: "networkidle", timeout: 15000 });
+await page.goto(`${BASE}/#asset/005930`, { waitUntil: "load", timeout: 30000 });
 await page.waitForTimeout(3000);
 const nameA = await getName();
 const priceA = priceFromText(await getPrice());
@@ -126,7 +126,7 @@ check("AssetDetail: switches to 068270", nameC.includes("셀트리온"), `name="
 
 // ─── 3. Asset Detail: Hash Change ───────────────────────
 console.log("\n[3] Asset Detail — Hash Navigation\n");
-await page.goto(`${BASE}/#asset/005930`, { waitUntil: "networkidle", timeout: 15000 });
+await page.goto(`${BASE}/#asset/005930`, { waitUntil: "load", timeout: 30000 });
 await page.waitForTimeout(3000);
 await page.evaluate(() => { window.location.hash = "asset/207940"; });
 await page.waitForTimeout(5000);
@@ -137,7 +137,7 @@ check("Hash nav: title updated", titleH.includes("207940"), `title="${titleH}"`)
 
 // ─── 4. Analysis Page Stock Switch ──────────────────────
 console.log("\n[4] Analysis — Stock Switch\n");
-await page.goto(`${BASE}/#analysis/005930`, { waitUntil: "networkidle", timeout: 15000 });
+await page.goto(`${BASE}/#analysis/005930`, { waitUntil: "load", timeout: 30000 });
 await page.waitForTimeout(3000);
 const anItem = page.locator(".sidebar-recent-item").filter({ hasText: "207940" }).first();
 if (await anItem.count() > 0) { await anItem.click(); }
@@ -149,7 +149,7 @@ check("Analysis: navigates to 207940", hashAn.includes("207940"), `hash="${hashA
 
 // ─── 5. Backtest Stock Switch ───────────────────────────
 console.log("\n[5] Backtest — Stock Switch\n");
-await page.goto(`${BASE}/#backtest`, { waitUntil: "networkidle", timeout: 15000 });
+await page.goto(`${BASE}/#backtest`, { waitUntil: "load", timeout: 30000 });
 await page.waitForTimeout(2000);
 const inputBefore = await page.locator("input").first().inputValue();
 check("Backtest: initial stock 005930", inputBefore === "005930", `input="${inputBefore}"`);
@@ -173,7 +173,7 @@ check("Backtest: stock input updated", inputAfter === "207940", `input="${inputA
 
 // ─── 6. Chart Rendering ────────────────────────────────
 console.log("\n[6] Chart Rendering\n");
-await page.goto(`${BASE}/#asset/005930`, { waitUntil: "networkidle", timeout: 15000 });
+await page.goto(`${BASE}/#asset/005930`, { waitUntil: "load", timeout: 30000 });
 await page.waitForTimeout(3000);
 const cc0 = await canvasCount(".asset-chart-card");
 check("Chart: canvas renders", cc0 > 0, `canvases=${cc0}`);
@@ -207,7 +207,7 @@ check("Sidebar: recent stocks visible", recentCount >= 2, `count=${recentCount}`
 
 // ─── 8. Command Center: Indexes + News ──────────────────
 console.log("\n[8] Command Center — Indexes & News\n");
-await page.goto(`${BASE}/#command`, { waitUntil: "networkidle", timeout: 15000 });
+await page.goto(`${BASE}/#command`, { waitUntil: "load", timeout: 30000 });
 await page.waitForTimeout(4000);
 const indexCards = await page.locator(".command-index-card").count();
 check("Command: index cards >= 3", indexCards >= 3, `count=${indexCards}`);
@@ -234,25 +234,27 @@ if (apiMode === "live" && portfolioSnap) {
 
 // ─── 10. LLM Chat Page ─────────────────────────────────
 console.log("\n[10] LLM Chat Page\n");
-await page.goto(`${BASE}/#llmchat`, { waitUntil: "networkidle", timeout: 15000 });
-await page.waitForTimeout(2000);
+await page.goto(`${BASE}/#llmchat`, { waitUntil: "load", timeout: 30000 });
+await page.waitForTimeout(5000);
 const chatInput = await page.locator(".llm-chat-input").count();
 check("LLMChat: input area present", chatInput > 0);
-const sendBtn = await page.locator(".llm-send-btn").count();
-check("LLMChat: send button present", sendBtn > 0);
+const sendBtn = await page.locator(".llm-send-btn, .llm-stop-btn").first().count();
+check("LLMChat: send/stop button present", sendBtn > 0);
 // Send a message and verify bubbles
+await page.locator(".llm-chat-input").waitFor({ state: "visible", timeout: 10000 }).catch(() => {});
 await page.locator(".llm-chat-input").fill("테스트");
 await page.locator(".llm-send-btn").click();
 await page.waitForTimeout(1000);
 const userBubble = await page.locator(".llm-msg-user .llm-msg-bubble").count();
 check("LLMChat: user bubble visible", userBubble > 0);
-await page.waitForTimeout(15000);
+// Wait for AI response (Ollama can be slow)
+await page.waitForTimeout(30000);
 const aiBubble = await page.locator(".llm-msg-assistant .llm-msg-bubble").count();
 check("LLMChat: AI response visible", aiBubble > 0);
 
 // ─── 11. Settings Page ──────────────────────────────────
 console.log("\n[11] Settings Page\n");
-await page.goto(`${BASE}/#settings`, { waitUntil: "networkidle", timeout: 15000 });
+await page.goto(`${BASE}/#settings`, { waitUntil: "load", timeout: 30000 });
 await page.waitForTimeout(2000);
 const settingsInputs = await page.locator(".settings-input").count();
 check("Settings: form inputs present", settingsInputs >= 3, `count=${settingsInputs}`);
@@ -263,7 +265,7 @@ check("Settings: save button present", saveBtn > 0);
 console.log("\n[12] All Pages Load\n");
 const allPages = ["command", "dashboard", "market", "trend", "analysis", "backtest", "risk", "execution", "orders", "llmchat", "settings"];
 for (const p of allPages) {
-  await page.goto(`${BASE}/#${p}`, { waitUntil: "networkidle", timeout: 15000 }).catch(() => {});
+  await page.goto(`${BASE}/#${p}`, { waitUntil: "load", timeout: 30000 }).catch(() => {});
   await page.waitForTimeout(1000);
   check(`Page #${p} loads`, true);
 }

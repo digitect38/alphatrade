@@ -38,12 +38,11 @@ export default function DashboardPage({ t }: { t: (k: string) => string }) {
 
   if (loading) return <p className="text-secondary p-xl">{t("common.loading")}</p>;
 
-  const initialCapital = portfolio?.total_value && portfolio.total_value > 0 ? portfolio.total_value : 0;
   const totalValue = portfolio?.total_value ?? 0;
-  const totalReturn = initialCapital > 0 ? ((totalValue / initialCapital) - 1) * 100 : 0;
+  const totalReturn = status?.cumulative_return_pct ?? 0;
   const dailyPnl = status?.daily_pnl || 0;
   const cash = portfolio?.cash ?? 0;
-  const cashRatio = totalValue > 0 ? (cash / totalValue) * 100 : 0;
+  const cashRatio = totalValue > 0 ? (cash / totalValue) * 100 : 100;
   const mdd = status?.mdd_pct || 0;
   const posCount = portfolio?.positions_count || 0;
 
@@ -171,7 +170,7 @@ export default function DashboardPage({ t }: { t: (k: string) => string }) {
       <div className="metrics-grid metrics-grid-3">
         <div className="card">
           <h3 className="card-title">{t("dash.riskStatus")}</h3>
-          <RiskMeter label={t("risk.dailyLossLimit")} used={Math.abs(dailyPnl / totalValue * 100)} max={2} unit="%" />
+          <RiskMeter label={t("risk.dailyLossLimit")} used={totalValue > 0 ? Math.abs(dailyPnl / totalValue * 100) : 0} max={2} unit="%" />
           <RiskMeter label={t("risk.maxDrawdown")} used={Math.abs(mdd)} max={10} unit="%" />
           <RiskMeter label={t("risk.cashRatio")} used={cashRatio} max={100} unit="%" inverted />
         </div>
@@ -241,7 +240,8 @@ export default function DashboardPage({ t }: { t: (k: string) => string }) {
   );
 }
 
-function fmt(n: number) {
+function fmt(n: number | null | undefined) {
+  if (n == null || isNaN(n)) return "0";
   return n.toLocaleString("ko-KR", { maximumFractionDigits: 0 });
 }
 
