@@ -145,6 +145,54 @@ async def lifespan(app: FastAPI):
         import logging
         logging.getLogger(__name__).error("Alert scanner startup failed: %s", e)
 
+    # Start periodic news collection (every 30 minutes)
+    news_collect_task = None
+    try:
+        async def _news_collect_loop():
+            import logging as _log
+            _logger = _log.getLogger("app.news_collector")
+            from app.services.naver_news import NaverNewsClient
+            from app.services.notification import NotificationService
+            while True:
+                await asyncio.sleep(1800)  # 30 minutes
+                try:
+                    naver = NaverNewsClient()
+                    records = await naver.fetch_rss_news()
+                    async with db_pool.acquire() as conn:
+                        universe_rows = await conn.fetch("SELECT stock_code FROM universe WHERE is_active = TRUE LIMIT 30")
+                    for row in universe_rows[:10]:
+                        records.extend(await naver.fetch_stock_news(row["stock_code"]))
+
+                    inserted = 0
+                    async with db_pool.acquire() as conn:
+                        for rec in records:
+                            try:
+                                await conn.execute(
+                                    "INSERT INTO news (time, source, title, content, url, stock_codes, category) "
+                                    "VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT DO NOTHING",
+                                    rec.time, rec.source, rec.title, rec.content, rec.url,
+                                    rec.stock_codes or [], rec.category,
+                                )
+                                inserted += 1
+                            except Exception:
+                                pass
+
+                    if inserted > 0:
+                        _logger.info("Auto news collection: %d new articles", inserted)
+                        # Telegram notification
+                        try:
+                            notifier = NotificationService()
+                            await notifier.send_telegram(f"📰 자동 뉴스 수집: {inserted}건 새 기사")
+                            await notifier.close()
+                        except Exception:
+                            pass
+                except Exception as e:
+                    _logger.error("Auto news collection failed: %s", e)
+        news_collect_task = asyncio.create_task(_news_collect_loop())
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error("News collector startup failed: %s", e)
+
     yield
 
     # Shutdown background tasks
@@ -158,6 +206,8 @@ async def lifespan(app: FastAPI):
         telegram_poll_task.cancel()
     if alert_scan_task:
         alert_scan_task.cancel()
+    if news_collect_task:
+        news_collect_task.cancel()
 
     # Shutdown
     await app.state.notifier.close()
